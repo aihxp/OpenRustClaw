@@ -132,10 +132,16 @@ pub struct AnthropicConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenAiConfig {
     pub model: String,
+    #[serde(default = "default_codex_model")]
+    pub codex_model: String,
     #[serde(default)]
     pub api_key_env: Option<String>,
     pub use_responses_api: bool,
     pub strict_tools: bool,
+}
+
+fn default_codex_model() -> String {
+    "gpt-5.3-codex".to_string()
 }
 
 /// OpenRouter provider configuration.
@@ -1095,6 +1101,7 @@ impl Default for AppConfig {
                 },
                 openai: OpenAiConfig {
                     model: "gpt-4o".to_string(),
+                    codex_model: default_codex_model(),
                     api_key_env: None,
                     use_responses_api: true,
                     strict_tools: true,

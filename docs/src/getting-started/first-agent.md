@@ -6,7 +6,7 @@ This guide is about your first useful assistant workflow, not a speculative from
 
 Get one assistant workflow running end to end with:
 
-- a configured provider
+- a configured provider or delegated lane
 - a persisted assistant session
 - memory continuity
 - operator visibility in `/control/ui`

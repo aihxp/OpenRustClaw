@@ -194,8 +194,8 @@ model = "gpt-4o"
 
 **Quick Responses:**
 ```toml
-# Fast and cheap: Claude Haiku
-model = "claude-haiku-3-20240307"
+# Fast and cheap: Claude Haiku 3.5
+model = "claude-3-5-haiku-20241022"
 
 # Or GPT-4o-mini
 model = "gpt-4o-mini"

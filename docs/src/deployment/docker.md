@@ -181,7 +181,7 @@ docker buildx create --name openrustclaw-builder --use
 ./scripts/docker-build.sh \
     --platforms linux/amd64,linux/arm64 \
     --push \
-    v1.4.1
+    v1.4.2
 ```
 
 ### Platform-Specific Builds
@@ -203,7 +203,7 @@ export REGISTRY=docker.io/yourusername
 export DOCKER_USERNAME=yourusername
 export DOCKER_PASSWORD=yourpassword
 
-./scripts/docker-push.sh --latest v1.4.1
+./scripts/docker-push.sh --latest v1.4.2
 ```
 
 ### Push to GitHub Container Registry
@@ -213,7 +213,7 @@ export REGISTRY=ghcr.io/yourorg
 export DOCKER_USERNAME=yourusername
 export DOCKER_PASSWORD=ghp_yourtoken
 
-./scripts/docker-push.sh --build --latest v1.4.1
+./scripts/docker-push.sh --build --latest v1.4.2
 ```
 
 ### Push to AWS ECR
@@ -225,7 +225,7 @@ aws ecr get-login-password --region us-east-1 | \
 
 # Build and push
 export REGISTRY=123456789012.dkr.ecr.us-east-1.amazonaws.com/yourrepo
-./scripts/docker-push.sh --latest v1.4.1
+./scripts/docker-push.sh --latest v1.4.2
 ```
 
 ## Monitoring and Health
@@ -239,7 +239,7 @@ curl http://localhost:18789/health
 # Expected response:
 {
   "status": "healthy",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "timestamp": "2026-03-16T12:00:00Z"
 }
 ```

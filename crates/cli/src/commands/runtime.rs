@@ -1380,12 +1380,18 @@ async fn scan_provider_health(provider: &str, config: &AppConfig) -> RuntimeHeal
         "openrouter" => config.providers.openrouter.model.clone(),
         "gemini" => config.providers.gemini.model.clone(),
         "ollama" => config.providers.ollama.model.clone(),
+        "claude_code" => config.providers.anthropic.model.clone(),
+        "codex" => config.providers.openai.codex_model.clone(),
+        "gemini_cli" => config.providers.gemini.model.clone(),
         "cursor" => "vendor-managed".to_string(),
         _ => String::new(),
     };
 
     let result = match provider {
         "ollama" => probe_ollama_provider(config).await,
+        "claude_code" | "codex" | "gemini_cli" | "cursor" => {
+            probe_delegated_provider_health(provider, &model).await
+        }
         _ => probe_remote_provider_health(provider, config, &model).await,
     };
 
@@ -1690,6 +1696,71 @@ async fn probe_ollama_provider(config: &AppConfig) -> Result<ProviderHealthProbe
     })
 }
 
+async fn probe_delegated_provider_health(
+    provider: &str,
+    model: &str,
+) -> Result<ProviderHealthProbe> {
+    let catalog = AgentBackendCatalogService::new().discover();
+    let control = AgentBackendControlService::new();
+    let contract = control
+        .contracts_from_catalog(&catalog)
+        .into_iter()
+        .find(|candidate| candidate.backend_id == provider)
+        .with_context(|| format!("delegated backend '{}' is not discoverable", provider))?;
+
+    let discovered_models = catalog
+        .iter()
+        .find(|entry| control.backend_id_for_entry(entry) == provider)
+        .map(|entry| entry.discovered_models.clone())
+        .unwrap_or_default();
+
+    let model_available = if model.trim().is_empty()
+        || model.eq_ignore_ascii_case("vendor-managed")
+        || model.eq_ignore_ascii_case("auto")
+    {
+        Some(true)
+    } else if discovered_models.is_empty() {
+        None
+    } else {
+        Some(discovered_models.iter().any(|candidate| candidate == model))
+    };
+
+    if contract.execution_eligible {
+        return Ok(ProviderHealthProbe {
+            healthy: model_available.unwrap_or(true),
+            issue_kind: (model_available == Some(false)).then(|| "model_unavailable".to_string()),
+            issue: (model_available == Some(false)).then(|| {
+                format!(
+                    "Configured model '{}' is not discoverable through delegated backend `{}`",
+                    model, provider
+                )
+            }),
+            model_available,
+            limit_snapshot: None,
+        });
+    }
+
+    let detail = contract.readiness_reason.clone().unwrap_or_else(|| {
+        format!("delegated backend '{}' is visible, but not ready yet", provider)
+    });
+    let normalized = detail.to_ascii_lowercase();
+    let issue_kind = if normalized.contains("login")
+        || normalized.contains("sign in")
+        || normalized.contains("auth")
+    {
+        "auth"
+    } else {
+        "provider_unavailable"
+    };
+    Ok(ProviderHealthProbe {
+        healthy: false,
+        issue_kind: Some(issue_kind.to_string()),
+        issue: Some(detail),
+        model_available,
+        limit_snapshot: None,
+    })
+}
+
 async fn probe_remote_provider_health(
     provider: &str,
     config: &AppConfig,
@@ -1947,6 +2018,9 @@ fn default_model_for_provider(config: &AppConfig) -> &str {
         "openrouter" => &config.providers.openrouter.model,
         "gemini" => &config.providers.gemini.model,
         "ollama" => &config.providers.ollama.model,
+        "claude_code" => &config.providers.anthropic.model,
+        "codex" => &config.providers.openai.codex_model,
+        "gemini_cli" => &config.providers.gemini.model,
         "cursor" => "vendor-managed",
         _ => &config.providers.anthropic.model,
     }
@@ -2162,6 +2236,9 @@ fn provider_model_for<'a>(config: &'a AppConfig, provider: &str) -> &'a str {
         "openrouter" => &config.providers.openrouter.model,
         "ollama" => &config.providers.ollama.model,
         "gemini" => &config.providers.gemini.model,
+        "claude_code" => &config.providers.anthropic.model,
+        "codex" => &config.providers.openai.codex_model,
+        "gemini_cli" => &config.providers.gemini.model,
         "cursor" => "vendor-managed",
         _ => &config.providers.anthropic.model,
     }
@@ -2723,7 +2800,7 @@ pub fn create_provider_from_config(
         )?)),
         "codex" => Ok(Arc::new(DelegatedCliProvider::new(
             "codex",
-            config.providers.openai.model.clone(),
+            config.providers.openai.codex_model.clone(),
             std::env::current_dir().context("Failed to determine current workspace")?,
             config,
         )?)),

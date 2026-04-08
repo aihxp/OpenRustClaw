@@ -1,8 +1,11 @@
 //! Interactive chat REPL command.
 
 use anyhow::{Context, Result};
+use openrustclaw_app::runtime_model_validation::validate_model_for_provider;
 use openrustclaw_core::traits::CoreMemoryStore;
+use serde_json::Value;
 use std::io::{self, Write};
+use std::path::Path;
 use std::sync::Arc;
 
 use openrustclaw_agent::tools::ToolRegistry;
@@ -15,6 +18,12 @@ use super::assistant;
 use super::{runtime, session};
 
 const CHAT_HISTORY_WINDOW: usize = 128;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedChatTarget {
+    pub provider: String,
+    pub model: Option<String>,
+}
 
 /// Run the interactive chat REPL.
 pub async fn run(provider: &str, model: Option<&str>) -> Result<()> {
@@ -141,6 +150,41 @@ pub async fn run(provider: &str, model: Option<&str>) -> Result<()> {
     }
 
     Ok(())
+}
+
+pub async fn resolve_chat_target(
+    provider_override: Option<&str>,
+    model_override: Option<&str>,
+) -> Result<ResolvedChatTarget> {
+    let workspace_root = std::env::current_dir()?;
+    let config = runtime::load_effective_config("config/default.toml", &workspace_root)
+        .unwrap_or_default();
+    let setup = load_setup_selection(&workspace_root);
+
+    let provider = provider_override
+        .filter(|value| !value.trim().is_empty())
+        .map(ToString::to_string)
+        .or_else(|| {
+            if setup.selected_access_mode.as_deref() == Some("subscription_managed") {
+                setup.selected_backend_id.clone()
+            } else {
+                None
+            }
+        })
+        .or_else(|| {
+            let default = config.providers.default_provider.trim();
+            (!default.is_empty()).then(|| default.to_string())
+        })
+        .or(setup.selected_provider.clone())
+        .unwrap_or_else(|| "anthropic".to_string());
+
+    let model = model_override
+        .filter(|value| !value.trim().is_empty())
+        .map(ToString::to_string)
+        .or_else(|| selected_model_for_provider(&setup, &provider))
+        .or_else(|| configured_model_for_provider(&config, &provider));
+
+    Ok(ResolvedChatTarget { provider, model })
 }
 
 /// Result of handling a special command.
@@ -294,12 +338,102 @@ async fn load_chat_config(
                 config.providers.ollama.model = model.to_string();
             }
         }
+        "claude_code" => {
+            if let Some(model) = model {
+                config.providers.anthropic.model = model.to_string();
+            }
+        }
+        "codex" => {
+            if let Some(model) = model {
+                config.providers.openai.codex_model = model.to_string();
+            }
+        }
+        "gemini_cli" => {
+            if let Some(model) = model {
+                config.providers.gemini.model = model.to_string();
+            }
+        }
+        "cursor" => {}
         _ => anyhow::bail!(
-            "Unknown provider: {}. Available: anthropic, openai, openrouter, ollama",
+            "Unknown provider: {}. Available: anthropic, openai, openrouter, gemini, ollama, claude_code, codex, gemini_cli, cursor",
             provider_name
         ),
     }
+    let active_model = configured_model_for_provider(&config, provider_name)
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_default();
+    validate_model_for_provider(provider_name, &active_model)
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
     Ok(config)
+}
+
+#[derive(Default)]
+struct SetupSelection {
+    selected_provider: Option<String>,
+    selected_backend_id: Option<String>,
+    selected_access_mode: Option<String>,
+    selected_primary_model: Option<String>,
+}
+
+fn load_setup_selection(workspace_root: &Path) -> SetupSelection {
+    let path = workspace_root.join(".claw/control/setup-state.json");
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return SetupSelection::default();
+    };
+    let Ok(payload) = serde_json::from_str::<Value>(&raw) else {
+        return SetupSelection::default();
+    };
+    let Some(setup) = payload.get("setup") else {
+        return SetupSelection::default();
+    };
+    SetupSelection {
+        selected_provider: setup
+            .get("selected_provider")
+            .and_then(|value| value.as_str())
+            .map(ToString::to_string),
+        selected_backend_id: setup
+            .get("selected_backend_id")
+            .and_then(|value| value.as_str())
+            .map(ToString::to_string),
+        selected_access_mode: setup
+            .get("selected_access_mode")
+            .and_then(|value| value.as_str())
+            .map(ToString::to_string),
+        selected_primary_model: setup
+            .get("selected_primary_model")
+            .and_then(|value| value.as_str())
+            .map(ToString::to_string),
+    }
+}
+
+fn selected_model_for_provider(setup: &SetupSelection, provider: &str) -> Option<String> {
+    let model = setup.selected_primary_model.clone()?;
+    if setup.selected_access_mode.as_deref() == Some("subscription_managed")
+        && setup.selected_backend_id.as_deref() == Some(provider)
+    {
+        return Some(model);
+    }
+    if setup.selected_provider.as_deref() == Some(provider) {
+        return Some(model);
+    }
+    None
+}
+
+fn configured_model_for_provider(
+    config: &openrustclaw_core::config::AppConfig,
+    provider: &str,
+) -> Option<String> {
+    let model = match provider {
+        "anthropic" | "claude_code" => config.providers.anthropic.model.as_str(),
+        "openai" => config.providers.openai.model.as_str(),
+        "codex" => config.providers.openai.codex_model.as_str(),
+        "openrouter" => config.providers.openrouter.model.as_str(),
+        "gemini" | "gemini_cli" => config.providers.gemini.model.as_str(),
+        "ollama" => config.providers.ollama.model.as_str(),
+        "cursor" => "auto",
+        _ => "",
+    };
+    (!model.trim().is_empty()).then(|| model.to_string())
 }
 
 async fn load_or_create_chat_session(
@@ -420,6 +554,68 @@ mod tests {
 
         assert_eq!(loaded.providers.default_provider, "openrouter");
         assert_eq!(loaded.providers.openrouter.model, "openai/gpt-4o");
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial(cwd)]
+    async fn resolve_chat_target_prefers_subscription_managed_backend_from_setup_state() -> Result<()>
+    {
+        let workspace = tempdir()?;
+        fs::create_dir_all(workspace.path().join("config"))?;
+        fs::create_dir_all(workspace.path().join(".claw/control"))?;
+
+        let mut config = openrustclaw_core::config::AppConfig::default();
+        config.providers.default_provider = "anthropic".to_string();
+        fs::write(
+            workspace.path().join("config/default.toml"),
+            toml::to_string_pretty(&config)?,
+        )?;
+        fs::write(
+            workspace.path().join(".claw/control/setup-state.json"),
+            serde_json::json!({
+                "setup": {
+                    "selected_provider": "openai",
+                    "selected_backend_id": "codex",
+                    "selected_access_mode": "subscription_managed",
+                    "selected_primary_model": "gpt-5.3-codex"
+                }
+            })
+            .to_string(),
+        )?;
+
+        let previous = std::env::current_dir()?;
+        std::env::set_current_dir(workspace.path())?;
+        let resolved = resolve_chat_target(None, None).await;
+        std::env::set_current_dir(previous)?;
+        let resolved = resolved?;
+
+        assert_eq!(resolved.provider, "codex");
+        assert_eq!(resolved.model.as_deref(), Some("gpt-5.3-codex"));
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial(cwd)]
+    async fn load_chat_config_rejects_invalid_codex_model() -> Result<()> {
+        let workspace = tempdir()?;
+        fs::create_dir_all(workspace.path().join("config"))?;
+
+        let mut config = openrustclaw_core::config::AppConfig::default();
+        config.providers.default_provider = "codex".to_string();
+        config.providers.openai.codex_model = "gpt-4o".to_string();
+        fs::write(
+            workspace.path().join("config/default.toml"),
+            toml::to_string_pretty(&config)?,
+        )?;
+
+        let previous = std::env::current_dir()?;
+        std::env::set_current_dir(workspace.path())?;
+        let loaded = load_chat_config("codex", None).await;
+        std::env::set_current_dir(previous)?;
+
+        let error = loaded.unwrap_err();
+        assert!(error.to_string().contains("Codex model"));
         Ok(())
     }
 }

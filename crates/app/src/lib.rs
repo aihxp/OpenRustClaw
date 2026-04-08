@@ -34,6 +34,7 @@ pub mod orchestration_reporting;
 pub mod orchestration_routing;
 pub mod runtime_maintenance_control;
 pub mod runtime_maintenance_planning;
+pub mod runtime_model_validation;
 pub mod runtime_provider_switch;
 pub mod runtime_reload_planning;
 pub mod runtime_vault;

@@ -9,6 +9,19 @@ This changelog tracks the public semver release line. Planning milestone tags su
 
 ---
 
+## [1.4.2] - 2026-04-08
+
+### Added
+
+- Subscription-managed delegated backends such as Claude Code, Codex, and Gemini CLI can now be selected as the real first-run assistant lane during onboarding.
+- Runtime model validation now rejects obvious provider/model mismatches before onboarding, chat startup, or runtime switching continue.
+
+### Changed
+
+- Codex now uses a dedicated default model selection path with a Codex-specific model instead of inheriting the generic OpenAI default.
+- Anthropic model catalogs and legacy wrapper mappings now reflect the current Claude 4 and Claude 3.7 public model families.
+- Workspace test fixtures were refreshed to match the current gateway and memory inspection APIs, restoring full workspace release builds.
+
 ## [1.4.1] - 2026-03-31
 
 ### Added

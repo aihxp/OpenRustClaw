@@ -23,6 +23,7 @@ streaming_tool_deltas = true
 
 [providers.openai]
 model = "gpt-4o"
+codex_model = "gpt-5.3-codex"
 use_responses_api = true
 strict_tools = true
 

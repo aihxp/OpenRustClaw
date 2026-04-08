@@ -49,7 +49,7 @@ cargo build --workspace
 cp .env.example .env
 ```
 
-Add at least one provider API key to `.env`.
+Add a provider API key to `.env` if you plan to use a direct API lane. If you plan to start with a supported delegated local agent such as Claude Code, Codex, Cursor, or Gemini CLI, sign in to that local tool first instead.
 
 ### 2. Run guided onboarding
 

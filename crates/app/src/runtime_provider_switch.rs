@@ -2,6 +2,8 @@ use openrustclaw_core::config::AppConfig;
 use openrustclaw_core::error::{Error, Result};
 use serde::{Deserialize, Serialize};
 
+use crate::runtime_model_validation::validate_model_for_provider;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RuntimeProviderSwitchRequest {
     pub provider: String,
@@ -60,6 +62,7 @@ fn apply_provider_switch(
     match provider.as_str() {
         "anthropic" => {
             if let Some(model) = request.model {
+                validate_model_for_provider("anthropic", &model)?;
                 config.providers.anthropic.model = model;
             }
             if let Some(api_key_env) = request.api_key_env {
@@ -93,6 +96,23 @@ fn apply_provider_switch(
         "ollama" => {
             if let Some(model) = request.model {
                 config.providers.ollama.model = model;
+            }
+        }
+        "claude_code" => {
+            if let Some(model) = request.model {
+                validate_model_for_provider("claude_code", &model)?;
+                config.providers.anthropic.model = model;
+            }
+        }
+        "codex" => {
+            if let Some(model) = request.model {
+                validate_model_for_provider("codex", &model)?;
+                config.providers.openai.codex_model = model;
+            }
+        }
+        "gemini_cli" => {
+            if let Some(model) = request.model {
+                config.providers.gemini.model = model;
             }
         }
         "cursor" => {}
@@ -276,5 +296,79 @@ mod tests {
         assert_eq!(config.providers.default_provider, "cursor");
         assert!(config.providers.control_plane_provider.is_some());
         Ok(())
+    }
+
+    #[test]
+    fn runtime_provider_switch_supports_delegated_cli_defaults() -> Result<()> {
+        let service = RuntimeProviderSwitchService::new(TestSource {
+            config: AppConfig::default(),
+        });
+
+        let claude = service.switch_provider(RuntimeProviderSwitchRequest {
+            provider: "claude_code".to_string(),
+            model: Some("claude-sonnet-4-20250514".to_string()),
+            api_key_env: None,
+            fallback_chain: None,
+        })?;
+        assert_eq!(claude.providers.default_provider, "claude_code");
+        assert_eq!(
+            claude.providers.anthropic.model,
+            "claude-sonnet-4-20250514"
+        );
+
+        let codex = service.switch_provider(RuntimeProviderSwitchRequest {
+            provider: "codex".to_string(),
+            model: Some("gpt-5.3-codex".to_string()),
+            api_key_env: None,
+            fallback_chain: None,
+        })?;
+        assert_eq!(codex.providers.default_provider, "codex");
+        assert_eq!(codex.providers.openai.codex_model, "gpt-5.3-codex");
+
+        let gemini = service.switch_provider(RuntimeProviderSwitchRequest {
+            provider: "gemini_cli".to_string(),
+            model: Some("gemini-2.5-pro".to_string()),
+            api_key_env: None,
+            fallback_chain: None,
+        })?;
+        assert_eq!(gemini.providers.default_provider, "gemini_cli");
+        assert_eq!(gemini.providers.gemini.model, "gemini-2.5-pro");
+        Ok(())
+    }
+
+    #[test]
+    fn runtime_provider_switch_rejects_invalid_codex_model() {
+        let service = RuntimeProviderSwitchService::new(TestSource {
+            config: AppConfig::default(),
+        });
+
+        let error = service
+            .switch_provider(RuntimeProviderSwitchRequest {
+                provider: "codex".to_string(),
+                model: Some("gpt-4o".to_string()),
+                api_key_env: None,
+                fallback_chain: None,
+            })
+            .unwrap_err();
+
+        assert!(error.to_string().contains("Codex model"));
+    }
+
+    #[test]
+    fn runtime_provider_switch_rejects_invalid_anthropic_model() {
+        let service = RuntimeProviderSwitchService::new(TestSource {
+            config: AppConfig::default(),
+        });
+
+        let error = service
+            .switch_provider(RuntimeProviderSwitchRequest {
+                provider: "anthropic".to_string(),
+                model: Some("gpt-4o".to_string()),
+                api_key_env: None,
+                fallback_chain: None,
+            })
+            .unwrap_err();
+
+        assert!(error.to_string().contains("Anthropic Claude model"));
     }
 }

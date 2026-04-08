@@ -36,15 +36,15 @@ If you package local release artifacts for operator testing:
 scripts/build-release-artifacts.sh
 ```
 
-## 2. Configure the Environment
+## 2. Configure the Environment or Local Agent Login
 
-Copy the example environment file and add at least one provider key:
+Copy the example environment file:
 
 ```bash
 cp .env.example .env
 ```
 
-Common starting point:
+If you plan to use a direct API provider, add at least one provider key:
 
 ```bash
 ANTHROPIC_API_KEY=...
@@ -53,7 +53,9 @@ OPENROUTER_API_KEY=...
 OLLAMA_HOST=http://localhost:11434
 ```
 
-You do not need every provider configured. The main requirement is that the deployment mode and setup depth you choose can pass the health gate for at least one usable runtime lane.
+If you plan to use a supported delegated local agent such as Claude Code, Codex, Cursor, or Gemini CLI, sign in to that tool locally first using its documented login flow. In that case, a direct provider API key is not required just to complete onboarding.
+
+You do not need every provider configured. The main requirement is that the deployment mode and setup depth you choose can pass the health gate for at least one usable runtime lane: direct API, local runtime, or delegated local agent.
 
 ## 3. Run Onboarding
 

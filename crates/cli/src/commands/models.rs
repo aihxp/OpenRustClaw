@@ -34,9 +34,17 @@ fn get_default_models() -> HashMap<&'static str, Vec<ModelInfo>> {
         "anthropic",
         vec![
             ModelInfo {
+                name: "claude-opus-4-1-20250805".to_string(),
+                provider: "anthropic".to_string(),
+                description: "Claude Opus 4.1 - Anthropic's current most capable model".to_string(),
+                context_window: 200_000,
+                supports_tools: true,
+                supports_vision: true,
+            },
+            ModelInfo {
                 name: "claude-sonnet-4-20250514".to_string(),
                 provider: "anthropic".to_string(),
-                description: "Claude Sonnet 4 - Balanced performance and cost".to_string(),
+                description: "Claude Sonnet 4 - Anthropic's balanced production model".to_string(),
                 context_window: 200_000,
                 supports_tools: true,
                 supports_vision: true,
@@ -44,15 +52,23 @@ fn get_default_models() -> HashMap<&'static str, Vec<ModelInfo>> {
             ModelInfo {
                 name: "claude-opus-4-20250514".to_string(),
                 provider: "anthropic".to_string(),
-                description: "Claude Opus 4 - Most capable model".to_string(),
+                description: "Claude Opus 4 - Prior Claude 4 flagship".to_string(),
                 context_window: 200_000,
                 supports_tools: true,
                 supports_vision: true,
             },
             ModelInfo {
-                name: "claude-haiku-4-20250514".to_string(),
+                name: "claude-3-7-sonnet-20250219".to_string(),
                 provider: "anthropic".to_string(),
-                description: "Claude Haiku 4 - Fast and cost-effective".to_string(),
+                description: "Claude Sonnet 3.7 - Earlier high-capability Claude release".to_string(),
+                context_window: 200_000,
+                supports_tools: true,
+                supports_vision: true,
+            },
+            ModelInfo {
+                name: "claude-3-5-haiku-20241022".to_string(),
+                provider: "anthropic".to_string(),
+                description: "Claude Haiku 3.5 - Fastest current Claude family option".to_string(),
                 context_window: 200_000,
                 supports_tools: true,
                 supports_vision: true,
@@ -650,6 +666,9 @@ mod tests {
         let models = get_default_models();
         let anthropic = models.get("anthropic").unwrap();
         assert!(!anthropic.is_empty());
+        assert_eq!(anthropic[0].name, "claude-opus-4-1-20250805");
+        assert!(anthropic.iter().any(|model| model.name == "claude-3-5-haiku-20241022"));
+        assert!(!anthropic.iter().any(|model| model.name == "claude-haiku-4-20250514"));
         // All Anthropic models should support tools and vision
         for model in anthropic {
             assert_eq!(model.provider, "anthropic");

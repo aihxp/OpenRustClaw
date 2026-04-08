@@ -53,7 +53,7 @@ async fn memory_store_allows_explicit_request_and_persists_policy_metadata() -> 
 #[tokio::test]
 async fn memory_timeline_exposes_assistant_write_policy_metadata() -> TestResult {
     let pool = create_test_db().await;
-    let store = Arc::new(SqliteMemoryStore::new(pool));
+    let store = Arc::new(SqliteMemoryStore::new(pool.clone()));
     let tool = MemoryStoreTool::new(store.clone());
     let ctx = ToolContext {
         session_id: uuid::Uuid::new_v4().to_string(),
@@ -72,7 +72,7 @@ async fn memory_timeline_exposes_assistant_write_policy_metadata() -> TestResult
     )
     .await?;
 
-    let report = inspect::memory_timeline(&store, Some("user_789"), 5).await?;
+    let report = inspect::memory_timeline(&store, &pool, Some("user_789"), 5).await?;
     assert_eq!(report.entries.len(), 1);
     assert_eq!(
         report.entries[0].metadata["assistant_write_policy"]["basis"],

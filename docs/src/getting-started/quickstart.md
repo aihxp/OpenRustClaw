@@ -1,6 +1,6 @@
 # Quickstart
 
-This guide assumes the workspace already builds and has at least one provider configured. It walks through the shortest truthful path from onboarding to a running assistant and operator-visible control surface.
+This guide assumes the workspace already builds and has at least one usable runtime lane available. That can be a direct provider, a local runtime, or a supported delegated local agent lane. It walks through the shortest truthful path from onboarding to a running assistant and operator-visible control surface.
 
 ## What You Will Do
 

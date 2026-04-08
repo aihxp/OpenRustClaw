@@ -99,33 +99,37 @@ impl OnboardingLaneCatalogService {
                 contract.readiness
                     != crate::agent_backend_catalog::AgentBackendReadiness::Unavailable
             })
-            .map(|contract| OnboardingLaneDescriptor {
-                lane_id: contract.backend_id.clone(),
-                provider_id: contract
-                    .provider_id
-                    .clone()
-                    .unwrap_or_else(|| contract.backend_id.clone()),
-                backend_id: Some(contract.backend_id.clone()),
-                label: format!("{} (Delegated local agent)", contract.display_name),
-                kind: OnboardingLaneKind::DelegatedAgent,
-                supported_access_modes: if let Some(provider_id) = contract.provider_id.as_deref() {
-                    direct_by_provider
-                        .get(provider_id)
-                        .map(|_| supported_access_modes_for_provider(provider_id))
-                        .unwrap_or_default()
-                } else {
-                    vec!["subscription_managed".to_string()]
-                },
-                api_key_prompt: contract
-                    .provider_id
-                    .as_deref()
-                    .and_then(api_key_prompt_for_provider)
-                    .map(ToString::to_string),
-                recommended: false,
-                status_label: delegated_status_label(contract),
-                detail: delegated_detail(contract),
-                compatibility_note: Some(delegated_compatibility_note(contract)),
-                model_catalog_label: Some(model_catalog_label(contract).to_string()),
+            .map(|contract| {
+                let mut supported_access_modes = vec!["subscription_managed".to_string()];
+                if let Some(provider_id) = contract.provider_id.as_deref() {
+                    for mode in supported_access_modes_for_provider(provider_id) {
+                        if !supported_access_modes.iter().any(|existing| existing == &mode) {
+                            supported_access_modes.push(mode);
+                        }
+                    }
+                }
+
+                OnboardingLaneDescriptor {
+                    lane_id: contract.backend_id.clone(),
+                    provider_id: contract
+                        .provider_id
+                        .clone()
+                        .unwrap_or_else(|| contract.backend_id.clone()),
+                    backend_id: Some(contract.backend_id.clone()),
+                    label: format!("{} (Delegated local agent)", contract.display_name),
+                    kind: OnboardingLaneKind::DelegatedAgent,
+                    supported_access_modes,
+                    api_key_prompt: contract
+                        .provider_id
+                        .as_deref()
+                        .and_then(api_key_prompt_for_provider)
+                        .map(ToString::to_string),
+                    recommended: false,
+                    status_label: delegated_status_label(contract),
+                    detail: delegated_detail(contract),
+                    compatibility_note: Some(delegated_compatibility_note(contract)),
+                    model_catalog_label: Some(model_catalog_label(contract).to_string()),
+                }
             })
             .collect::<Vec<_>>();
         delegated.sort_by(|left, right| left.label.cmp(&right.label));
@@ -336,6 +340,14 @@ mod tests {
                 .model_catalog_label
                 .as_deref(),
             Some("vendor-managed")
+        );
+        assert_eq!(
+            catalog
+                .iter()
+                .find(|lane| lane.lane_id == "claude_code")
+                .unwrap()
+                .supported_access_modes,
+            vec!["subscription_managed".to_string(), "api_key".to_string()]
         );
     }
 

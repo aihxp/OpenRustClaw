@@ -19,7 +19,7 @@ A native Rust SDK for Perplexity AI's API with built-in search and grounding cap
 
 ```toml
 [dependencies]
-perplexity = "1.4.1"
+perplexity = "1.4.2"
 ```
 
 ## Quick Start

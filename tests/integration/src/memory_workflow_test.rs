@@ -10,7 +10,9 @@
 use chrono::{Duration, Utc};
 
 use openrustclaw_core::traits::{CoreMemoryStore, MemoryStore};
-use openrustclaw_core::types::{CoreEntry, MemoryQuery, MemorySource, MemoryType};
+use openrustclaw_core::types::{
+    CoreEntry, MemoryQuery, MemorySource, MemoryType, RetrievalExplanation,
+};
 use openrustclaw_db::{SqliteCoreMemoryStore, SqliteMemoryStore};
 use openrustclaw_memory::{CoreMemoryManager, MemoryPolicies, RecallMemory};
 
@@ -585,6 +587,7 @@ fn recall_memory_apply_decay() {
     let mut results = vec![openrustclaw_core::types::ScoredMemory {
         entry: MemoryEntryBuilder::new("recent").build(),
         score: 1.0,
+        explanation: RetrievalExplanation::default(),
     }];
 
     recall.apply_decay(&mut results);

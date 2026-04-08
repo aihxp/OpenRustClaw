@@ -29,14 +29,16 @@ use openrustclaw_app::setup_handoff::{
 use openrustclaw_app::tool_execution_audit::ToolExecutionAuditService;
 use openrustclaw_core::config::AppConfig;
 use openrustclaw_core::error::Error as CoreError;
-use openrustclaw_core::types::{
-    MemoryEntry, Message, ModelArtifact, ModelArtifactProjection, RecallPack,
-};
+use openrustclaw_core::types::{MemoryEntry, Message, RecallPack};
+#[cfg(test)]
+use openrustclaw_core::types::{ModelArtifact, ModelArtifactProjection};
 use openrustclaw_db::models::MemoryArchiveRow;
 use openrustclaw_db::{
-    PersistedSession, SessionStatus, SqliteCoreMemoryStore, SqliteMemoryStore, SqlitePool,
-    SqliteSessionStore,
+    PersistedSession, SessionStatus, SqliteMemoryStore, SqlitePool, SqliteSessionStore,
 };
+#[cfg(test)]
+use openrustclaw_db::SqliteCoreMemoryStore;
+#[cfg(test)]
 use openrustclaw_memory::ModelArtifactService;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
@@ -79,6 +81,7 @@ pub struct MemoryArchiveReport {
     pub entries: Vec<MemoryArchiveRow>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Serialize)]
 pub struct ModelArtifactInspectionReport {
     pub namespace: Option<String>,
@@ -567,6 +570,7 @@ pub async fn memory_timeline(
     })
 }
 
+#[cfg(test)]
 pub async fn memory_model_artifacts(
     store: &SqliteMemoryStore,
     core_store: &SqliteCoreMemoryStore,
@@ -1186,7 +1190,7 @@ fn selected_lane_journey_detail(report: &SetupHandoffReport) -> Option<String> {
         .unwrap_or_default();
     match report.selected_backend_id.as_deref() {
         Some(backend_id) => Some(format!(
-            "Selected lane `{lane_label}` stays visible as delegated local agent `{backend_id}`. First-run bootstrap validates provider `{}` via `{access_mode}`{model_suffix}, and later delegated runs route through the installed CLI when policy allows.",
+            "Selected lane `{lane_label}` now defaults assistant sessions to delegated local agent `{backend_id}`. Workspace bootstrap validated provider `{}` via `{access_mode}`{model_suffix}, and first-task launches keep using the installed CLI by default.",
             report.selected_provider.as_deref().unwrap_or(backend_id)
         )),
         None => Some(format!(

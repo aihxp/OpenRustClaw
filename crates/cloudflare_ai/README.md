@@ -50,7 +50,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-cloudflare-ai = "1.4.1"
+cloudflare-ai = "1.4.2"
 ```
 
 ## Quick Start
@@ -255,7 +255,7 @@ To disable default features and enable only specific ones:
 
 ```toml
 [dependencies]
-cloudflare-ai = { version = "1.4.1", default-features = false, features = ["text", "embeddings"] }
+cloudflare-ai = { version = "1.4.2", default-features = false, features = ["text", "embeddings"] }
 ```
 
 ## Error Handling

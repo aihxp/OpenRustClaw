@@ -30,18 +30,18 @@ enum Commands {
     },
     /// Compatible interactive chat alias for the persisted assistant session
     Chat {
-        /// Provider to use (anthropic, openai, openrouter, ollama)
-        #[arg(short, long, default_value = "anthropic")]
-        provider: String,
+        /// Provider override (anthropic, openai, openrouter, gemini, ollama, claude_code, codex, gemini_cli, cursor)
+        #[arg(short, long)]
+        provider: Option<String>,
         /// Model to use
         #[arg(short, long)]
         model: Option<String>,
     },
     /// Primary assistant entrypoint with persisted CLI session continuity
     Assistant {
-        /// Provider to use (anthropic, openai, openrouter, ollama)
-        #[arg(short, long, default_value = "anthropic")]
-        provider: String,
+        /// Provider override (anthropic, openai, openrouter, gemini, ollama, claude_code, codex, gemini_cli, cursor)
+        #[arg(short, long)]
+        provider: Option<String>,
         /// Model to use
         #[arg(short, long)]
         model: Option<String>,
@@ -3189,10 +3189,14 @@ async fn main() -> Result<()> {
             commands::start::run(&config, channels.as_deref()).await
         }
         Commands::Chat { provider, model } => {
-            commands::chat::run(&provider, model.as_deref()).await
+            let target =
+                commands::chat::resolve_chat_target(provider.as_deref(), model.as_deref()).await?;
+            commands::chat::run(&target.provider, target.model.as_deref()).await
         }
         Commands::Assistant { provider, model } => {
-            commands::chat::run(&provider, model.as_deref()).await
+            let target =
+                commands::chat::resolve_chat_target(provider.as_deref(), model.as_deref()).await?;
+            commands::chat::run(&target.provider, target.model.as_deref()).await
         }
         Commands::Browser { action } => {
             let workspace_root = std::env::current_dir()?;
@@ -6519,7 +6523,7 @@ mod tests {
         let cli = Cli::try_parse_from(["openrustclaw", "chat"]).unwrap();
         match cli.command {
             Commands::Chat { provider, model } => {
-                assert_eq!(provider, "anthropic");
+                assert!(provider.is_none());
                 assert!(model.is_none());
             }
             _ => panic!("Expected Chat command"),
@@ -6531,7 +6535,7 @@ mod tests {
         let cli = Cli::try_parse_from(["openrustclaw", "chat", "--provider", "openai"]).unwrap();
         match cli.command {
             Commands::Chat { provider, model } => {
-                assert_eq!(provider, "openai");
+                assert_eq!(provider.as_deref(), Some("openai"));
                 assert!(model.is_none());
             }
             _ => panic!("Expected Chat command"),
@@ -6551,7 +6555,7 @@ mod tests {
         .unwrap();
         match cli.command {
             Commands::Chat { provider, model } => {
-                assert_eq!(provider, "ollama");
+                assert_eq!(provider.as_deref(), Some("ollama"));
                 assert_eq!(model.as_deref(), Some("llama3.2"));
             }
             _ => panic!("Expected Chat command"),
@@ -6563,7 +6567,7 @@ mod tests {
         let cli = Cli::try_parse_from(["openrustclaw", "assistant"]).unwrap();
         match cli.command {
             Commands::Assistant { provider, model } => {
-                assert_eq!(provider, "anthropic");
+                assert!(provider.is_none());
                 assert!(model.is_none());
             }
             _ => panic!("Expected Assistant command"),
@@ -6583,7 +6587,7 @@ mod tests {
         .unwrap();
         match cli.command {
             Commands::Assistant { provider, model } => {
-                assert_eq!(provider, "openrouter");
+                assert_eq!(provider.as_deref(), Some("openrouter"));
                 assert_eq!(model.as_deref(), Some("anthropic/claude-sonnet-4"));
             }
             _ => panic!("Expected Assistant command"),

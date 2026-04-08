@@ -11,6 +11,7 @@ use openrustclaw_app::onboarding_lane_catalog::{
     DirectProviderLaneStatus, OnboardingLaneCatalogService, OnboardingLaneDescriptor,
     OnboardingLaneKind,
 };
+use openrustclaw_app::runtime_model_validation::validate_model_for_provider;
 use openrustclaw_app::setup_lifecycle as app_setup_lifecycle;
 use openrustclaw_core::config::AppConfig;
 use serde::{Deserialize, Serialize};
@@ -973,34 +974,9 @@ Let's get started!
         Ok(readiness.ready)
     }
 
-    fn assistant_provider(&self) -> Option<String> {
-        if let Some(provider) = self.state.preferred_provider.clone() {
-            return Some(provider);
-        }
-
-        let workspace_root = std::env::current_dir().ok()?;
-        let config = runtime::load_effective_config("config/default.toml", &workspace_root).ok()?;
-        let provider = config.providers.default_provider.trim();
-        if provider.is_empty() {
-            None
-        } else {
-            Some(provider.to_string())
-        }
-    }
-
-    fn assistant_model(&self, provider: &str) -> Option<String> {
-        if let Some(model) = self.state.selected_primary_model.clone() {
-            return Some(model);
-        }
-
-        let workspace_root = std::env::current_dir().ok()?;
-        let config = runtime::load_effective_config("config/default.toml", &workspace_root).ok()?;
-        let model = configured_model_for_provider(&config, provider);
-        (!model.trim().is_empty()).then_some(model)
-    }
-
     async fn maybe_launch_assistant(&self, healthy: bool) -> Result<()> {
-        let provider = self.assistant_provider();
+        let resolved = chat::resolve_chat_target(None, None).await?;
+        let provider = Some(resolved.provider.clone());
         if !should_offer_assistant_launch(
             healthy,
             std::io::stdin().is_terminal(),
@@ -1009,7 +985,7 @@ Let's get started!
             return Ok(());
         }
         let provider = provider.expect("launch gate requires a resolved provider");
-        let model = self.assistant_model(&provider);
+        let model = resolved.model;
 
         let launch = Confirm::with_theme(&self.theme)
             .with_prompt(format!(
@@ -1424,6 +1400,17 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
             }
             println!("Using {} via {}.", descriptor.label, access_mode.label());
             println!("  {}", access_mode.detail());
+            runtime::switch_provider(
+                "config/default.toml",
+                &workspace_root,
+                descriptor
+                    .backend_id
+                    .as_deref()
+                    .unwrap_or(descriptor.provider_id.as_str()),
+                None,
+                None,
+                None,
+            )?;
         }
     }
 
@@ -1456,18 +1443,23 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
         return Err(anyhow!(provider_assessment.detail));
     }
 
-    let primary_model =
-        select_primary_model(wizard, &workspace_root, &descriptor.provider_id).await?;
-    if access_mode != OnboardingProviderAccessMode::SubscriptionManaged {
-        runtime::switch_provider(
-            "config/default.toml",
-            &workspace_root,
-            &descriptor.provider_id,
-            Some(primary_model.model.as_str()),
-            None,
-            None,
-        )?;
-    }
+    let runtime_provider_id = if access_mode == OnboardingProviderAccessMode::SubscriptionManaged {
+        descriptor
+            .backend_id
+            .as_deref()
+            .unwrap_or(descriptor.provider_id.as_str())
+    } else {
+        descriptor.provider_id.as_str()
+    };
+    let primary_model = select_primary_model(wizard, &workspace_root, runtime_provider_id).await?;
+    runtime::switch_provider(
+        "config/default.toml",
+        &workspace_root,
+        runtime_provider_id,
+        Some(primary_model.model.as_str()),
+        None,
+        None,
+    )?;
     wizard.state.selected_primary_model = Some(primary_model.model.clone());
     wizard.state.selected_primary_model_source = Some(primary_model.source.clone());
     persist_primary_model_selection(&workspace_root, &primary_model.model, &primary_model.source)?;
@@ -1521,7 +1513,7 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
         );
         if let Some(backend_id) = descriptor.backend_id.as_deref() {
             println!(
-                "  Delegated runtime routing for `{backend_id}` is available later through control model profiles and policy-backed execution."
+                "  Assistant and chat sessions now default to delegated local agent `{backend_id}` when this workspace launches its first task."
             );
         }
     } else {
@@ -2411,6 +2403,7 @@ fn configured_model_for_provider(config: &AppConfig, provider: &str) -> String {
     match provider {
         "anthropic" => config.providers.anthropic.model.clone(),
         "openai" => config.providers.openai.model.clone(),
+        "codex" => config.providers.openai.codex_model.clone(),
         "openrouter" => config.providers.openrouter.model.clone(),
         "gemini" => config.providers.gemini.model.clone(),
         "ollama" => config.providers.ollama.model.clone(),
@@ -2660,10 +2653,11 @@ async fn select_primary_model(
         }
     }
 
-    let selected = Input::with_theme(&wizard.theme)
+    let selected: String = Input::with_theme(&wizard.theme)
         .with_prompt(format!("Primary task model for {}", provider))
         .with_initial_text(recommended_model.clone())
         .interact_text()?;
+    validate_model_for_provider(provider, &selected).map_err(|error| anyhow!(error.to_string()))?;
     let source = if selected == recommended_model {
         "recommended_fallback"
     } else {
@@ -3275,25 +3269,6 @@ mod tests {
                 .unwrap()
                 .supported_access_modes,
             vec!["local_runtime".to_string()]
-        );
-    }
-
-    #[test]
-    fn test_assistant_provider_prefers_onboarding_state() {
-        let mut wizard = OnboardingWizard::new();
-        wizard.state.preferred_provider = Some("openrouter".to_string());
-
-        assert_eq!(wizard.assistant_provider().as_deref(), Some("openrouter"));
-    }
-
-    #[test]
-    fn test_assistant_model_prefers_onboarding_state() {
-        let mut wizard = OnboardingWizard::new();
-        wizard.state.selected_primary_model = Some("openai/gpt-4o".to_string());
-
-        assert_eq!(
-            wizard.assistant_model("openrouter").as_deref(),
-            Some("openai/gpt-4o")
         );
     }
 
