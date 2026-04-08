@@ -11,7 +11,12 @@ use crate::{CoreMemoryManager, MemoryPolicies};
 pub const MODEL_ARTIFACT_MAX_SUMMARY_CHARS: usize = 220;
 
 pub fn reserved_model_artifact_core_keys() -> &'static [&'static str] {
-    &["model.user", "model.operator", "model.project", "model.archive"]
+    &[
+        "model.user",
+        "model.operator",
+        "model.project",
+        "model.archive",
+    ]
 }
 
 pub fn build_model_artifact_projections(
@@ -79,10 +84,7 @@ impl ModelArtifactService {
         self.memory_store.get_model_artifact(id).await
     }
 
-    pub async fn promote(
-        &self,
-        request: &ModelArtifactPromotionRequest,
-    ) -> Result<ModelArtifact> {
+    pub async fn promote(&self, request: &ModelArtifactPromotionRequest) -> Result<ModelArtifact> {
         let decision = self.policies.evaluate_model_artifact_promotion(request);
         if !decision.allowed {
             return Err(Error::Memory(MemoryError::Store(decision.reason)));
@@ -93,7 +95,11 @@ impl ModelArtifactService {
         Ok(artifact)
     }
 
-    pub async fn update(&self, id: &str, request: &ModelArtifactUpdateRequest) -> Result<ModelArtifact> {
+    pub async fn update(
+        &self,
+        id: &str,
+        request: &ModelArtifactUpdateRequest,
+    ) -> Result<ModelArtifact> {
         if let Some(summary) = request.summary.as_deref() {
             if summary.trim().len() < 8 {
                 return Err(Error::Memory(MemoryError::Store(
@@ -125,8 +131,7 @@ impl ModelArtifactService {
             let _ = self.core_memory_store.remove(namespace, key).await;
         }
         for projection in projections {
-            let mut entry =
-                CoreMemoryManager::new_entry(&projection.key, &projection.value, 0.9);
+            let mut entry = CoreMemoryManager::new_entry(&projection.key, &projection.value, 0.9);
             entry.token_count = projection.token_count;
             self.core_memory_store.set(namespace, entry).await?;
         }
@@ -151,7 +156,11 @@ mod tests {
         ModelArtifact, ModelArtifactKind, ModelArtifactSourceKind, ModelArtifactSourceRef,
     };
 
-    fn model_artifact(kind: ModelArtifactKind, summary: &str, status: ModelArtifactStatus) -> ModelArtifact {
+    fn model_artifact(
+        kind: ModelArtifactKind,
+        summary: &str,
+        status: ModelArtifactStatus,
+    ) -> ModelArtifact {
         ModelArtifact {
             id: format!("{kind:?}"),
             namespace: "user-1".to_string(),
@@ -177,7 +186,11 @@ mod tests {
     fn build_model_artifact_projections_ignores_inactive_rows() {
         let projections = build_model_artifact_projections(
             &[
-                model_artifact(ModelArtifactKind::UserModel, "User summary", ModelArtifactStatus::Active),
+                model_artifact(
+                    ModelArtifactKind::UserModel,
+                    "User summary",
+                    ModelArtifactStatus::Active,
+                ),
                 model_artifact(
                     ModelArtifactKind::ProjectMemory,
                     "Project summary",

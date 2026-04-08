@@ -347,7 +347,12 @@ fn select_provider_access_mode(
         .selected_access_mode
         .as_deref()
         .and_then(OnboardingProviderAccessMode::from_id)
-        .and_then(|current| descriptor.access_modes.iter().position(|mode| *mode == current))
+        .and_then(|current| {
+            descriptor
+                .access_modes
+                .iter()
+                .position(|mode| *mode == current)
+        })
         .unwrap_or(0);
     let selection = Select::with_theme(&wizard.theme)
         .with_prompt(format!(
@@ -1227,7 +1232,11 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
         .state
         .preferred_provider
         .as_deref()
-        .and_then(|provider| providers.iter().position(|descriptor| descriptor.id == provider))
+        .and_then(|provider| {
+            providers
+                .iter()
+                .position(|descriptor| descriptor.id == provider)
+        })
         .unwrap_or(0);
 
     let selection = Select::with_theme(&wizard.theme)
@@ -1300,13 +1309,8 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
     }
 
     let provider_assessment =
-        validate_provider_bootstrap(
-            &workspace_root,
-            descriptor.id,
-            Some(access_mode.id()),
-            true,
-        )
-        .await?;
+        validate_provider_bootstrap(&workspace_root, descriptor.id, Some(access_mode.id()), true)
+            .await?;
     record_bootstrap_outcome_with_metadata(
         &workspace_root,
         "provider",
@@ -1331,20 +1335,15 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
     )?;
     wizard.state.selected_primary_model = Some(primary_model.model.clone());
     wizard.state.selected_primary_model_source = Some(primary_model.source.clone());
-    persist_primary_model_selection(
-        &workspace_root,
-        &primary_model.model,
-        &primary_model.source,
-    )?;
+    persist_primary_model_selection(&workspace_root, &primary_model.model, &primary_model.source)?;
 
-    let provider_assessment =
-        validate_provider_bootstrap(
-            &workspace_root,
-            descriptor.id,
-            Some(access_mode.id()),
-            false,
-        )
-        .await?;
+    let provider_assessment = validate_provider_bootstrap(
+        &workspace_root,
+        descriptor.id,
+        Some(access_mode.id()),
+        false,
+    )
+    .await?;
     record_bootstrap_outcome_with_metadata(
         &workspace_root,
         "provider",
@@ -1375,7 +1374,9 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
         access_mode.label(),
         primary_model.model
     );
-    println!("  Control-plane actions will prefer the dedicated fallback lane in config/default.toml");
+    println!(
+        "  Control-plane actions will prefer the dedicated fallback lane in config/default.toml"
+    );
     println!();
     models::scan().await?;
 
@@ -1771,10 +1772,9 @@ fn step_next_action(setup: &SetupState, step: &OnboardingStep) -> String {
                         Some("provider_connection")
                     )
             }) {
-                outcome
-                    .suggested_action
-                    .clone()
-                    .unwrap_or_else(|| "Resolve provider verification and rerun onboarding".to_string())
+                outcome.suggested_action.clone().unwrap_or_else(|| {
+                    "Resolve provider verification and rerun onboarding".to_string()
+                })
             } else {
                 format!("Complete {}", step.name())
             }
@@ -2095,7 +2095,11 @@ fn onboarding_provider_issue_kind(
     access_mode: Option<&str>,
     entry: &runtime::RuntimeHealthProviderEntry,
 ) -> String {
-    let raw_issue = entry.issue.as_deref().unwrap_or_default().to_ascii_lowercase();
+    let raw_issue = entry
+        .issue
+        .as_deref()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
     if provider_name == "ollama"
         && access_mode == Some("local_runtime")
         && matches!(
@@ -2110,7 +2114,8 @@ fn onboarding_provider_issue_kind(
         return "local_runtime_missing".to_string();
     }
 
-    entry.issue_kind
+    entry
+        .issue_kind
         .clone()
         .unwrap_or_else(|| "probe_failed".to_string())
 }
@@ -2159,24 +2164,22 @@ fn provider_verification_next_action(provider_name: &str, issue_kind: &str) -> S
         "local_runtime_missing" => {
             "Start the local runtime, confirm it is reachable, then rerun onboarding.".to_string()
         }
-        "model_unavailable" => format!(
-            "Choose or pull a model that `{provider_name}` exposes, then rerun onboarding."
-        ),
-        "billing" => format!(
-            "Resolve billing or quota for `{provider_name}`, then rerun onboarding."
-        ),
+        "model_unavailable" => {
+            format!("Choose or pull a model that `{provider_name}` exposes, then rerun onboarding.")
+        }
+        "billing" => {
+            format!("Resolve billing or quota for `{provider_name}`, then rerun onboarding.")
+        }
         "rate_limited" => format!(
             "Wait for `{provider_name}` rate limits to reset or switch provider path, then rerun onboarding."
         ),
-        "provider_unavailable" => format!(
-            "Check provider reachability for `{provider_name}`, then rerun onboarding."
-        ),
+        "provider_unavailable" => {
+            format!("Check provider reachability for `{provider_name}`, then rerun onboarding.")
+        }
         "not_configured" => format!(
             "Configure the required `{provider_name}` credential or runtime, then rerun onboarding."
         ),
-        _ => format!(
-            "Review the `{provider_name}` verification failure and rerun onboarding."
-        ),
+        _ => format!("Review the `{provider_name}` verification failure and rerun onboarding."),
     }
 }
 
@@ -2220,18 +2223,17 @@ fn build_model_shortlist(recommended: &str, discovered: Vec<String>) -> Vec<Stri
     shortlist
 }
 
-fn persist_primary_model_selection(
-    workspace_root: &Path,
-    model: &str,
-    source: &str,
-) -> Result<()> {
+fn persist_primary_model_selection(workspace_root: &Path, model: &str, source: &str) -> Result<()> {
     with_setup_state_mut(workspace_root, |setup| {
         setup.selected_primary_model = Some(model.to_string());
         setup.selected_primary_model_source = Some(source.to_string());
     })
 }
 
-async fn discover_live_provider_models(workspace_root: &Path, provider: &str) -> Result<Vec<String>> {
+async fn discover_live_provider_models(
+    workspace_root: &Path,
+    provider: &str,
+) -> Result<Vec<String>> {
     let config = runtime::load_effective_config("config/default.toml", workspace_root)?;
     let client = reqwest::Client::new();
 
@@ -2249,7 +2251,10 @@ async fn discover_live_provider_models(workspace_root: &Path, provider: &str) ->
                 .get("https://api.anthropic.com/v1/models")
                 .timeout(Duration::from_secs(5))
                 .bearer_auth(api_key)
-                .header("anthropic-version", config.providers.anthropic.api_version.clone())
+                .header(
+                    "anthropic-version",
+                    config.providers.anthropic.api_version.clone(),
+                )
                 .send()
                 .await?
                 .error_for_status()?;
@@ -2367,10 +2372,7 @@ async fn select_primary_model(
                     .position(|model| model == &recommended_model)
                     .unwrap_or(0);
                 let selection = Select::with_theme(&wizard.theme)
-                    .with_prompt(format!(
-                        "Choose the primary task model for {}",
-                        provider
-                    ))
+                    .with_prompt(format!("Choose the primary task model for {}", provider))
                     .items(&labels)
                     .default(default)
                     .interact()?;
@@ -2529,9 +2531,7 @@ fn prepare_setup_state_for_repair(workspace_root: &Path, steps: &[OnboardingStep
                 .map(|manifest| manifest.profile.onboarding_path.clone());
         }
         setup.current_step = steps.first().map(|step| step.id().to_string());
-        setup.next_action = steps
-            .first()
-            .map(|step| step_next_action(setup, step));
+        setup.next_action = steps.first().map(|step| step_next_action(setup, step));
     })
 }
 
@@ -3094,8 +3094,14 @@ mod tests {
         save_setup_state(dir.path(), &manifest).unwrap();
         let loaded = load_setup_state(dir.path()).unwrap().unwrap();
         assert_eq!(loaded.setup.setup_path.as_deref(), Some("Custom"));
-        assert_eq!(loaded.setup.selected_provider.as_deref(), Some("openrouter"));
-        assert_eq!(loaded.setup.selected_access_mode.as_deref(), Some("api_key"));
+        assert_eq!(
+            loaded.setup.selected_provider.as_deref(),
+            Some("openrouter")
+        );
+        assert_eq!(
+            loaded.setup.selected_access_mode.as_deref(),
+            Some("api_key")
+        );
         assert_eq!(
             loaded.setup.selected_primary_model.as_deref(),
             Some("openai/gpt-4o")
@@ -3403,7 +3409,9 @@ mod tests {
             healthy: false,
             issue_kind: Some("probe_failed".to_string()),
             recommendation: None,
-            issue: Some("Failed to reach Ollama: tcp connect error: Connection refused".to_string()),
+            issue: Some(
+                "Failed to reach Ollama: tcp connect error: Connection refused".to_string(),
+            ),
             model_available: None,
             limit_snapshot: None,
         };
@@ -3526,7 +3534,10 @@ mod tests {
 
         let loaded = load_setup_state(dir.path()).unwrap().unwrap();
         assert_eq!(loaded.setup.selected_provider.as_deref(), Some("openai"));
-        assert_eq!(loaded.setup.selected_access_mode.as_deref(), Some("api_key"));
+        assert_eq!(
+            loaded.setup.selected_access_mode.as_deref(),
+            Some("api_key")
+        );
         assert!(loaded.setup.selected_primary_model.is_none());
         assert!(loaded.setup.selected_primary_model_source.is_none());
     }

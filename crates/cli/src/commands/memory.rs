@@ -6,8 +6,8 @@ use openrustclaw_app::memory_views as app_memory_views;
 use openrustclaw_core::traits::{CoreMemoryStore, MemoryStore};
 use openrustclaw_core::types::{
     CoreEntry, MemoryEntry, MemoryQuery, MemoryType, ModelArtifactKind, ModelArtifactSourceKind,
-    ModelArtifactSourceRef, ModelArtifactStatus, ModelArtifactUpdateRequest,
-    RetrievalArtifactKind, RetrievalExplanation, RetrievalVectorLane, SourceType,
+    ModelArtifactSourceRef, ModelArtifactStatus, ModelArtifactUpdateRequest, RetrievalArtifactKind,
+    RetrievalExplanation, RetrievalVectorLane, SourceType,
 };
 use openrustclaw_db::{SqliteCoreMemoryStore, SqliteMemoryStore};
 use openrustclaw_memory::{ModelArtifactService, WorkspaceArtifactRegistry};
@@ -634,7 +634,9 @@ pub async fn model_artifacts_list(
 ) -> Result<()> {
     let (store, core_store, _pool) = open_stores().await?;
     let service = ModelArtifactService::new(store, core_store);
-    let artifacts = service.list(namespace, include_inactive, limit.max(1)).await?;
+    let artifacts = service
+        .list(namespace, include_inactive, limit.max(1))
+        .await?;
 
     if artifacts.is_empty() {
         println!("No structured model artifacts found.");
@@ -1097,21 +1099,36 @@ fn build_model_artifact_lineage(
     source_event_ids: &[String],
 ) -> Vec<ModelArtifactSourceRef> {
     let mut lineage = Vec::new();
-    lineage.extend(source_memory_ids.iter().cloned().map(|source_id| ModelArtifactSourceRef {
-        kind: ModelArtifactSourceKind::MemoryEntry,
-        source_id,
-        detail: None,
-    }));
-    lineage.extend(source_archive_ids.iter().cloned().map(|source_id| ModelArtifactSourceRef {
-        kind: ModelArtifactSourceKind::ArchiveEntry,
-        source_id,
-        detail: None,
-    }));
-    lineage.extend(source_event_ids.iter().cloned().map(|source_id| ModelArtifactSourceRef {
-        kind: ModelArtifactSourceKind::RuntimeEvent,
-        source_id,
-        detail: None,
-    }));
+    lineage.extend(
+        source_memory_ids
+            .iter()
+            .cloned()
+            .map(|source_id| ModelArtifactSourceRef {
+                kind: ModelArtifactSourceKind::MemoryEntry,
+                source_id,
+                detail: None,
+            }),
+    );
+    lineage.extend(
+        source_archive_ids
+            .iter()
+            .cloned()
+            .map(|source_id| ModelArtifactSourceRef {
+                kind: ModelArtifactSourceKind::ArchiveEntry,
+                source_id,
+                detail: None,
+            }),
+    );
+    lineage.extend(
+        source_event_ids
+            .iter()
+            .cloned()
+            .map(|source_id| ModelArtifactSourceRef {
+                kind: ModelArtifactSourceKind::RuntimeEvent,
+                source_id,
+                detail: None,
+            }),
+    );
     lineage
 }
 

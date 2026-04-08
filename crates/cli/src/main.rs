@@ -2744,6 +2744,80 @@ enum ControlAction {
         #[arg(long)]
         path: Option<String>,
     },
+    /// List durable learning candidates and their review state
+    LearningCandidates {
+        #[arg(long)]
+        namespace: Option<String>,
+        #[arg(long)]
+        status: Option<String>,
+        #[arg(short, long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// Queue a manual learning candidate for later review
+    QueueCandidate {
+        #[arg(long)]
+        kind: String,
+        #[arg(long)]
+        signal: String,
+        #[arg(long)]
+        recommendation: String,
+        #[arg(long)]
+        rationale: Option<String>,
+        #[arg(long, default_value_t = 0.7)]
+        confidence: f32,
+        #[arg(long, default_value = "standard")]
+        impact: String,
+        #[arg(long, default_value = "manual")]
+        source_kind: String,
+        #[arg(long)]
+        source_id: String,
+        #[arg(long)]
+        source_detail: Option<String>,
+        #[arg(long)]
+        namespace: Option<String>,
+        #[arg(long)]
+        task_id: Option<String>,
+        #[arg(long)]
+        category: Option<String>,
+        #[arg(long)]
+        claw_id: Option<String>,
+        #[arg(long)]
+        model_profile: Option<String>,
+        #[arg(long)]
+        provider: Option<String>,
+        #[arg(long)]
+        autonomy_level: Option<String>,
+        #[arg(long)]
+        execution_mode: Option<String>,
+    },
+    /// Approve, reject, or supersede a learning candidate
+    ReviewCandidate {
+        id: String,
+        #[arg(long)]
+        action: String,
+        #[arg(long)]
+        reviewed_by: Option<String>,
+        #[arg(long)]
+        note: Option<String>,
+    },
+    /// Promote an approved learning candidate into a bounded active lesson
+    PromoteLearningCandidate {
+        id: String,
+        #[arg(long)]
+        lesson_id: Option<String>,
+        #[arg(long, default_value_t = true)]
+        active: bool,
+        #[arg(long)]
+        promoted_by: Option<String>,
+    },
+    /// Roll back a promoted learning candidate and linked lesson
+    RollbackLearningCandidate {
+        id: String,
+        #[arg(long)]
+        rolled_back_by: Option<String>,
+        #[arg(long)]
+        reason: Option<String>,
+    },
     /// Assign one task id to a Claw
     AssignTask {
         task_id: String,
@@ -4487,6 +4561,125 @@ async fn main() -> Result<()> {
             ControlAction::DeactivateLesson { id, path } => {
                 commands::control::deactivate_lesson(path.as_deref(), &id)
             }
+            ControlAction::LearningCandidates {
+                namespace,
+                status,
+                limit,
+            } => {
+                let workspace_root = std::env::current_dir()?;
+                let status = status
+                    .as_deref()
+                    .map(commands::control::parse_learning_status)
+                    .transpose()?;
+                commands::control::list_learning_candidates_cli(
+                    &workspace_root,
+                    namespace.as_deref(),
+                    status,
+                    limit,
+                )
+                .await
+            }
+            ControlAction::QueueCandidate {
+                kind,
+                signal,
+                recommendation,
+                rationale,
+                confidence,
+                impact,
+                source_kind,
+                source_id,
+                source_detail,
+                namespace,
+                task_id,
+                category,
+                claw_id,
+                model_profile,
+                provider,
+                autonomy_level,
+                execution_mode,
+            } => {
+                let workspace_root = std::env::current_dir()?;
+                commands::control::queue_learning_candidate_cli(
+                    &workspace_root,
+                    &openrustclaw_core::types::LearningCandidateCreateRequest {
+                        namespace: namespace.unwrap_or_else(|| {
+                            task_id.clone().unwrap_or_else(|| "global".to_string())
+                        }),
+                        kind,
+                        signal,
+                        recommendation,
+                        rationale,
+                        confidence,
+                        impact: commands::control::parse_learning_impact(&impact)?,
+                        source: openrustclaw_core::types::LearningCandidateSourceRef {
+                            kind: commands::control::parse_learning_source_kind(&source_kind)?,
+                            source_id,
+                            detail: source_detail,
+                        },
+                        evidence: vec![],
+                        task_id,
+                        category,
+                        claw_id,
+                        model_profile_id: model_profile,
+                        provider,
+                        autonomy_level,
+                        execution_mode,
+                    },
+                )
+                .await
+            }
+            ControlAction::ReviewCandidate {
+                id,
+                action,
+                reviewed_by,
+                note,
+            } => {
+                let workspace_root = std::env::current_dir()?;
+                commands::control::review_learning_candidate_cli(
+                    &workspace_root,
+                    &id,
+                    &openrustclaw_core::types::LearningCandidateReviewRequest {
+                        action: commands::control::parse_learning_review_action(&action)?,
+                        reviewed_by,
+                        review_note: note,
+                    },
+                )
+                .await
+            }
+            ControlAction::PromoteLearningCandidate {
+                id,
+                lesson_id,
+                active,
+                promoted_by,
+            } => {
+                let workspace_root = std::env::current_dir()?;
+                commands::control::promote_learning_candidate_cli(
+                    &workspace_root,
+                    &id,
+                    &openrustclaw_core::types::LearningCandidatePromotionRequest {
+                        lesson_id,
+                        active,
+                        promoted_by,
+                    },
+                )
+                .await
+            }
+            ControlAction::RollbackLearningCandidate {
+                id,
+                rolled_back_by,
+                reason,
+            } => {
+                let workspace_root = std::env::current_dir()?;
+                commands::control::rollback_learning_candidate_cli(
+                    &workspace_root,
+                    &id,
+                    &openrustclaw_core::types::LearningCandidateRollbackRequest {
+                        rolled_back_by,
+                        reason,
+                    },
+                )
+                .await
+            }
             ControlAction::AssignTask {
                 task_id,
                 claw_id,
@@ -4976,7 +5169,8 @@ async fn main() -> Result<()> {
                         autonomy_level,
                         execution_mode,
                     },
-                )?;
+                )
+                .await?;
                 println!("{}", serde_json::to_string_pretty(&payload)?);
                 Ok(())
             }

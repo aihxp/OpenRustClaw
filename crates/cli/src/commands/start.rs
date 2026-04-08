@@ -37,6 +37,7 @@ use openrustclaw_app::enterprise_access_control::{
     EnterpriseAccessOperatorUpsertRequest as AppEnterpriseAccessOperatorUpsertRequest,
     EnterpriseGovernanceRuleUpsertRequest as AppEnterpriseGovernanceRuleUpsertRequest,
 };
+use openrustclaw_app::learning_review::LearningReviewService;
 use openrustclaw_app::operator_status_control::{
     OperatorStatusControlService, OperatorStatusControlSource,
 };
@@ -76,9 +77,11 @@ use openrustclaw_channels::telegram::TelegramWebhookHandler;
 use openrustclaw_core::error::{ChannelError as CoreChannelError, Error as CoreError, McpError};
 use openrustclaw_core::traits::{Channel, LlmProvider};
 use openrustclaw_core::types::{
-    CompletionRequest, CompletionResponse, Event, MemoryEntry, MemoryQuery, MemorySource,
-    MemoryType, Message, OutgoingMessage, Platform, SessionType, SourceType, StreamChunk,
-    ToolFormat,
+    CompletionRequest, CompletionResponse, Event, LearningCandidateCreateRequest,
+    LearningCandidatePromotionRequest, LearningCandidateReviewRequest,
+    LearningCandidateRollbackRequest, LearningCandidateSourceRef, MemoryEntry, MemoryQuery,
+    MemorySource, MemoryType, Message, OutgoingMessage, Platform, SessionType, SourceType,
+    StreamChunk, ToolFormat,
 };
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
@@ -122,6 +125,7 @@ use openrustclaw_security::OriginValidator;
 use openrustclaw_skills::{
     CompiledSkillArtifact, CompiledSkillStatus, compiled_skill_background_services,
 };
+use serde::Deserialize;
 use sqlx::Row;
 use uuid::Uuid;
 
@@ -2638,6 +2642,15 @@ struct RuntimeControlState {
     sidecar_running: bool,
 }
 
+fn learning_review_service_from_state(
+    state: &RuntimeControlState,
+) -> LearningReviewService<control::WorkspaceLearningReviewSource> {
+    LearningReviewService::new(control::WorkspaceLearningReviewSource::from_pool(
+        state.workspace_root.clone(),
+        state.pool.clone(),
+    ))
+}
+
 fn record_operator_tool_result<T, E>(
     tool_name: &str,
     started_at: std::time::Instant,
@@ -3449,6 +3462,30 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         .route(
             "/control/orchestration/runs/{receipt_id}/reflection-candidates/{index}/promote",
             post(orchestration_promote_reflection_candidate_handler),
+        )
+        .route(
+            "/control/learning/candidates",
+            get(list_learning_candidates_handler),
+        )
+        .route(
+            "/control/learning/candidates",
+            post(queue_learning_candidate_handler),
+        )
+        .route(
+            "/control/learning/candidates/{id}",
+            get(get_learning_candidate_handler),
+        )
+        .route(
+            "/control/learning/candidates/{id}/review",
+            post(review_learning_candidate_handler),
+        )
+        .route(
+            "/control/learning/candidates/{id}/promote",
+            post(promote_learning_candidate_handler),
+        )
+        .route(
+            "/control/learning/candidates/{id}/rollback",
+            post(rollback_learning_candidate_handler),
         )
         .route("/control/browser/navigate", post(browser_navigate_handler))
         .route(
@@ -9310,6 +9347,81 @@ struct PromoteReflectionPayload {
     execution_mode: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct LearningCandidatesQuery {
+    #[serde(default)]
+    namespace: Option<String>,
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+struct QueueLearningCandidatePayload {
+    kind: String,
+    signal: String,
+    recommendation: String,
+    #[serde(default)]
+    rationale: Option<String>,
+    #[serde(default)]
+    confidence: Option<f32>,
+    #[serde(default)]
+    impact: Option<String>,
+    #[serde(default)]
+    source_kind: Option<String>,
+    source_id: String,
+    #[serde(default)]
+    source_detail: Option<String>,
+    #[serde(default)]
+    namespace: Option<String>,
+    #[serde(default)]
+    task_id: Option<String>,
+    #[serde(default)]
+    category: Option<String>,
+    #[serde(default)]
+    claw_id: Option<String>,
+    #[serde(default)]
+    model_profile_id: Option<String>,
+    #[serde(default)]
+    provider: Option<String>,
+    #[serde(default)]
+    autonomy_level: Option<String>,
+    #[serde(default)]
+    execution_mode: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReviewLearningCandidatePayload {
+    action: String,
+    #[serde(default)]
+    reviewed_by: Option<String>,
+    #[serde(default)]
+    note: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PromoteLearningCandidatePayload {
+    #[serde(default)]
+    lesson_id: Option<String>,
+    #[serde(default = "default_true")]
+    active: bool,
+    #[serde(default)]
+    promoted_by: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RollbackLearningCandidatePayload {
+    #[serde(default)]
+    rolled_back_by: Option<String>,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
 async fn orchestration_promote_reflection_candidate_handler(
     State(state): State<RuntimeControlState>,
     AxumPath((receipt_id, index)): AxumPath<(String, usize)>,
@@ -9334,11 +9446,216 @@ async fn orchestration_promote_reflection_candidate_handler(
             autonomy_level: payload.autonomy_level,
             execution_mode: payload.execution_mode,
         },
-    ) {
+    )
+    .await
+    {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn list_learning_candidates_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<LearningCandidatesQuery>,
+) -> impl IntoResponse {
+    let service = learning_review_service_from_state(&state);
+    let result = async {
+        let status = query
+            .status
+            .as_deref()
+            .map(control::parse_learning_status)
+            .transpose()
+            .map_err(|error| error.to_string())?;
+        let candidates = service
+            .list(
+                query.namespace.as_deref(),
+                status,
+                query.limit.unwrap_or(20).max(1),
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok::<serde_json::Value, String>(serde_json::json!({ "candidates": candidates }))
+    }
+    .await;
+
+    match result {
+        Ok(payload) => (StatusCode::OK, Json(payload)).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error })),
+        )
+            .into_response(),
+    }
+}
+
+async fn get_learning_candidate_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    let service = learning_review_service_from_state(&state);
+    match service.get(&id).await {
+        Ok(Some(candidate)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "candidate": candidate })),
+        )
+            .into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": format!("Learning candidate '{}' not found", id) })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn queue_learning_candidate_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<QueueLearningCandidatePayload>,
+) -> impl IntoResponse {
+    let service = learning_review_service_from_state(&state);
+    let result = async {
+        let request = LearningCandidateCreateRequest {
+            namespace: payload
+                .namespace
+                .clone()
+                .or(payload.task_id.clone())
+                .unwrap_or_else(|| "global".to_string()),
+            kind: payload.kind,
+            signal: payload.signal,
+            recommendation: payload.recommendation,
+            rationale: payload.rationale,
+            confidence: payload.confidence.unwrap_or(0.7).clamp(0.0, 1.0),
+            impact: control::parse_learning_impact(payload.impact.as_deref().unwrap_or("standard"))
+                .map_err(|error| error.to_string())?,
+            source: LearningCandidateSourceRef {
+                kind: control::parse_learning_source_kind(
+                    payload.source_kind.as_deref().unwrap_or("manual"),
+                )
+                .map_err(|error| error.to_string())?,
+                source_id: payload.source_id,
+                detail: payload.source_detail,
+            },
+            evidence: vec![],
+            task_id: payload.task_id,
+            category: payload.category,
+            claw_id: payload.claw_id,
+            model_profile_id: payload.model_profile_id,
+            provider: payload.provider,
+            autonomy_level: payload.autonomy_level,
+            execution_mode: payload.execution_mode,
+        };
+        let candidate = service
+            .queue(&request)
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok::<serde_json::Value, String>(serde_json::json!({
+            "status": "queued",
+            "candidate": candidate
+        }))
+    }
+    .await;
+
+    match result {
+        Ok(payload) => (StatusCode::OK, Json(payload)).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error })),
+        )
+            .into_response(),
+    }
+}
+
+async fn review_learning_candidate_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<ReviewLearningCandidatePayload>,
+) -> impl IntoResponse {
+    let service = learning_review_service_from_state(&state);
+    let result = async {
+        let candidate = service
+            .review(
+                &id,
+                &LearningCandidateReviewRequest {
+                    action: control::parse_learning_review_action(&payload.action)
+                        .map_err(|error| error.to_string())?,
+                    reviewed_by: payload.reviewed_by,
+                    review_note: payload.note,
+                },
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok::<serde_json::Value, String>(serde_json::json!({ "candidate": candidate }))
+    }
+    .await;
+
+    match result {
+        Ok(payload) => (StatusCode::OK, Json(payload)).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error })),
+        )
+            .into_response(),
+    }
+}
+
+async fn promote_learning_candidate_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<PromoteLearningCandidatePayload>,
+) -> impl IntoResponse {
+    let service = learning_review_service_from_state(&state);
+    match service
+        .promote(
+            &id,
+            &LearningCandidatePromotionRequest {
+                lesson_id: payload.lesson_id,
+                active: payload.active,
+                promoted_by: payload.promoted_by,
+            },
+        )
+        .await
+    {
+        Ok(report) => (StatusCode::OK, Json(serde_json::json!(report))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn rollback_learning_candidate_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<RollbackLearningCandidatePayload>,
+) -> impl IntoResponse {
+    let service = learning_review_service_from_state(&state);
+    match service
+        .rollback(
+            &id,
+            &LearningCandidateRollbackRequest {
+                rolled_back_by: payload.rolled_back_by,
+                reason: payload.reason,
+            },
+        )
+        .await
+    {
+        Ok(candidate) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "candidate": candidate })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
         )
             .into_response(),
     }
@@ -10635,6 +10952,86 @@ fn build_mcp_server(
                 }),
             },
             McpServerTool {
+                name: "list_learning_candidates".to_string(),
+                description: "List durable learning candidates and their review state.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "namespace": {"type": "string"},
+                        "status": {"type": "string"},
+                        "limit": {"type": "integer", "minimum": 1}
+                    }
+                }),
+            },
+            McpServerTool {
+                name: "queue_learning_candidate".to_string(),
+                description: "Queue a durable learning candidate for later review.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "namespace": {"type": "string"},
+                        "kind": {"type": "string"},
+                        "signal": {"type": "string"},
+                        "recommendation": {"type": "string"},
+                        "rationale": {"type": "string"},
+                        "confidence": {"type": "number"},
+                        "impact": {"type": "string"},
+                        "source_kind": {"type": "string"},
+                        "source_id": {"type": "string"},
+                        "source_detail": {"type": "string"},
+                        "task_id": {"type": "string"},
+                        "category": {"type": "string"},
+                        "claw_id": {"type": "string"},
+                        "model_profile_id": {"type": "string"},
+                        "provider": {"type": "string"},
+                        "autonomy_level": {"type": "string"},
+                        "execution_mode": {"type": "string"}
+                    },
+                    "required": ["kind", "signal", "recommendation", "source_id"]
+                }),
+            },
+            McpServerTool {
+                name: "review_learning_candidate".to_string(),
+                description: "Approve, reject, or supersede a queued learning candidate.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "action": {"type": "string"},
+                        "reviewed_by": {"type": "string"},
+                        "note": {"type": "string"}
+                    },
+                    "required": ["id", "action"]
+                }),
+            },
+            McpServerTool {
+                name: "promote_learning_candidate".to_string(),
+                description: "Promote an approved learning candidate into a bounded active lesson.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "lesson_id": {"type": "string"},
+                        "active": {"type": "boolean"},
+                        "promoted_by": {"type": "string"}
+                    },
+                    "required": ["id"]
+                }),
+            },
+            McpServerTool {
+                name: "rollback_learning_candidate".to_string(),
+                description: "Roll back a promoted learning candidate and linked lesson.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "rolled_back_by": {"type": "string"},
+                        "reason": {"type": "string"}
+                    },
+                    "required": ["id"]
+                }),
+            },
+            McpServerTool {
                 name: "list_sessions".to_string(),
                 description: "List durable sessions and their statuses.".to_string(),
                 input_schema: serde_json::json!({
@@ -11615,10 +12012,8 @@ fn build_mcp_server(
             let memory_store = memory_store_for_promote_model_artifact.clone();
             let core_memory_store = core_memory_store_for_promote_model_artifact.clone();
             block_on_tool(async move {
-                let service = openrustclaw_memory::ModelArtifactService::new(
-                    memory_store,
-                    core_memory_store,
-                );
+                let service =
+                    openrustclaw_memory::ModelArtifactService::new(memory_store, core_memory_store);
                 let artifact = service
                     .promote(&openrustclaw_core::types::ModelArtifactPromotionRequest {
                         namespace: request.namespace,
@@ -11651,10 +12046,8 @@ fn build_mcp_server(
             let memory_store = memory_store_for_update_model_artifact.clone();
             let core_memory_store = core_memory_store_for_update_model_artifact.clone();
             block_on_tool(async move {
-                let service = openrustclaw_memory::ModelArtifactService::new(
-                    memory_store,
-                    core_memory_store,
-                );
+                let service =
+                    openrustclaw_memory::ModelArtifactService::new(memory_store, core_memory_store);
                 let artifact = service
                     .update(
                         &request.id,
@@ -11675,6 +12068,185 @@ fn build_mcp_server(
                 Ok(serde_json::json!({ "artifact": artifact }))
             })
         }),
+    );
+
+    let pool_for_learning_candidates = pool.clone();
+    let workspace_root_for_learning_candidates = workspace_root.clone();
+    server.register_handler(
+        "list_learning_candidates",
+        traced_mcp_handler(langsmith.clone(), "list_learning_candidates", move |args| {
+            let request: McpListLearningCandidatesArgs = parse_tool_args(args)?;
+            let pool = pool_for_learning_candidates.clone();
+            let workspace_root = workspace_root_for_learning_candidates.clone();
+            block_on_tool(async move {
+                let service = LearningReviewService::new(
+                    control::WorkspaceLearningReviewSource::from_pool(workspace_root, pool),
+                );
+                let status = request
+                    .status
+                    .as_deref()
+                    .map(control::parse_learning_status)
+                    .transpose()
+                    .map_err(|error| mcp_tool_error(error.to_string()))?;
+                let candidates = service
+                    .list(
+                        request.namespace.as_deref(),
+                        status,
+                        request.limit.unwrap_or(20).max(1),
+                    )
+                    .await
+                    .map_err(|error| mcp_tool_error(error.to_string()))?;
+                Ok(serde_json::json!({ "candidates": candidates }))
+            })
+        }),
+    );
+
+    let pool_for_queue_learning_candidate = pool.clone();
+    let workspace_root_for_queue_learning_candidate = workspace_root.clone();
+    server.register_handler(
+        "queue_learning_candidate",
+        traced_mcp_handler(langsmith.clone(), "queue_learning_candidate", move |args| {
+            let request: McpQueueLearningCandidateArgs = parse_tool_args(args)?;
+            let pool = pool_for_queue_learning_candidate.clone();
+            let workspace_root = workspace_root_for_queue_learning_candidate.clone();
+            block_on_tool(async move {
+                let service = LearningReviewService::new(
+                    control::WorkspaceLearningReviewSource::from_pool(workspace_root, pool),
+                );
+                let candidate = service
+                    .queue(&LearningCandidateCreateRequest {
+                        namespace: request
+                            .namespace
+                            .clone()
+                            .or(request.task_id.clone())
+                            .unwrap_or_else(|| "global".to_string()),
+                        kind: request.kind,
+                        signal: request.signal,
+                        recommendation: request.recommendation,
+                        rationale: request.rationale,
+                        confidence: request.confidence.unwrap_or(0.7).clamp(0.0, 1.0),
+                        impact: control::parse_learning_impact(
+                            request.impact.as_deref().unwrap_or("standard"),
+                        )
+                        .map_err(|error| mcp_tool_error(error.to_string()))?,
+                        source: LearningCandidateSourceRef {
+                            kind: control::parse_learning_source_kind(
+                                request.source_kind.as_deref().unwrap_or("manual"),
+                            )
+                            .map_err(|error| mcp_tool_error(error.to_string()))?,
+                            source_id: request.source_id,
+                            detail: request.source_detail,
+                        },
+                        evidence: vec![],
+                        task_id: request.task_id,
+                        category: request.category,
+                        claw_id: request.claw_id,
+                        model_profile_id: request.model_profile_id,
+                        provider: request.provider,
+                        autonomy_level: request.autonomy_level,
+                        execution_mode: request.execution_mode,
+                    })
+                    .await
+                    .map_err(|error| mcp_tool_error(error.to_string()))?;
+                Ok(serde_json::json!({ "candidate": candidate }))
+            })
+        }),
+    );
+
+    let pool_for_review_learning_candidate = pool.clone();
+    let workspace_root_for_review_learning_candidate = workspace_root.clone();
+    server.register_handler(
+        "review_learning_candidate",
+        traced_mcp_handler(
+            langsmith.clone(),
+            "review_learning_candidate",
+            move |args| {
+                let request: McpReviewLearningCandidateArgs = parse_tool_args(args)?;
+                let pool = pool_for_review_learning_candidate.clone();
+                let workspace_root = workspace_root_for_review_learning_candidate.clone();
+                block_on_tool(async move {
+                    let service = LearningReviewService::new(
+                        control::WorkspaceLearningReviewSource::from_pool(workspace_root, pool),
+                    );
+                    let candidate = service
+                        .review(
+                            &request.id,
+                            &LearningCandidateReviewRequest {
+                                action: control::parse_learning_review_action(&request.action)
+                                    .map_err(|error| mcp_tool_error(error.to_string()))?,
+                                reviewed_by: request.reviewed_by,
+                                review_note: request.note,
+                            },
+                        )
+                        .await
+                        .map_err(|error| mcp_tool_error(error.to_string()))?;
+                    Ok(serde_json::json!({ "candidate": candidate }))
+                })
+            },
+        ),
+    );
+
+    let pool_for_promote_learning_candidate = pool.clone();
+    let workspace_root_for_promote_learning_candidate = workspace_root.clone();
+    server.register_handler(
+        "promote_learning_candidate",
+        traced_mcp_handler(
+            langsmith.clone(),
+            "promote_learning_candidate",
+            move |args| {
+                let request: McpPromoteLearningCandidateArgs = parse_tool_args(args)?;
+                let pool = pool_for_promote_learning_candidate.clone();
+                let workspace_root = workspace_root_for_promote_learning_candidate.clone();
+                block_on_tool(async move {
+                    let service = LearningReviewService::new(
+                        control::WorkspaceLearningReviewSource::from_pool(workspace_root, pool),
+                    );
+                    let report = service
+                        .promote(
+                            &request.id,
+                            &LearningCandidatePromotionRequest {
+                                lesson_id: request.lesson_id,
+                                active: request.active.unwrap_or(true),
+                                promoted_by: request.promoted_by,
+                            },
+                        )
+                        .await
+                        .map_err(|error| mcp_tool_error(error.to_string()))?;
+                    Ok(serde_json::json!(report))
+                })
+            },
+        ),
+    );
+
+    let pool_for_rollback_learning_candidate = pool.clone();
+    let workspace_root_for_rollback_learning_candidate = workspace_root.clone();
+    server.register_handler(
+        "rollback_learning_candidate",
+        traced_mcp_handler(
+            langsmith.clone(),
+            "rollback_learning_candidate",
+            move |args| {
+                let request: McpRollbackLearningCandidateArgs = parse_tool_args(args)?;
+                let pool = pool_for_rollback_learning_candidate.clone();
+                let workspace_root = workspace_root_for_rollback_learning_candidate.clone();
+                block_on_tool(async move {
+                    let service = LearningReviewService::new(
+                        control::WorkspaceLearningReviewSource::from_pool(workspace_root, pool),
+                    );
+                    let candidate = service
+                        .rollback(
+                            &request.id,
+                            &LearningCandidateRollbackRequest {
+                                rolled_back_by: request.rolled_back_by,
+                                reason: request.reason,
+                            },
+                        )
+                        .await
+                        .map_err(|error| mcp_tool_error(error.to_string()))?;
+                    Ok(serde_json::json!({ "candidate": candidate }))
+                })
+            },
+        ),
     );
 
     let session_store_for_list = session_store.clone();
@@ -13452,6 +14024,57 @@ struct McpUpdateModelArtifactArgs {
     status: Option<String>,
     correction_note: Option<String>,
     updated_by: Option<String>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct McpListLearningCandidatesArgs {
+    namespace: Option<String>,
+    status: Option<String>,
+    limit: Option<usize>,
+}
+
+#[derive(serde::Deserialize)]
+struct McpQueueLearningCandidateArgs {
+    namespace: Option<String>,
+    kind: String,
+    signal: String,
+    recommendation: String,
+    rationale: Option<String>,
+    confidence: Option<f32>,
+    impact: Option<String>,
+    source_kind: Option<String>,
+    source_id: String,
+    source_detail: Option<String>,
+    task_id: Option<String>,
+    category: Option<String>,
+    claw_id: Option<String>,
+    model_profile_id: Option<String>,
+    provider: Option<String>,
+    autonomy_level: Option<String>,
+    execution_mode: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct McpReviewLearningCandidateArgs {
+    id: String,
+    action: String,
+    reviewed_by: Option<String>,
+    note: Option<String>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct McpPromoteLearningCandidateArgs {
+    id: String,
+    lesson_id: Option<String>,
+    active: Option<bool>,
+    promoted_by: Option<String>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct McpRollbackLearningCandidateArgs {
+    id: String,
+    rolled_back_by: Option<String>,
+    reason: Option<String>,
 }
 
 #[derive(serde::Deserialize, Default)]
@@ -15552,8 +16175,7 @@ background_services:
         let list_model_text = list_model_resp["result"]["content"][0]["text"]
             .as_str()
             .unwrap();
-        let list_model_payload: serde_json::Value =
-            serde_json::from_str(list_model_text).unwrap();
+        let list_model_payload: serde_json::Value = serde_json::from_str(list_model_text).unwrap();
         assert_eq!(list_model_payload["artifacts"].as_array().unwrap().len(), 1);
         assert_eq!(
             list_model_payload["projected_core_entries"][0]["key"].as_str(),
@@ -15583,6 +16205,131 @@ background_services:
             update_model_payload["artifact"]["status"].as_str(),
             Some("removed")
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn mcp_server_control_tools_manage_learning_candidates() {
+        let workspace = tempdir().unwrap();
+        control::init(Some(
+            control::control_root_for(workspace.path())
+                .to_str()
+                .unwrap(),
+        ))
+        .unwrap();
+        let db_path = workspace.path().join("mcp-learning.db");
+        let db_url = format!("sqlite://{}", db_path.display());
+        let pool = init_pool(&db_url, 1).await.unwrap();
+        run_migrations(&pool).await.unwrap();
+
+        let server = build_mcp_server(
+            workspace.path().to_path_buf(),
+            pool,
+            AppConfig::default(),
+            None,
+        );
+
+        let queue_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 20,
+            "method": "tools/call",
+            "params": {
+                "name": "queue_learning_candidate",
+                "arguments": {
+                    "namespace": "user-1",
+                    "kind": "worker_status",
+                    "signal": "worker returned failed",
+                    "recommendation": "route a safer model",
+                    "confidence": 0.8,
+                    "impact": "standard",
+                    "source_kind": "manual",
+                    "source_id": "candidate-1"
+                }
+            }
+        });
+        let queue_resp = server.handle_request(&queue_req);
+        let queue_text = queue_resp["result"]["content"][0]["text"].as_str().unwrap();
+        let queue_payload: serde_json::Value = serde_json::from_str(queue_text).unwrap();
+        let candidate_id = queue_payload["candidate"]["id"].as_str().unwrap();
+        assert_eq!(queue_payload["candidate"]["status"], "pending_review");
+
+        let review_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 21,
+            "method": "tools/call",
+            "params": {
+                "name": "review_learning_candidate",
+                "arguments": {
+                    "id": candidate_id,
+                    "action": "approve",
+                    "reviewed_by": "operator",
+                    "note": "approved"
+                }
+            }
+        });
+        let review_resp = server.handle_request(&review_req);
+        let review_text = review_resp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap();
+        let review_payload: serde_json::Value = serde_json::from_str(review_text).unwrap();
+        assert_eq!(review_payload["candidate"]["status"], "approved");
+
+        let promote_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 22,
+            "method": "tools/call",
+            "params": {
+                "name": "promote_learning_candidate",
+                "arguments": {
+                    "id": candidate_id,
+                    "lesson_id": "lesson-candidate-1",
+                    "promoted_by": "operator"
+                }
+            }
+        });
+        let promote_resp = server.handle_request(&promote_req);
+        let promote_text = promote_resp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap();
+        let promote_payload: serde_json::Value = serde_json::from_str(promote_text).unwrap();
+        assert_eq!(promote_payload["candidate"]["status"], "promoted");
+        assert_eq!(promote_payload["lesson_id"], "lesson-candidate-1");
+
+        let list_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 23,
+            "method": "tools/call",
+            "params": {
+                "name": "list_learning_candidates",
+                "arguments": {
+                    "namespace": "user-1",
+                    "limit": 10
+                }
+            }
+        });
+        let list_resp = server.handle_request(&list_req);
+        let list_text = list_resp["result"]["content"][0]["text"].as_str().unwrap();
+        let list_payload: serde_json::Value = serde_json::from_str(list_text).unwrap();
+        assert_eq!(list_payload["candidates"].as_array().unwrap().len(), 1);
+
+        let rollback_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 24,
+            "method": "tools/call",
+            "params": {
+                "name": "rollback_learning_candidate",
+                "arguments": {
+                    "id": candidate_id,
+                    "rolled_back_by": "operator",
+                    "reason": "unsafe"
+                }
+            }
+        });
+        let rollback_resp = server.handle_request(&rollback_req);
+        let rollback_text = rollback_resp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap();
+        let rollback_payload: serde_json::Value = serde_json::from_str(rollback_text).unwrap();
+        assert_eq!(rollback_payload["candidate"]["status"], "rolled_back");
     }
 
     #[tokio::test(flavor = "multi_thread")]

@@ -78,10 +78,10 @@
 | MODL-02 | Phase 182 | Pending |
 | MODL-03 | Phase 182 | Pending |
 | MODL-04 | Phase 182 | Pending |
-| LEAR-01 | Phase 183 | Pending |
-| LEAR-02 | Phase 183 | Pending |
-| LEAR-03 | Phase 183 | Pending |
-| LEAR-04 | Phase 183 | Pending |
+| LEAR-01 | Phase 183 | Complete |
+| LEAR-02 | Phase 183 | Complete |
+| LEAR-03 | Phase 183 | Complete |
+| LEAR-04 | Phase 183 | Complete |
 | SKIL-01 | Phase 184 | Pending |
 | SKIL-02 | Phase 184 | Pending |
 | SKIL-03 | Phase 184 | Pending |

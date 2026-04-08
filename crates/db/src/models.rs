@@ -250,3 +250,58 @@ pub struct MemoryModelArtifactRow {
     pub updated_at: String,
     pub deactivated_at: Option<String>,
 }
+
+/// A row from the `learning_candidates` table.
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct LearningCandidateRow {
+    pub id: String,
+    pub namespace: String,
+    pub kind: String,
+    pub signal: String,
+    pub recommendation: String,
+    pub rationale: Option<String>,
+    pub confidence: f64,
+    pub impact: String,
+    pub status: String,
+    pub source_kind: String,
+    pub source_id: String,
+    pub source_detail: Option<String>,
+    pub review_note: Option<String>,
+    pub reviewed_by: Option<String>,
+    pub task_id: Option<String>,
+    pub category: Option<String>,
+    pub claw_id: Option<String>,
+    pub model_profile_id: Option<String>,
+    pub provider: Option<String>,
+    pub autonomy_level: Option<String>,
+    pub execution_mode: Option<String>,
+    pub promoted_lesson_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub reviewed_at: Option<String>,
+    pub rolled_back_at: Option<String>,
+}
+
+/// A row from the `learning_candidate_evidence` table.
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct LearningCandidateEvidenceRow {
+    pub id: String,
+    pub candidate_id: String,
+    pub kind: String,
+    pub summary: String,
+    pub source_id: Option<String>,
+    pub recorded_by: Option<String>,
+    pub created_at: String,
+}
+
+/// A row from the `learning_candidate_history` table.
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct LearningCandidateHistoryRow {
+    pub id: String,
+    pub candidate_id: String,
+    pub action: String,
+    pub lesson_id: Option<String>,
+    pub actor: Option<String>,
+    pub note: Option<String>,
+    pub created_at: String,
+}

@@ -236,7 +236,8 @@ impl MemoryPolicies {
         if request.source_lineage.is_empty() {
             return ModelArtifactPromotionDecision {
                 allowed: false,
-                reason: "Structured model artifact promotion requires at least one lineage source.".to_string(),
+                reason: "Structured model artifact promotion requires at least one lineage source."
+                    .to_string(),
             };
         }
 

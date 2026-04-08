@@ -18,6 +18,7 @@ pub mod control_registry;
 pub mod enterprise_access_control;
 pub mod enterprise_admin;
 pub mod greenfield_progress;
+pub mod learning_review;
 pub mod media_support;
 pub mod memory_views;
 pub mod mobile_operator;

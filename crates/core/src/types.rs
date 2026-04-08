@@ -783,6 +783,213 @@ pub struct ModelArtifactProjection {
     pub token_count: usize,
 }
 
+/// The impact level of a learned candidate before runtime promotion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LearningCandidateImpact {
+    Standard,
+    High,
+}
+
+impl LearningCandidateImpact {
+    pub fn requires_review_evidence(self) -> bool {
+        matches!(self, Self::High)
+    }
+}
+
+/// Lifecycle state for a durable learning candidate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LearningCandidateStatus {
+    PendingReview,
+    Approved,
+    Rejected,
+    Superseded,
+    Promoted,
+    RolledBack,
+}
+
+impl LearningCandidateStatus {
+    pub fn is_reviewable(self) -> bool {
+        matches!(self, Self::PendingReview | Self::Approved)
+    }
+}
+
+/// Provenance categories for a durable learning candidate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LearningCandidateSourceKind {
+    ReflectionCandidate,
+    AuditRecord,
+    RuntimeEvent,
+    ModelArtifact,
+    Manual,
+}
+
+/// Linked evidence kinds for candidate review and promotion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LearningCandidateEvidenceKind {
+    Replay,
+    Evaluation,
+    Audit,
+    RuntimeEvent,
+    OperatorReview,
+}
+
+/// Durable provenance reference for a learning candidate.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LearningCandidateSourceRef {
+    pub kind: LearningCandidateSourceKind,
+    pub source_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+/// One linked review or replay evidence record for a learning candidate.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LearningCandidateEvidence {
+    pub id: String,
+    pub kind: LearningCandidateEvidenceKind,
+    pub summary: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recorded_by: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Request contract for adding linked evidence while queuing a candidate.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LearningCandidateEvidenceInput {
+    pub kind: LearningCandidateEvidenceKind,
+    pub summary: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recorded_by: Option<String>,
+}
+
+/// Durable candidate that may later become bounded runtime guidance.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LearningCandidate {
+    pub id: String,
+    pub namespace: String,
+    pub kind: String,
+    pub signal: String,
+    pub recommendation: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rationale: Option<String>,
+    pub confidence: f32,
+    pub impact: LearningCandidateImpact,
+    pub status: LearningCandidateStatus,
+    pub source: LearningCandidateSourceRef,
+    #[serde(default)]
+    pub evidence: Vec<LearningCandidateEvidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_note: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reviewed_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claw_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_profile_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub autonomy_level: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoted_lesson_id: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reviewed_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rolled_back_at: Option<DateTime<Utc>>,
+}
+
+/// Input contract for queuing a new learning candidate.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LearningCandidateCreateRequest {
+    pub namespace: String,
+    pub kind: String,
+    pub signal: String,
+    pub recommendation: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rationale: Option<String>,
+    pub confidence: f32,
+    pub impact: LearningCandidateImpact,
+    pub source: LearningCandidateSourceRef,
+    #[serde(default)]
+    pub evidence: Vec<LearningCandidateEvidenceInput>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claw_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_profile_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub autonomy_level: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_mode: Option<String>,
+}
+
+/// Review actions that can change candidate status before or after promotion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LearningCandidateReviewAction {
+    Approve,
+    Reject,
+    Supersede,
+}
+
+/// Input contract for mutating review state on a learning candidate.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LearningCandidateReviewRequest {
+    pub action: LearningCandidateReviewAction,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reviewed_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_note: Option<String>,
+}
+
+/// Input contract for promoting an approved candidate into an active lesson.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct LearningCandidatePromotionRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lesson_id: Option<String>,
+    #[serde(default)]
+    pub active: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoted_by: Option<String>,
+}
+
+/// Input contract for rolling back a promoted candidate and lesson.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct LearningCandidateRollbackRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rolled_back_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// Stable report returned after promoting a learning candidate.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LearningCandidatePromotionReport {
+    pub candidate: LearningCandidate,
+    pub lesson_id: String,
+}
+
 /// How a memory entry was produced.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

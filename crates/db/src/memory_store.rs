@@ -1800,10 +1800,8 @@ mod tests {
 
         assert_eq!(artifacts.len(), 2);
         assert_eq!(second.status, ModelArtifactStatus::Active);
-        assert!(artifacts
-            .iter()
-            .any(|artifact| artifact.id == first.id
-                && artifact.status == ModelArtifactStatus::Superseded));
+        assert!(artifacts.iter().any(|artifact| artifact.id == first.id
+            && artifact.status == ModelArtifactStatus::Superseded));
     }
 
     #[tokio::test]

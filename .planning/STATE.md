@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.43
 milestone_name: Learning Loop, Memory Depth, and God Mode
-current_phase: 183
-current_phase_name: Learning Candidate Review and Lesson Promotion
+current_phase: 184
+current_phase_name: Skill Proposal Verification and Reuse
 current_plan: none
 status: phase complete
-stopped_at: Phase 182 completed with typed structured model artifacts, bounded core-memory projection, and green CLI/MCP inspection coverage; Phase 183 is ready for discuss/planning.
-last_updated: "2026-04-08T05:41:47Z"
+stopped_at: Phase 183 completed with durable learning candidates, explicit review state, CLI and MCP review flows, and rollback-aware lesson promotion; Phase 184 is ready for discuss/planning.
+last_updated: "2026-04-08T06:04:07Z"
 last_activity: 2026-04-08
 progress:
   total_phases: 5
-  completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
-  percent: 40
+  completed_phases: 3
+  total_plans: 6
+  completed_plans: 6
+  percent: 60
 ---
 
 # Project State
@@ -28,17 +28,17 @@ See: .planning/PROJECT.md (updated 2026-04-07)
 
 ## Current Position
 
-Current Phase: 183
-Current Phase Name: Learning Candidate Review and Lesson Promotion
+Current Phase: 184
+Current Phase Name: Skill Proposal Verification and Reuse
 Total Phases: 5
 Current Plan: none
 Total Plans in Phase: 2
 Status: phase complete
 Last activity: 2026-04-08
 
-Phase: 3 of 5
+Phase: 4 of 5
 Plan: 2 of 2
-Progress: [####------] 40%
+Progress: [######----] 60%
 
 ## Performance Metrics
 
@@ -63,6 +63,7 @@ Recent decisions affecting current work:
 - Retrieval inspection remains phase-scoped: recall stays tool-driven, bounded, and provenance-rich instead of widening prompt injection or introducing Phase 182 artifact stores.
 - Local verification now includes `openrustclaw-cli` retrieval inspection tests after installing `protobuf` to provide `protoc` for `openrustclaw-langbridge`.
 - Phase 182 now stores structured user/operator/project/archive artifacts durably, projects only reserved typed slots into core memory, and exposes correction/deactivation/removal through CLI and MCP surfaces.
+- Phase 183 now routes reflections into a durable learning-candidate queue, requires explicit review for lesson promotion, and keeps rollback history linked to the active lesson lane.
 
 ### Pending Todos
 
@@ -71,10 +72,10 @@ Recent decisions affecting current work:
 ### Blockers/Concerns
 
 - v1.0 archive notes missing phase verification artifacts as lifecycle debt already captured in the archive.
-- Phase 183 should build learning-candidate review on top of structured artifacts and retained lineage rather than bypassing Phase 182 artifact control.
+- Phase 184 should reuse approved candidates and promoted lessons as provenance anchors for reviewable skill proposals instead of inferring reusable skills directly from raw receipts.
 
 ## Session Continuity
 
 Last session: 2026-04-08
-Stopped at: Phase 182 completed with typed structured model artifacts, bounded core-memory projection, and green CLI/MCP inspection coverage; Phase 183 is ready for discuss/planning.
+Stopped at: Phase 183 completed with durable learning candidates, explicit review state, CLI and MCP review flows, and rollback-aware lesson promotion; Phase 184 is ready for discuss/planning.
 Resume file: None

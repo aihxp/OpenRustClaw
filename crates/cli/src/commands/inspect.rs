@@ -2403,8 +2403,8 @@ mod tests {
             })
             .await?;
 
-        let report = memory_model_artifacts(&memory_store, &core_store, Some("user-1"), true, 10)
-            .await?;
+        let report =
+            memory_model_artifacts(&memory_store, &core_store, Some("user-1"), true, 10).await?;
         assert_eq!(report.artifacts.len(), 1);
         assert_eq!(report.projected_core_entries.len(), 1);
         assert_eq!(report.projected_core_entries[0].key, "model.user");

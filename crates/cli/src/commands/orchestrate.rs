@@ -29,7 +29,10 @@ use openrustclaw_app::orchestration_routing::{
 };
 use openrustclaw_core::config::AppConfig;
 use openrustclaw_core::traits::LlmProvider;
-use openrustclaw_core::types::{CompletionRequest, Message};
+use openrustclaw_core::types::{
+    CompletionRequest, LearningCandidateCreateRequest, LearningCandidateImpact,
+    LearningCandidateSourceKind, LearningCandidateSourceRef, Message,
+};
 use openrustclaw_providers::{
     AnthropicProvider, GeminiProvider, OllamaProvider, OpenAiProvider, OpenRouterProvider,
     openrouter::RouteStrategy,
@@ -1721,7 +1724,7 @@ pub fn read_active_run_supervision(
     )
 }
 
-pub fn promote_reflection_candidate(
+pub async fn promote_reflection_candidate(
     workspace_root: &Path,
     receipt_id: &str,
     candidate_index: usize,
@@ -1739,15 +1742,16 @@ pub fn promote_reflection_candidate(
             )
         })?;
 
-    let lesson_id = input
-        .lesson_id
-        .unwrap_or_else(|| make_lesson_id(&run.run_id, candidate_index, &candidate.kind));
     let signal = input.signal.unwrap_or(candidate.signal.clone());
     let recommendation = input
         .recommendation
         .unwrap_or(candidate.recommendation.clone());
     let rationale = input.rationale.or(candidate.rationale.clone());
-    let confidence = input.confidence.or(candidate.confidence).unwrap_or(0.7);
+    let confidence = input
+        .confidence
+        .or(candidate.confidence)
+        .unwrap_or(0.7)
+        .clamp(0.0, 1.0);
     let source = input
         .source
         .unwrap_or_else(|| "reflection_candidate".to_string());
@@ -1770,39 +1774,44 @@ pub fn promote_reflection_candidate(
     let execution_mode = input
         .execution_mode
         .or(Some(run.routing.execution_mode.clone()));
-    let control_root = control::control_root_for(workspace_root);
-    let control_root_str = control_root.to_string_lossy().to_string();
-
-    control::create_lesson(
-        Some(&control_root_str),
-        control::NewLessonInput {
-            id: &lesson_id,
-            active: input.active,
-            signal: &signal,
-            recommendation: &recommendation,
-            rationale: rationale.as_deref(),
+    let requested_lesson_id = input.lesson_id.clone();
+    let requested_active = input.active;
+    let service = control::learning_review_service_for_workspace(workspace_root).await?;
+    let candidate = service
+        .queue(&LearningCandidateCreateRequest {
+            namespace: run
+                .request
+                .task_id
+                .clone()
+                .unwrap_or_else(|| "global".to_string()),
+            kind: candidate.kind.clone(),
+            signal,
+            recommendation,
+            rationale,
             confidence,
-            source: Some(&source),
-            task_id: run.request.task_id.as_deref(),
-            category: category.as_deref(),
-            claw_id: claw_id.as_deref(),
-            model_profile_id: model_profile_id.as_deref(),
-            provider: provider.as_deref(),
-            autonomy_level: autonomy_level.as_deref(),
-            execution_mode: execution_mode.as_deref(),
-        },
-    )?;
-
-    let registry = control::load_registry(control_root)?;
-    let lesson =
-        registry.lessons.get(&lesson_id).cloned().with_context(|| {
-            format!("Promoted lesson '{}' was not found after write", lesson_id)
-        })?;
+            impact: LearningCandidateImpact::Standard,
+            source: LearningCandidateSourceRef {
+                kind: LearningCandidateSourceKind::ReflectionCandidate,
+                source_id: format!("{receipt_id}:{candidate_index}"),
+                detail: Some(source),
+            },
+            evidence: vec![],
+            task_id: run.request.task_id.clone(),
+            category,
+            claw_id,
+            model_profile_id,
+            provider,
+            autonomy_level,
+            execution_mode,
+        })
+        .await?;
     Ok(serde_json::json!({
-        "status": "ok",
+        "status": "queued",
         "receipt_id": receipt_id,
         "candidate_index": candidate_index,
-        "lesson": lesson,
+        "requested_lesson_id": requested_lesson_id,
+        "requested_active": requested_active,
+        "candidate": candidate,
     }))
 }
 
@@ -2155,33 +2164,6 @@ fn summarize_actor_resources(
         .iter()
         .map(cli_actor_summary_from_app)
         .collect()
-}
-
-fn make_lesson_id(run_id: &str, candidate_index: usize, kind: &str) -> String {
-    format!(
-        "reflection-{}-{}-{}",
-        simple_slug(run_id),
-        candidate_index,
-        simple_slug(kind)
-    )
-}
-
-fn simple_slug(input: &str) -> String {
-    let mut slug = String::with_capacity(input.len());
-    let mut last_dash = false;
-    for ch in input.chars() {
-        let next = if ch.is_ascii_alphanumeric() {
-            last_dash = false;
-            ch.to_ascii_lowercase()
-        } else if !last_dash {
-            last_dash = true;
-            '-'
-        } else {
-            continue;
-        };
-        slug.push(next);
-    }
-    slug.trim_matches('-').to_string()
 }
 
 fn build_reflection_candidates(
@@ -4420,8 +4402,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn promote_reflection_candidate_writes_decision_lesson() {
+    #[tokio::test]
+    async fn promote_reflection_candidate_queues_learning_candidate() {
         let root = tempfile::tempdir().unwrap();
         let control_root = control::control_root_for(root.path());
         control::init(Some(control_root.to_str().unwrap())).unwrap();
@@ -4508,14 +4490,15 @@ mod tests {
             0,
             PromoteReflectionInput::default(),
         )
+        .await
         .unwrap();
-        assert_eq!(result["status"], "ok");
+        assert_eq!(result["status"], "queued");
+        let candidate = &result["candidate"];
+        assert_eq!(candidate["signal"], "worker failed");
+        assert_eq!(candidate["recommendation"], "route a safer model");
+        assert_eq!(candidate["status"], "pending_review");
         let registry = control::load_registry(control::control_root_for(root.path())).unwrap();
-        assert_eq!(registry.lessons.len(), 1);
-        let lesson = registry.lessons.values().next().unwrap();
-        assert_eq!(lesson.signal, "worker failed");
-        assert_eq!(lesson.recommendation, "route a safer model");
-        assert_eq!(lesson.scope.category.as_deref(), Some("code"));
+        assert_eq!(registry.lessons.len(), 0);
     }
 
     #[test]

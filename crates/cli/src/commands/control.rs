@@ -5,10 +5,25 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use async_trait::async_trait;
+use openrustclaw_app::autonomy_lessons_control::AutonomyLessonRequest;
 use openrustclaw_app::control_registry as app_control_registry;
+use openrustclaw_app::learning_review::{LearningReviewService, LearningReviewSource};
+use openrustclaw_core::config::AppConfig;
+use openrustclaw_core::error::{Error as CoreError, Result as CoreResult};
+use openrustclaw_core::types::{
+    LearningCandidate, LearningCandidateCreateRequest, LearningCandidateImpact,
+    LearningCandidatePromotionRequest, LearningCandidateReviewAction,
+    LearningCandidateReviewRequest, LearningCandidateRollbackRequest, LearningCandidateSourceKind,
+    LearningCandidateStatus,
+};
+use openrustclaw_db::{SqliteLearningStore, init_pool, run_migrations};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sqlx::SqlitePool;
 use walkdir::WalkDir;
+
+use super::runtime;
 
 pub const DEFAULT_CONTROL_DIR: &str = ".claw/control";
 
@@ -1525,6 +1540,346 @@ pub fn deactivate_lesson(root: Option<&str>, id: &str) -> Result<()> {
     sync_runtime_artifact(&root)?;
     println!("Deactivated decision lesson {}", id);
     Ok(())
+}
+
+#[derive(Clone)]
+pub struct WorkspaceLearningReviewSource {
+    workspace_root: PathBuf,
+    learning_store: SqliteLearningStore,
+}
+
+impl WorkspaceLearningReviewSource {
+    pub fn from_pool(workspace_root: PathBuf, pool: SqlitePool) -> Self {
+        Self {
+            workspace_root,
+            learning_store: SqliteLearningStore::new(pool),
+        }
+    }
+}
+
+#[async_trait]
+impl LearningReviewSource for WorkspaceLearningReviewSource {
+    async fn list_learning_candidates(
+        &self,
+        namespace: Option<&str>,
+        status: Option<LearningCandidateStatus>,
+        limit: usize,
+    ) -> CoreResult<Vec<LearningCandidate>> {
+        self.learning_store
+            .list_candidates(namespace, status, limit)
+            .await
+    }
+
+    async fn get_learning_candidate(&self, id: &str) -> CoreResult<Option<LearningCandidate>> {
+        self.learning_store.get_candidate(id).await
+    }
+
+    async fn create_learning_candidate(
+        &self,
+        request: &LearningCandidateCreateRequest,
+    ) -> CoreResult<LearningCandidate> {
+        self.learning_store.create_candidate(request).await
+    }
+
+    async fn review_learning_candidate(
+        &self,
+        id: &str,
+        request: &LearningCandidateReviewRequest,
+    ) -> CoreResult<LearningCandidate> {
+        self.learning_store.review_candidate(id, request).await
+    }
+
+    async fn mark_learning_candidate_promoted(
+        &self,
+        id: &str,
+        lesson_id: &str,
+        actor: Option<&str>,
+        note: Option<&str>,
+    ) -> CoreResult<LearningCandidate> {
+        self.learning_store
+            .mark_promoted(id, lesson_id, actor, note)
+            .await
+    }
+
+    async fn mark_learning_candidate_rolled_back(
+        &self,
+        id: &str,
+        actor: Option<&str>,
+        reason: Option<&str>,
+    ) -> CoreResult<LearningCandidate> {
+        self.learning_store
+            .mark_rolled_back(id, actor, reason)
+            .await
+    }
+
+    async fn create_lesson(&self, request: &AutonomyLessonRequest) -> CoreResult<()> {
+        create_lesson(
+            Some(
+                control_root_for(&self.workspace_root)
+                    .to_string_lossy()
+                    .as_ref(),
+            ),
+            NewLessonInput {
+                id: &request.id,
+                active: request.active,
+                signal: &request.signal,
+                recommendation: &request.recommendation,
+                rationale: request.rationale.as_deref(),
+                confidence: request.confidence.unwrap_or(default_confidence()),
+                source: request.source.as_deref(),
+                task_id: request.task_id.as_deref(),
+                category: request.category.as_deref(),
+                claw_id: request.claw_id.as_deref(),
+                model_profile_id: request.model_profile_id.as_deref(),
+                provider: request.provider.as_deref(),
+                autonomy_level: request.autonomy_level.as_deref(),
+                execution_mode: request.execution_mode.as_deref(),
+            },
+        )
+        .map_err(anyhow_to_core)
+    }
+
+    async fn deactivate_lesson(&self, id: &str) -> CoreResult<()> {
+        deactivate_lesson(
+            Some(
+                control_root_for(&self.workspace_root)
+                    .to_string_lossy()
+                    .as_ref(),
+            ),
+            id,
+        )
+        .map_err(anyhow_to_core)
+    }
+}
+
+pub async fn learning_review_service_for_workspace(
+    workspace_root: &Path,
+) -> Result<LearningReviewService<WorkspaceLearningReviewSource>> {
+    let source = learning_review_source_for_workspace(workspace_root).await?;
+    Ok(LearningReviewService::new(source))
+}
+
+pub async fn learning_review_source_for_workspace(
+    workspace_root: &Path,
+) -> Result<WorkspaceLearningReviewSource> {
+    let config = runtime::load_effective_config("config/default.toml", workspace_root)
+        .unwrap_or_else(|_| AppConfig::default());
+    let database_url = resolve_workspace_database_url(workspace_root, &config.database.url);
+    ensure_workspace_database_parent(&database_url)?;
+    let pool = init_pool(&database_url, 2)
+        .await
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    run_migrations(&pool)
+        .await
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    Ok(WorkspaceLearningReviewSource::from_pool(
+        workspace_root.to_path_buf(),
+        pool,
+    ))
+}
+
+fn resolve_workspace_database_url(workspace_root: &Path, database_url: &str) -> String {
+    if let Some(path) = database_url.strip_prefix("sqlite://") {
+        let candidate = Path::new(path);
+        if candidate.is_absolute() {
+            return database_url.to_string();
+        }
+        return format!("sqlite://{}", workspace_root.join(candidate).display());
+    }
+    database_url.to_string()
+}
+
+fn ensure_workspace_database_parent(database_url: &str) -> Result<()> {
+    if let Some(path) = database_url.strip_prefix("sqlite://") {
+        let db_path = Path::new(path);
+        if let Some(parent) = db_path.parent() {
+            fs::create_dir_all(parent).with_context(|| {
+                format!("Failed to create database directory '{}'", parent.display())
+            })?;
+        }
+    }
+    Ok(())
+}
+
+pub async fn list_learning_candidates_cli(
+    workspace_root: &Path,
+    namespace: Option<&str>,
+    status: Option<LearningCandidateStatus>,
+    limit: usize,
+) -> Result<()> {
+    let service = learning_review_service_for_workspace(workspace_root).await?;
+    let candidates = service
+        .list(namespace, status, limit)
+        .await
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    if candidates.is_empty() {
+        println!("No learning candidates found.");
+        return Ok(());
+    }
+    for candidate in candidates {
+        println!(
+            "{} [{}] {} ({:.2})",
+            candidate.id,
+            learning_status_label(candidate.status),
+            candidate.signal,
+            candidate.confidence
+        );
+        println!("  kind: {}", candidate.kind);
+        println!("  namespace: {}", candidate.namespace);
+        println!("  impact: {}", learning_impact_label(candidate.impact));
+        println!(
+            "  source: {}:{}",
+            learning_source_kind_label(candidate.source.kind),
+            candidate.source.source_id
+        );
+        if let Some(lesson_id) = candidate.promoted_lesson_id.as_deref() {
+            println!("  lesson: {lesson_id}");
+        }
+        if !candidate.evidence.is_empty() {
+            println!("  evidence: {}", candidate.evidence.len());
+        }
+    }
+    Ok(())
+}
+
+pub async fn queue_learning_candidate_cli(
+    workspace_root: &Path,
+    request: &LearningCandidateCreateRequest,
+) -> Result<()> {
+    let service = learning_review_service_for_workspace(workspace_root).await?;
+    let candidate = service
+        .queue(request)
+        .await
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    println!("Queued learning candidate {}", candidate.id);
+    Ok(())
+}
+
+pub async fn review_learning_candidate_cli(
+    workspace_root: &Path,
+    id: &str,
+    request: &LearningCandidateReviewRequest,
+) -> Result<()> {
+    let service = learning_review_service_for_workspace(workspace_root).await?;
+    let candidate = service
+        .review(id, request)
+        .await
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    println!(
+        "Updated learning candidate {} to {}",
+        candidate.id,
+        learning_status_label(candidate.status)
+    );
+    Ok(())
+}
+
+pub async fn promote_learning_candidate_cli(
+    workspace_root: &Path,
+    id: &str,
+    request: &LearningCandidatePromotionRequest,
+) -> Result<()> {
+    let service = learning_review_service_for_workspace(workspace_root).await?;
+    let report = service
+        .promote(id, request)
+        .await
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    println!(
+        "Promoted learning candidate {} to lesson {}",
+        report.candidate.id, report.lesson_id
+    );
+    Ok(())
+}
+
+pub async fn rollback_learning_candidate_cli(
+    workspace_root: &Path,
+    id: &str,
+    request: &LearningCandidateRollbackRequest,
+) -> Result<()> {
+    let service = learning_review_service_for_workspace(workspace_root).await?;
+    let candidate = service
+        .rollback(id, request)
+        .await
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    println!(
+        "Rolled back learning candidate {} to {}",
+        candidate.id,
+        learning_status_label(candidate.status)
+    );
+    Ok(())
+}
+
+fn anyhow_to_core(error: anyhow::Error) -> CoreError {
+    CoreError::Internal(error.to_string())
+}
+
+pub fn parse_learning_status(value: &str) -> Result<LearningCandidateStatus> {
+    match value {
+        "pending_review" | "pending" => Ok(LearningCandidateStatus::PendingReview),
+        "approved" | "approve" => Ok(LearningCandidateStatus::Approved),
+        "rejected" | "reject" => Ok(LearningCandidateStatus::Rejected),
+        "superseded" | "supersede" => Ok(LearningCandidateStatus::Superseded),
+        "promoted" | "promote" => Ok(LearningCandidateStatus::Promoted),
+        "rolled_back" | "rollback" => Ok(LearningCandidateStatus::RolledBack),
+        other => anyhow::bail!("unknown learning candidate status '{other}'"),
+    }
+}
+
+pub fn parse_learning_review_action(value: &str) -> Result<LearningCandidateReviewAction> {
+    match value {
+        "approved" | "approve" => Ok(LearningCandidateReviewAction::Approve),
+        "rejected" | "reject" => Ok(LearningCandidateReviewAction::Reject),
+        "superseded" | "supersede" => Ok(LearningCandidateReviewAction::Supersede),
+        other => anyhow::bail!("unknown learning review action '{other}'"),
+    }
+}
+
+pub fn parse_learning_impact(value: &str) -> Result<LearningCandidateImpact> {
+    match value {
+        "standard" => Ok(LearningCandidateImpact::Standard),
+        "high" => Ok(LearningCandidateImpact::High),
+        other => anyhow::bail!("unknown learning candidate impact '{other}'"),
+    }
+}
+
+pub fn parse_learning_source_kind(value: &str) -> Result<LearningCandidateSourceKind> {
+    match value {
+        "reflection_candidate" | "reflection" => {
+            Ok(LearningCandidateSourceKind::ReflectionCandidate)
+        }
+        "audit_record" | "audit" => Ok(LearningCandidateSourceKind::AuditRecord),
+        "runtime_event" | "event" => Ok(LearningCandidateSourceKind::RuntimeEvent),
+        "model_artifact" | "artifact" => Ok(LearningCandidateSourceKind::ModelArtifact),
+        "manual" => Ok(LearningCandidateSourceKind::Manual),
+        other => anyhow::bail!("unknown learning candidate source kind '{other}'"),
+    }
+}
+
+fn learning_status_label(value: LearningCandidateStatus) -> &'static str {
+    match value {
+        LearningCandidateStatus::PendingReview => "pending_review",
+        LearningCandidateStatus::Approved => "approved",
+        LearningCandidateStatus::Rejected => "rejected",
+        LearningCandidateStatus::Superseded => "superseded",
+        LearningCandidateStatus::Promoted => "promoted",
+        LearningCandidateStatus::RolledBack => "rolled_back",
+    }
+}
+
+fn learning_impact_label(value: LearningCandidateImpact) -> &'static str {
+    match value {
+        LearningCandidateImpact::Standard => "standard",
+        LearningCandidateImpact::High => "high",
+    }
+}
+
+fn learning_source_kind_label(value: LearningCandidateSourceKind) -> &'static str {
+    match value {
+        LearningCandidateSourceKind::ReflectionCandidate => "reflection_candidate",
+        LearningCandidateSourceKind::AuditRecord => "audit_record",
+        LearningCandidateSourceKind::RuntimeEvent => "runtime_event",
+        LearningCandidateSourceKind::ModelArtifact => "model_artifact",
+        LearningCandidateSourceKind::Manual => "manual",
+    }
 }
 
 fn write_if_missing(path: &Path, content: &str) -> Result<()> {

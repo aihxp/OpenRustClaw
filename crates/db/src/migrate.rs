@@ -408,6 +408,67 @@ CREATE INDEX IF NOT EXISTS idx_memory_model_artifacts_namespace
     ON memory_model_artifacts(namespace, kind, status, created_at);
 "#,
     },
+    Migration {
+        name: "019_learning_candidates",
+        sql: r#"
+CREATE TABLE IF NOT EXISTS learning_candidates (
+    id TEXT PRIMARY KEY,
+    namespace TEXT NOT NULL DEFAULT 'global',
+    kind TEXT NOT NULL,
+    signal TEXT NOT NULL,
+    recommendation TEXT NOT NULL,
+    rationale TEXT,
+    confidence REAL NOT NULL DEFAULT 0.7,
+    impact TEXT NOT NULL DEFAULT 'standard' CHECK(impact IN ('standard', 'high')),
+    status TEXT NOT NULL DEFAULT 'pending_review' CHECK(status IN ('pending_review', 'approved', 'rejected', 'superseded', 'promoted', 'rolled_back')),
+    source_kind TEXT NOT NULL CHECK(source_kind IN ('reflection_candidate', 'audit_record', 'runtime_event', 'model_artifact', 'manual')),
+    source_id TEXT NOT NULL,
+    source_detail TEXT,
+    review_note TEXT,
+    reviewed_by TEXT,
+    task_id TEXT,
+    category TEXT,
+    claw_id TEXT,
+    model_profile_id TEXT,
+    provider TEXT,
+    autonomy_level TEXT,
+    execution_mode TEXT,
+    promoted_lesson_id TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    reviewed_at TEXT,
+    rolled_back_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_learning_candidates_status
+    ON learning_candidates(namespace, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_learning_candidates_source
+    ON learning_candidates(source_kind, source_id);
+
+CREATE TABLE IF NOT EXISTS learning_candidate_evidence (
+    id TEXT PRIMARY KEY,
+    candidate_id TEXT NOT NULL REFERENCES learning_candidates(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK(kind IN ('replay', 'evaluation', 'audit', 'runtime_event', 'operator_review')),
+    summary TEXT NOT NULL,
+    source_id TEXT,
+    recorded_by TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_learning_candidate_evidence_candidate
+    ON learning_candidate_evidence(candidate_id, created_at);
+
+CREATE TABLE IF NOT EXISTS learning_candidate_history (
+    id TEXT PRIMARY KEY,
+    candidate_id TEXT NOT NULL REFERENCES learning_candidates(id) ON DELETE CASCADE,
+    action TEXT NOT NULL,
+    lesson_id TEXT,
+    actor TEXT,
+    note TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_learning_candidate_history_candidate
+    ON learning_candidate_history(candidate_id, created_at);
+"#,
+    },
 ];
 
 /// Run all embedded database migrations in order.
