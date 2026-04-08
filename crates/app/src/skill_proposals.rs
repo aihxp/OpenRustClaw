@@ -5,9 +5,9 @@ use uuid::Uuid;
 use openrustclaw_core::error::{Error, MemoryError, Result};
 use openrustclaw_core::types::{
     SkillProposal, SkillProposalCreateRequest, SkillProposalInstallReport,
-    SkillProposalInstallRequest, SkillProposalReviewRequest, SkillProposalRollbackRequest,
-    SkillProposalStatus, SkillProposalVerificationReport, SkillProposalVerificationStatus,
-    SkillProposalVerifyRequest,
+    SkillProposalInstallRequest, SkillProposalQuarantineRequest, SkillProposalReviewRequest,
+    SkillProposalRollbackRequest, SkillProposalSourceKind, SkillProposalStatus,
+    SkillProposalVerificationReport, SkillProposalVerificationStatus, SkillProposalVerifyRequest,
 };
 
 #[async_trait]
@@ -20,6 +20,8 @@ pub trait SkillProposalSource: Send + Sync {
     ) -> Result<Vec<SkillProposal>>;
 
     async fn get_skill_proposal(&self, id: &str) -> Result<Option<SkillProposal>>;
+
+    async fn learning_candidate_god_mode_origin(&self, id: &str) -> Result<bool>;
 
     async fn create_skill_proposal(&self, proposal: &SkillProposal) -> Result<SkillProposal>;
 
@@ -46,6 +48,13 @@ pub trait SkillProposalSource: Send + Sync {
     ) -> Result<SkillProposal>;
 
     async fn mark_skill_proposal_rolled_back(
+        &self,
+        id: &str,
+        actor: Option<&str>,
+        reason: Option<&str>,
+    ) -> Result<SkillProposal>;
+
+    async fn mark_skill_proposal_quarantined(
         &self,
         id: &str,
         actor: Option<&str>,
@@ -103,6 +112,16 @@ where
             )));
         }
 
+        let god_mode_origin = if request.god_mode_origin {
+            true
+        } else if request.source.kind == SkillProposalSourceKind::LearningCandidate {
+            self.source
+                .learning_candidate_god_mode_origin(&request.source.source_id)
+                .await?
+        } else {
+            false
+        };
+
         let now = Utc::now();
         let mut proposal = SkillProposal {
             id: Uuid::new_v4().to_string(),
@@ -117,12 +136,16 @@ where
             artifact_path: String::new(),
             review_note: None,
             reviewed_by: None,
+            god_mode_origin,
             verification_report: None,
             verified_by: None,
             installed_skill_name: None,
             created_at: now,
             updated_at: now,
             reviewed_at: None,
+            quarantined_at: None,
+            quarantined_by: None,
+            quarantine_reason: None,
             verified_at: None,
             installed_at: None,
             rolled_back_at: None,
@@ -238,6 +261,30 @@ where
             )
             .await
     }
+
+    pub async fn quarantine(
+        &self,
+        id: &str,
+        request: &SkillProposalQuarantineRequest,
+    ) -> Result<SkillProposal> {
+        let proposal = self
+            .source
+            .get_skill_proposal(id)
+            .await?
+            .ok_or_else(|| Error::Internal(format!("Skill proposal '{id}' not found")))?;
+
+        if let Some(skill_name) = proposal.installed_skill_name.as_deref() {
+            self.source.rollback_installed_skill(skill_name).await?;
+        }
+
+        self.source
+            .mark_skill_proposal_quarantined(
+                id,
+                request.quarantined_by.as_deref(),
+                request.reason.as_deref(),
+            )
+            .await
+    }
 }
 
 #[cfg(test)]
@@ -270,6 +317,10 @@ mod tests {
 
         async fn get_skill_proposal(&self, id: &str) -> Result<Option<SkillProposal>> {
             Ok(self.proposals.lock().unwrap().get(id).cloned())
+        }
+
+        async fn learning_candidate_god_mode_origin(&self, id: &str) -> Result<bool> {
+            Ok(id == "candidate-god")
         }
 
         async fn create_skill_proposal(&self, proposal: &SkillProposal) -> Result<SkillProposal> {
@@ -342,6 +393,24 @@ mod tests {
             Ok(proposal.clone())
         }
 
+        async fn mark_skill_proposal_quarantined(
+            &self,
+            id: &str,
+            actor: Option<&str>,
+            reason: Option<&str>,
+        ) -> Result<SkillProposal> {
+            let mut proposals = self.proposals.lock().unwrap();
+            let proposal = proposals.get_mut(id).unwrap();
+            proposal.quarantined_at = Some(Utc::now());
+            proposal.quarantined_by = actor.map(ToString::to_string);
+            proposal.quarantine_reason = reason.map(ToString::to_string);
+            if proposal.installed_skill_name.is_some() {
+                proposal.status = SkillProposalStatus::RolledBack;
+                proposal.rolled_back_at = Some(Utc::now());
+            }
+            Ok(proposal.clone())
+        }
+
         async fn write_proposal_artifact(&self, proposal: &SkillProposal) -> Result<String> {
             Ok(format!("/tmp/{}/SKILL.md", proposal.id))
         }
@@ -391,6 +460,7 @@ mod tests {
                     source_id: "candidate-1".to_string(),
                     detail: None,
                 },
+                god_mode_origin: false,
             })
             .await
             .unwrap();
@@ -443,5 +513,78 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(report.installed_skill_name, "triage-helper");
+    }
+
+    #[tokio::test]
+    async fn proposal_service_derives_god_mode_origin_and_quarantines_installs() {
+        let service = SkillProposalService::new(MockSkillProposalSource::default());
+        let proposal = service
+            .queue(&openrustclaw_core::types::SkillProposalCreateRequest {
+                namespace: "user-1".to_string(),
+                skill_name: "danger-helper".to_string(),
+                summary: "Danger helper".to_string(),
+                body: "# Danger Helper\n".to_string(),
+                rationale: None,
+                source: SkillProposalSourceRef {
+                    kind: SkillProposalSourceKind::LearningCandidate,
+                    source_id: "candidate-god".to_string(),
+                    detail: None,
+                },
+                god_mode_origin: false,
+            })
+            .await
+            .unwrap();
+
+        assert!(proposal.god_mode_origin);
+
+        service
+            .review(
+                &proposal.id,
+                &SkillProposalReviewRequest {
+                    action: SkillProposalReviewAction::Approve,
+                    reviewed_by: Some("operator".to_string()),
+                    review_note: None,
+                },
+            )
+            .await
+            .unwrap();
+        service
+            .verify(
+                &proposal.id,
+                &SkillProposalVerifyRequest {
+                    verified_by: Some("operator".to_string()),
+                    note: None,
+                },
+            )
+            .await
+            .unwrap();
+        service
+            .install(
+                &proposal.id,
+                &SkillProposalInstallRequest {
+                    installed_by: Some("operator".to_string()),
+                    note: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        let quarantined = service
+            .quarantine(
+                &proposal.id,
+                &SkillProposalQuarantineRequest {
+                    quarantined_by: Some("operator".to_string()),
+                    reason: Some("contain god mode artifact".to_string()),
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(quarantined.status, SkillProposalStatus::RolledBack);
+        assert!(quarantined.quarantined_at.is_some());
+        assert_eq!(
+            service.source.rolled_back.lock().unwrap().as_slice(),
+            &["danger-helper".to_string()]
+        );
     }
 }

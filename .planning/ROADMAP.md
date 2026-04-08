@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.0 through v1.42** - shipped. Full milestone history and archives: `.planning/MILESTONES.md`
-- 🚧 **v1.43 Learning Loop, Memory Depth, and God Mode** - Phases 181-185
+- ✅ **v1.43 Learning Loop, Memory Depth, and God Mode** - shipped 2026-04-08
 
 ## Overview
 
@@ -19,7 +19,7 @@
 - [x] **Phase 182: Structured Memory Artifacts and Model Control** - Promote durable user, operator, project, and archive artifacts through bounded policy-gated memory flows.
 - [x] **Phase 183: Learning Candidate Review and Lesson Promotion** - Turn successful work and reflections into reviewable candidates that can become bounded active lessons.
 - [x] **Phase 184: Skill Proposal Verification and Reuse** - Generate reviewable reusable-skill proposals and route approved ones through the existing compile and install path.
-- [ ] **Phase 185: God Mode Overlay, Audit, and Recovery** - Add a distinct full-power operator lane that remains explicit, auditable, and reversible.
+- [x] **Phase 185: God Mode Overlay, Audit, and Recovery** - Add a distinct full-power operator lane that remains explicit, auditable, and reversible. (completed 2026-04-08)
 
 ## Phase Details
 
@@ -32,7 +32,11 @@
   2. Retrieved memory is assembled into concise, deduplicated output that includes provenance, freshness, and artifact-type metadata for each surfaced item.
   3. Operators can inspect why a memory was surfaced, including the ranking factors and contributing source artifacts.
   4. The runtime keeps the recall-only memory contract by using bounded recall summaries and never injecting raw memory files or raw archive blobs into the system prompt.
-**Plans**: TBD
+**Plans**: 2/2 plans complete
+
+Plans:
+- [x] 185-01 Name and bound God Mode with TTL-backed restore and stronger reporting
+- [x] 185-02 Preserve God Mode provenance on learned artifacts and add quarantine controls
 
 ### Phase 182: Structured Memory Artifacts and Model Control
 **Goal**: The runtime maintains distinct durable memory artifacts and projects only a bounded high-signal subset into active context.
@@ -85,11 +89,11 @@
 | 182. Structured Memory Artifacts and Model Control | 2/2 | Complete | 2026-04-08 |
 | 183. Learning Candidate Review and Lesson Promotion | 2/2 | Complete | 2026-04-08 |
 | 184. Skill Proposal Verification and Reuse | 2/2 | Complete | 2026-04-08 |
-| 185. God Mode Overlay, Audit, and Recovery | 0/0 | Not started | - |
+| 185. God Mode Overlay, Audit, and Recovery | 2/2 | Complete | 2026-04-08 |
 
 ## Current Status
 
 - Active milestone: v1.43 Learning Loop, Memory Depth, and God Mode
-- Roadmap progress: 4/5 phases complete
-- Current work: Phase 184 is complete across durable proposal storage, inactive artifact verification, CLI and MCP proposal flows, and the active skill install and rollback bridge
-- Next step: `$gsd-discuss-phase 185 --auto`
+- Roadmap progress: 5/5 phases complete
+- Current work: Milestone complete across retrieval, structured memory, reviewable learning, proposal-first skill reuse, and God Mode overlay plus quarantine controls
+- Next step: milestone archive lifecycle or `$gsd-new-milestone`

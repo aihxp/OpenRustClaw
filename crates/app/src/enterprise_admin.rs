@@ -117,7 +117,7 @@ impl EnterpriseAdminService {
         let requires_operator_headers = self.state.access.explicit_identity_required;
         let detail = if requires_operator_headers {
             format!(
-                "Enterprise admin is live for organization `{}` with {} operator(s). Use `/control/ui` with the scoped operator headers to manage policy, identity, governance, audit export, supervised-runtime controls, and the explicit full-autonomy lane from one shipped surface.",
+                "Enterprise admin is live for organization `{}` with {} operator(s). Use `/control/ui` with the scoped operator headers to manage policy, identity, governance, audit export, supervised-runtime controls, and the explicit God Mode lane from one shipped surface.",
                 self.state.access.organization_id.as_deref().unwrap_or("-"),
                 self.state.access.operator_count
             )

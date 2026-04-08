@@ -4,7 +4,8 @@ use openrustclaw_core::error::{Error, MemoryError, Result};
 use openrustclaw_core::types::{
     LearningCandidate, LearningCandidateCreateRequest, LearningCandidateEvidenceKind,
     LearningCandidatePromotionReport, LearningCandidatePromotionRequest,
-    LearningCandidateReviewRequest, LearningCandidateRollbackRequest, LearningCandidateStatus,
+    LearningCandidateQuarantineRequest, LearningCandidateReviewRequest,
+    LearningCandidateRollbackRequest, LearningCandidateStatus,
 };
 
 use crate::autonomy_lessons_control::AutonomyLessonRequest;
@@ -40,6 +41,13 @@ pub trait LearningReviewSource: Send + Sync {
     ) -> Result<LearningCandidate>;
 
     async fn mark_learning_candidate_rolled_back(
+        &self,
+        id: &str,
+        actor: Option<&str>,
+        reason: Option<&str>,
+    ) -> Result<LearningCandidate>;
+
+    async fn mark_learning_candidate_quarantined(
         &self,
         id: &str,
         actor: Option<&str>,
@@ -89,7 +97,11 @@ where
                 "Learning candidates require both a signal and recommendation.".to_string(),
             )));
         }
-        self.source.create_learning_candidate(request).await
+        let mut request = request.clone();
+        if !request.god_mode_origin && request.autonomy_level.as_deref() == Some("yolo") {
+            request.god_mode_origin = true;
+        }
+        self.source.create_learning_candidate(&request).await
     }
 
     pub async fn review(
@@ -196,6 +208,30 @@ where
             )
             .await
     }
+
+    pub async fn quarantine(
+        &self,
+        id: &str,
+        request: &LearningCandidateQuarantineRequest,
+    ) -> Result<LearningCandidate> {
+        let candidate = self
+            .source
+            .get_learning_candidate(id)
+            .await?
+            .ok_or_else(|| Error::Internal(format!("Learning candidate '{id}' not found")))?;
+
+        if let Some(lesson_id) = candidate.promoted_lesson_id.as_deref() {
+            self.source.deactivate_lesson(lesson_id).await?;
+        }
+
+        self.source
+            .mark_learning_candidate_quarantined(
+                id,
+                request.quarantined_by.as_deref(),
+                request.reason.as_deref(),
+            )
+            .await
+    }
 }
 
 fn has_promotion_weight(evidence: &openrustclaw_core::types::LearningCandidateEvidence) -> bool {
@@ -272,6 +308,7 @@ mod tests {
                     .collect(),
                 review_note: None,
                 reviewed_by: None,
+                god_mode_origin: request.god_mode_origin,
                 task_id: request.task_id.clone(),
                 category: request.category.clone(),
                 claw_id: request.claw_id.clone(),
@@ -283,6 +320,9 @@ mod tests {
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
                 reviewed_at: None,
+                quarantined_at: None,
+                quarantined_by: None,
+                quarantine_reason: None,
                 rolled_back_at: None,
             };
             self.candidates
@@ -340,6 +380,24 @@ mod tests {
             Ok(candidate.clone())
         }
 
+        async fn mark_learning_candidate_quarantined(
+            &self,
+            id: &str,
+            actor: Option<&str>,
+            reason: Option<&str>,
+        ) -> Result<LearningCandidate> {
+            let mut candidates = self.candidates.lock().unwrap();
+            let candidate = candidates.get_mut(id).unwrap();
+            candidate.quarantined_at = Some(Utc::now());
+            candidate.quarantined_by = actor.map(ToString::to_string);
+            candidate.quarantine_reason = reason.map(ToString::to_string);
+            if candidate.promoted_lesson_id.is_some() {
+                candidate.status = LearningCandidateStatus::RolledBack;
+                candidate.rolled_back_at = Some(Utc::now());
+            }
+            Ok(candidate.clone())
+        }
+
         async fn create_lesson(&self, request: &AutonomyLessonRequest) -> Result<()> {
             self.created_lessons
                 .lock()
@@ -377,6 +435,7 @@ mod tests {
                 source_id: Some("eval-1".to_string()),
                 recorded_by: Some("tester".to_string()),
             }],
+            god_mode_origin: false,
             task_id: None,
             category: Some("code".to_string()),
             claw_id: None,
@@ -454,5 +513,55 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(rolled_back.status, LearningCandidateStatus::RolledBack);
+    }
+
+    #[tokio::test]
+    async fn learning_review_quarantine_deactivates_promoted_lessons() {
+        let source = MockLearningReviewSource::default();
+        let service = LearningReviewService::new(source.clone());
+        let candidate = service
+            .queue(&create_request(LearningCandidateImpact::High))
+            .await
+            .unwrap();
+        service
+            .review(
+                &candidate.id,
+                &LearningCandidateReviewRequest {
+                    action: LearningCandidateReviewAction::Approve,
+                    reviewed_by: Some("operator".to_string()),
+                    review_note: None,
+                },
+            )
+            .await
+            .unwrap();
+        let report = service
+            .promote(
+                &candidate.id,
+                &LearningCandidatePromotionRequest {
+                    lesson_id: Some("lesson-god".to_string()),
+                    active: true,
+                    promoted_by: Some("operator".to_string()),
+                },
+            )
+            .await
+            .unwrap();
+
+        let quarantined = service
+            .quarantine(
+                &candidate.id,
+                &LearningCandidateQuarantineRequest {
+                    quarantined_by: Some("operator".to_string()),
+                    reason: Some("god mode audit".to_string()),
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(quarantined.status, LearningCandidateStatus::RolledBack);
+        assert!(quarantined.quarantined_at.is_some());
+        assert_eq!(
+            source.deactivated_lessons.lock().unwrap().as_slice(),
+            &[report.lesson_id]
+        );
     }
 }

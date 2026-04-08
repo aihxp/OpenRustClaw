@@ -644,10 +644,13 @@
               <input id="enterprise-autonomy-max-runtime-secs" type="number" min="1" placeholder="full autonomy max runtime secs" />
               <input id="enterprise-autonomy-max-lesson-hints" type="number" min="1" placeholder="full autonomy max lesson hints" />
             </div>
-            <textarea id="enterprise-autonomy-note" rows="2" spellcheck="false" placeholder="full autonomy note or disable / kill-switch reason"></textarea>
             <div class="action-row">
-              <button id="enterprise-autonomy-enable">Enable Full Autonomy</button>
-              <button class="secondary" id="enterprise-autonomy-disable">Disable Full Autonomy</button>
+              <input id="enterprise-autonomy-ttl-secs" type="number" min="1" placeholder="God Mode ttl secs" />
+            </div>
+            <textarea id="enterprise-autonomy-note" rows="2" spellcheck="false" placeholder="God Mode note or disable / kill-switch reason"></textarea>
+            <div class="action-row">
+              <button id="enterprise-autonomy-enable">Enable God Mode</button>
+              <button class="secondary" id="enterprise-autonomy-disable">Disable God Mode</button>
               <button class="secondary" id="enterprise-autonomy-kill-switch">Kill Switch</button>
             </div>
             <div class="action-row">
@@ -2046,17 +2049,19 @@
         const execution = report.execution || {};
         const overridePolicy = report.override_policy || {};
         const baselinePolicy = report.baseline_policy || {};
+        const modeLabel = report.mode_label || "God Mode";
         renderSummaryCard("enterprise-autonomy", "No enterprise autonomy summary available.", buildSummaryMarkup({
-          kicker: "Operator-Gated Full Autonomy",
+          kicker: `Operator-Gated ${modeLabel}`,
           title: report.enabled
-            ? `Full autonomy active under ${humanizeStatusLabel(overridePolicy.autonomy_level || "unknown")}`
+            ? `${modeLabel} active under ${humanizeStatusLabel(overridePolicy.autonomy_level || "unknown")}`
             : humanizeStatusLabel(report.status || "ready"),
           copy: report.detail || "No enterprise autonomy summary available.",
           stats: [
-            { label: "Governance Scope", value: report.governance_scope || "-", detail: report.access_boundary_active ? "enterprise access bootstrapped" : "bootstrap required" },
+            { label: "Governance Scope", value: report.governance_scope || "-", detail: `${report.scope || "workspace"} scope` },
             { label: "Override Policy", value: overridePolicy.approval_policy || "-", detail: `${overridePolicy.autonomy_level || "-"} autonomy` },
             { label: "Budgets", value: `${overridePolicy.max_delegations ?? 0} delegations / ${overridePolicy.max_iterations ?? 0} turns`, detail: `${overridePolicy.max_runtime_secs ?? 0}s runtime` },
             { label: "Baseline Restore", value: baselinePolicy.approval_policy || "-", detail: `${baselinePolicy.autonomy_level || "-"} autonomy` },
+            { label: "Expiry", value: report.expires_at || "-", detail: report.expired_at || "active until disabled or expired" },
             { label: "Execution", value: `${execution.active_run_count ?? 0} active`, detail: `${execution.recent_run_count ?? 0} recent / ${execution.killed_run_count ?? 0} kill-switched` },
             { label: "Updated", value: report.updated_at || "-", detail: report.enabled_by || report.disabled_by || report.kill_switch_by || "-" },
           ],
@@ -2074,7 +2079,7 @@
           ...((execution.active_runs || []).map((run) => ({ ...run, lane: "active" }))),
           ...((execution.recent_runs || []).map((run) => ({ ...run, lane: "recent" }))),
         ].map((run) => `<tr>
-          <td><strong>${escapeHtml(run.run_id || "-")}</strong><div class="muted">${escapeHtml(run.created_at || "-")}</div></td>
+          <td><strong>${escapeHtml(run.run_id || "-")}</strong><div class="muted">${escapeHtml(run.mode_label || modeLabel)} • ${escapeHtml(run.created_at || "-")}</div></td>
           <td>${escapeHtml(humanizeStatusLabel(run.status || "-"))}</td>
           <td><strong>${escapeHtml(run.approval_policy || "-")}</strong><div class="muted">${escapeHtml(run.autonomy_level || "-")}</div></td>
           <td>${escapeHtml(`${run.lane || "recent"} lane • ${run.worker_count ?? 0} worker(s) • ${run.failed_count ?? 0} failed`)}</td>
@@ -2085,8 +2090,9 @@
         setInputValue("enterprise-autonomy-max-iterations", overridePolicy.max_iterations ?? "");
         setInputValue("enterprise-autonomy-max-runtime-secs", overridePolicy.max_runtime_secs ?? "");
         setInputValue("enterprise-autonomy-max-lesson-hints", overridePolicy.max_lesson_hints ?? "");
+        setInputValue("enterprise-autonomy-ttl-secs", report.expires_at ? "" : "");
         if (!document.getElementById("enterprise-autonomy-note").value.trim()) {
-          setInputValue("enterprise-autonomy-note", report.note || report.disable_reason || report.kill_switch_reason || "");
+          setInputValue("enterprise-autonomy-note", report.note || report.disable_reason || report.kill_switch_reason || report.expired_reason || "");
         }
       }
 
@@ -3228,7 +3234,7 @@
       function currentEnterpriseOperatorId() {
         const operatorId = document.getElementById("enterprise-operator-id").value.trim() || enterpriseOperatorState.id;
         if (!operatorId) {
-          throw new Error("Full autonomy actions require a saved enterprise operator id");
+          throw new Error("God Mode actions require a saved enterprise operator id");
         }
         return operatorId;
       }
@@ -3243,6 +3249,7 @@
             max_iterations: parseNumberInput("enterprise-autonomy-max-iterations"),
             max_runtime_secs: parseNumberInput("enterprise-autonomy-max-runtime-secs"),
             max_lesson_hints: parseNumberInput("enterprise-autonomy-max-lesson-hints"),
+            ttl_secs: parseNumberInput("enterprise-autonomy-ttl-secs"),
           }),
         });
         setText("enterprise-admin-result", result);

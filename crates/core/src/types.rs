@@ -890,6 +890,8 @@ pub struct LearningCandidate {
     pub review_note: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reviewed_by: Option<String>,
+    #[serde(default)]
+    pub god_mode_origin: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub task_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -911,6 +913,12 @@ pub struct LearningCandidate {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reviewed_at: Option<DateTime<Utc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quarantined_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quarantined_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quarantine_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rolled_back_at: Option<DateTime<Utc>>,
 }
 
@@ -928,6 +936,8 @@ pub struct LearningCandidateCreateRequest {
     pub source: LearningCandidateSourceRef,
     #[serde(default)]
     pub evidence: Vec<LearningCandidateEvidenceInput>,
+    #[serde(default)]
+    pub god_mode_origin: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub task_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -942,6 +952,15 @@ pub struct LearningCandidateCreateRequest {
     pub autonomy_level: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub execution_mode: Option<String>,
+}
+
+/// Input contract for quarantining a learned candidate and containing its active lesson.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct LearningCandidateQuarantineRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quarantined_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 /// Review actions that can change candidate status before or after promotion.
@@ -1061,6 +1080,8 @@ pub struct SkillProposal {
     pub review_note: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reviewed_by: Option<String>,
+    #[serde(default)]
+    pub god_mode_origin: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verification_report: Option<SkillProposalVerificationReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1071,6 +1092,12 @@ pub struct SkillProposal {
     pub updated_at: DateTime<Utc>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reviewed_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quarantined_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quarantined_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quarantine_reason: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verified_at: Option<DateTime<Utc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1089,6 +1116,8 @@ pub struct SkillProposalCreateRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rationale: Option<String>,
     pub source: SkillProposalSourceRef,
+    #[serde(default)]
+    pub god_mode_origin: bool,
 }
 
 /// Review actions that mutate a skill proposal before activation.
@@ -1133,6 +1162,15 @@ pub struct SkillProposalInstallRequest {
 pub struct SkillProposalRollbackRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rolled_back_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// Input contract for quarantining a skill proposal and containing any installed skill.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SkillProposalQuarantineRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quarantined_by: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
 }

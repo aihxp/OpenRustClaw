@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use chrono::Utc;
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
@@ -10,6 +10,14 @@ use super::{control, enterprise_access, orchestrate};
 const ENTERPRISE_AUTONOMY_VERSION: u32 = 1;
 fn default_version() -> u32 {
     ENTERPRISE_AUTONOMY_VERSION
+}
+
+fn default_mode_label() -> String {
+    "God Mode".to_string()
+}
+
+fn default_scope() -> String {
+    "workspace".to_string()
 }
 
 fn default_override_policy() -> control::AutonomyPolicy {
@@ -37,6 +45,10 @@ pub struct EnterpriseAutonomyManifest {
     pub updated_at: Option<String>,
     #[serde(default)]
     pub note: Option<String>,
+    #[serde(default = "default_mode_label")]
+    pub mode_label: String,
+    #[serde(default = "default_scope")]
+    pub scope: String,
     #[serde(default)]
     pub enabled_at: Option<String>,
     #[serde(default)]
@@ -55,6 +67,12 @@ pub struct EnterpriseAutonomyManifest {
     pub kill_switch_by: Option<String>,
     #[serde(default)]
     pub kill_switch_reason: Option<String>,
+    #[serde(default)]
+    pub expires_at: Option<String>,
+    #[serde(default)]
+    pub expired_at: Option<String>,
+    #[serde(default)]
+    pub expired_reason: Option<String>,
     #[serde(default = "default_override_policy")]
     pub override_policy: control::AutonomyPolicy,
     #[serde(default)]
@@ -68,6 +86,8 @@ impl Default for EnterpriseAutonomyManifest {
             enabled: false,
             updated_at: None,
             note: None,
+            mode_label: default_mode_label(),
+            scope: default_scope(),
             enabled_at: None,
             enabled_by: None,
             disabled_at: None,
@@ -77,6 +97,9 @@ impl Default for EnterpriseAutonomyManifest {
             kill_switch_at: None,
             kill_switch_by: None,
             kill_switch_reason: None,
+            expires_at: None,
+            expired_at: None,
+            expired_reason: None,
             override_policy: default_override_policy(),
             baseline_policy: control::AutonomyPolicy::default(),
         }
@@ -96,6 +119,8 @@ pub struct EnterpriseAutonomyEnableRequest {
     pub max_runtime_secs: Option<u64>,
     #[serde(default)]
     pub max_lesson_hints: Option<usize>,
+    #[serde(default)]
+    pub ttl_secs: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -116,6 +141,8 @@ pub struct EnterpriseAutonomyKillSwitchRequest {
 pub struct EnterpriseAutonomyEvent {
     pub created_at: String,
     pub kind: String,
+    pub mode_label: String,
+    pub scope: String,
     pub operator_id: String,
     #[serde(default)]
     pub note: Option<String>,
@@ -126,12 +153,15 @@ pub struct EnterpriseAutonomyEvent {
     pub override_policy: control::AutonomyPolicy,
     pub baseline_policy: control::AutonomyPolicy,
     #[serde(default)]
+    pub expires_at: Option<String>,
+    #[serde(default)]
     pub affected_run_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct EnterpriseAutonomyRunSummary {
     pub run_id: String,
+    pub mode_label: String,
     pub created_at: String,
     pub status: String,
     pub approval_policy: String,
@@ -156,6 +186,8 @@ pub struct EnterpriseAutonomyReport {
     pub status: String,
     pub detail: String,
     pub access_boundary_active: bool,
+    pub mode_label: String,
+    pub scope: String,
     pub manifest_path: String,
     pub events_path: String,
     pub enabled: bool,
@@ -170,6 +202,9 @@ pub struct EnterpriseAutonomyReport {
     pub kill_switch_at: Option<String>,
     pub kill_switch_by: Option<String>,
     pub kill_switch_reason: Option<String>,
+    pub expires_at: Option<String>,
+    pub expired_at: Option<String>,
+    pub expired_reason: Option<String>,
     pub governance_scope: String,
     pub override_policy: control::AutonomyPolicy,
     pub baseline_policy: control::AutonomyPolicy,
@@ -236,9 +271,9 @@ pub fn enable(
     validate_operator_id(&request.operator_id)?;
 
     let current_runtime = control::runtime_autonomy_policy(workspace_root)?;
-    let mut manifest = load_manifest(workspace_root)?.unwrap_or_default();
+    let mut manifest = refresh_manifest_state(workspace_root)?;
     if manifest.enabled {
-        anyhow::bail!("enterprise full autonomy is already enabled");
+        anyhow::bail!("God Mode is already enabled");
     }
 
     let now = Utc::now().to_rfc3339();
@@ -248,6 +283,8 @@ pub fn enable(
     manifest.enabled = true;
     manifest.updated_at = Some(now.clone());
     manifest.note = trim_optional(request.note);
+    manifest.mode_label = default_mode_label();
+    manifest.scope = default_scope();
     manifest.enabled_at = Some(now.clone());
     manifest.enabled_by = Some(request.operator_id.clone());
     manifest.disabled_at = None;
@@ -257,6 +294,9 @@ pub fn enable(
     manifest.kill_switch_at = None;
     manifest.kill_switch_by = None;
     manifest.kill_switch_reason = None;
+    manifest.expires_at = expiry_from_ttl(request.ttl_secs);
+    manifest.expired_at = None;
+    manifest.expired_reason = None;
     manifest.override_policy = override_policy.clone();
     manifest.baseline_policy = current_runtime.clone();
 
@@ -266,6 +306,8 @@ pub fn enable(
         EnterpriseAutonomyEvent {
             created_at: now,
             kind: "enabled".to_string(),
+            mode_label: manifest.mode_label.clone(),
+            scope: manifest.scope.clone(),
             operator_id: request.operator_id,
             note: manifest.note.clone(),
             reason: None,
@@ -273,6 +315,7 @@ pub fn enable(
             kill_switch_triggered: false,
             override_policy,
             baseline_policy: current_runtime,
+            expires_at: manifest.expires_at.clone(),
             affected_run_ids: Vec::new(),
         },
     )?;
@@ -286,9 +329,9 @@ pub fn disable(
     require_bootstrapped_access(workspace_root)?;
     validate_operator_id(&request.operator_id)?;
 
-    let mut manifest = load_manifest(workspace_root)?.unwrap_or_default();
+    let mut manifest = refresh_manifest_state(workspace_root)?;
     if !manifest.enabled {
-        anyhow::bail!("enterprise full autonomy is not enabled");
+        anyhow::bail!("God Mode is not enabled");
     }
 
     control::set_runtime_autonomy(workspace_root, &manifest.baseline_policy)?;
@@ -305,6 +348,8 @@ pub fn disable(
         EnterpriseAutonomyEvent {
             created_at: now,
             kind: "disabled".to_string(),
+            mode_label: manifest.mode_label.clone(),
+            scope: manifest.scope.clone(),
             operator_id: request.operator_id,
             note: manifest.note.clone(),
             reason: manifest.disable_reason.clone(),
@@ -312,6 +357,7 @@ pub fn disable(
             kill_switch_triggered: false,
             override_policy: manifest.override_policy.clone(),
             baseline_policy: manifest.baseline_policy.clone(),
+            expires_at: manifest.expires_at.clone(),
             affected_run_ids: Vec::new(),
         },
     )?;
@@ -325,9 +371,9 @@ pub fn kill_switch(
     require_bootstrapped_access(workspace_root)?;
     validate_operator_id(&request.operator_id)?;
 
-    let mut manifest = load_manifest(workspace_root)?.unwrap_or_default();
+    let mut manifest = refresh_manifest_state(workspace_root)?;
     if !manifest.enabled {
-        anyhow::bail!("enterprise full autonomy is not enabled");
+        anyhow::bail!("God Mode is not enabled");
     }
 
     let mut affected_run_ids = Vec::new();
@@ -359,6 +405,8 @@ pub fn kill_switch(
         EnterpriseAutonomyEvent {
             created_at: now,
             kind: "kill_switch".to_string(),
+            mode_label: manifest.mode_label.clone(),
+            scope: manifest.scope.clone(),
             operator_id: request.operator_id,
             note: manifest.note.clone(),
             reason,
@@ -366,6 +414,7 @@ pub fn kill_switch(
             kill_switch_triggered: true,
             override_policy: manifest.override_policy.clone(),
             baseline_policy: manifest.baseline_policy.clone(),
+            expires_at: manifest.expires_at.clone(),
             affected_run_ids,
         },
     )?;
@@ -373,7 +422,7 @@ pub fn kill_switch(
 }
 
 pub fn summary(workspace_root: &Path, limit: usize) -> Result<EnterpriseAutonomyReport> {
-    let manifest = load_manifest(workspace_root)?.unwrap_or_default();
+    let manifest = refresh_manifest_state(workspace_root)?;
     let access_boundary_active = enterprise_access::access_is_configured(workspace_root)?;
     let recent_events = recent_events(workspace_root, limit)?;
     let active_runs = summarize_active_runs(workspace_root, limit)?;
@@ -408,6 +457,8 @@ pub fn summary(workspace_root: &Path, limit: usize) -> Result<EnterpriseAutonomy
         "active"
     } else if manifest.kill_switch_triggered {
         "stopped"
+    } else if manifest.expired_at.is_some() {
+        "expired"
     } else {
         "ready"
     }
@@ -416,25 +467,46 @@ pub fn summary(workspace_root: &Path, limit: usize) -> Result<EnterpriseAutonomy
     let detail = if !access_boundary_active {
         "Enterprise access is not bootstrapped yet. Full autonomy remains unavailable until the enterprise operator boundary is configured.".to_string()
     } else if manifest.enabled {
+        let expiry_detail = manifest
+            .expires_at
+            .as_deref()
+            .map(|value| {
+                format!(" It is scheduled to expire at `{value}` unless disabled earlier.")
+            })
+            .unwrap_or_default();
         format!(
-            "Full autonomy is enabled by `{}` with autonomy `{}` and approval policy `{}`. The stronger lane stays reversible through explicit disable and kill-switch actions.",
+            "{} is enabled by `{}` with autonomy `{}` and approval policy `{}`. The stronger lane stays reversible through explicit disable, expiry, and kill-switch actions.{}",
+            manifest.mode_label,
             manifest.enabled_by.as_deref().unwrap_or("-"),
             manifest.override_policy.autonomy_level,
-            manifest.override_policy.approval_policy
+            manifest.override_policy.approval_policy,
+            expiry_detail
         )
     } else if manifest.kill_switch_triggered {
         format!(
-            "Full autonomy is currently stopped after a kill-switch action by `{}`. The runtime has been restored to the baseline autonomy policy.",
+            "{} is currently stopped after a kill-switch action by `{}`. The runtime has been restored to the baseline autonomy policy.",
+            manifest.mode_label,
             manifest.kill_switch_by.as_deref().unwrap_or("-")
         )
+    } else if manifest.expired_at.is_some() {
+        format!(
+            "{} expired at `{}` and the runtime has already been restored to the baseline autonomy policy.",
+            manifest.mode_label,
+            manifest.expired_at.as_deref().unwrap_or("-")
+        )
     } else {
-        "Full autonomy is currently disabled. Operators can enable it explicitly as a separate enterprise override without changing the default trust-first runtime.".to_string()
+        format!(
+            "{} is currently disabled. Operators can enable it explicitly as a separate enterprise override without changing the default trust-first runtime.",
+            manifest.mode_label
+        )
     };
 
     Ok(EnterpriseAutonomyReport {
         status,
         detail,
         access_boundary_active,
+        mode_label: manifest.mode_label.clone(),
+        scope: manifest.scope.clone(),
         manifest_path: enterprise_autonomy_path(workspace_root)
             .display()
             .to_string(),
@@ -453,6 +525,9 @@ pub fn summary(workspace_root: &Path, limit: usize) -> Result<EnterpriseAutonomy
         kill_switch_at: manifest.kill_switch_at,
         kill_switch_by: manifest.kill_switch_by,
         kill_switch_reason: manifest.kill_switch_reason,
+        expires_at: manifest.expires_at,
+        expired_at: manifest.expired_at,
+        expired_reason: manifest.expired_reason,
         governance_scope: "enterprise.full_autonomy.manage".to_string(),
         override_policy: manifest.override_policy,
         baseline_policy: manifest.baseline_policy,
@@ -473,6 +548,7 @@ fn summarize_recent_runs(
         }
         runs.push(EnterpriseAutonomyRunSummary {
             run_id: summary.run_id,
+            mode_label: default_mode_label(),
             created_at: summary.created_at,
             status: summary.lifecycle_state,
             approval_policy: record.routing.autonomy.approval_policy,
@@ -504,6 +580,7 @@ fn summarize_active_runs(
             .unwrap_or_default();
         runs.push(EnterpriseAutonomyRunSummary {
             run_id: run.run_id,
+            mode_label: default_mode_label(),
             created_at: run.created_at,
             status: run.lifecycle.state,
             approval_policy: autonomy.approval_policy,
@@ -575,6 +652,69 @@ fn validate_operator_id(operator_id: &str) -> Result<()> {
     Ok(())
 }
 
+fn expiry_from_ttl(ttl_secs: Option<u64>) -> Option<String> {
+    ttl_secs.and_then(|ttl_secs| {
+        if ttl_secs == 0 {
+            None
+        } else {
+            Some(
+                (Utc::now() + Duration::seconds(ttl_secs.min(i64::MAX as u64) as i64)).to_rfc3339(),
+            )
+        }
+    })
+}
+
+fn parse_timestamp(value: &str) -> Result<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(value)
+        .map(|value| value.with_timezone(&Utc))
+        .map_err(|error| anyhow::anyhow!("invalid RFC3339 timestamp '{value}': {error}"))
+}
+
+fn refresh_manifest_state(workspace_root: &Path) -> Result<EnterpriseAutonomyManifest> {
+    let Some(mut manifest) = load_manifest(workspace_root)? else {
+        return Ok(EnterpriseAutonomyManifest::default());
+    };
+
+    let Some(expires_at) = manifest.expires_at.as_deref() else {
+        return Ok(manifest);
+    };
+    if !manifest.enabled || parse_timestamp(expires_at)? > Utc::now() {
+        return Ok(manifest);
+    }
+
+    control::set_runtime_autonomy(workspace_root, &manifest.baseline_policy)?;
+    let now = Utc::now().to_rfc3339();
+    let reason = Some("God Mode expired after its TTL boundary.".to_string());
+    manifest.enabled = false;
+    manifest.updated_at = Some(now.clone());
+    manifest.disabled_at = Some(now.clone());
+    manifest.disabled_by = Some("system".to_string());
+    manifest.disable_reason = reason.clone();
+    manifest.expired_at = Some(now.clone());
+    manifest.expired_reason = reason.clone();
+
+    save_manifest(workspace_root, &manifest)?;
+    append_event(
+        workspace_root,
+        EnterpriseAutonomyEvent {
+            created_at: now,
+            kind: "expired".to_string(),
+            mode_label: manifest.mode_label.clone(),
+            scope: manifest.scope.clone(),
+            operator_id: "system".to_string(),
+            note: manifest.note.clone(),
+            reason,
+            enabled: false,
+            kill_switch_triggered: false,
+            override_policy: manifest.override_policy.clone(),
+            baseline_policy: manifest.baseline_policy.clone(),
+            expires_at: manifest.expires_at.clone(),
+            affected_run_ids: Vec::new(),
+        },
+    )?;
+    Ok(manifest)
+}
+
 fn trim_optional(value: Option<String>) -> Option<String> {
     value
         .map(|value| value.trim().to_string())
@@ -612,11 +752,12 @@ fn append_event(workspace_root: &Path, event: EnterpriseAutonomyEvent) -> Result
 mod tests {
     use super::{
         EnterpriseAutonomyDisableRequest, EnterpriseAutonomyEnableRequest,
-        EnterpriseAutonomyKillSwitchRequest, disable, enable, kill_switch, load_manifest, summary,
+        EnterpriseAutonomyKillSwitchRequest, EnterpriseAutonomyManifest, default_override_policy,
+        disable, enable, kill_switch, load_manifest, save_manifest, summary,
     };
     use crate::commands::{enterprise_access, orchestrate};
     use anyhow::Result;
-    use chrono::Utc;
+    use chrono::{Duration, Utc};
     use tempfile::tempdir;
 
     fn bootstrap(root: &std::path::Path) -> Result<()> {
@@ -677,6 +818,7 @@ mod tests {
                 max_iterations: Some(20),
                 max_runtime_secs: Some(2400),
                 max_lesson_hints: Some(9),
+                ttl_secs: None,
             },
         )?;
         assert!(manifest.enabled);
@@ -713,6 +855,7 @@ mod tests {
                 max_iterations: None,
                 max_runtime_secs: None,
                 max_lesson_hints: None,
+                ttl_secs: None,
             },
         )?;
 
@@ -774,15 +917,43 @@ mod tests {
                 max_iterations: None,
                 max_runtime_secs: None,
                 max_lesson_hints: None,
+                ttl_secs: None,
             },
         )?;
 
         let report = summary(root.path(), 5)?;
         assert!(report.enabled);
         assert_eq!(report.status, "active");
+        assert_eq!(report.mode_label, "God Mode");
         assert_eq!(report.governance_scope, "enterprise.full_autonomy.manage");
         assert_eq!(report.recent_events.len(), 1);
         assert!(load_manifest(root.path())?.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn summary_expires_god_mode_and_restores_baseline() -> Result<()> {
+        let root = tempdir().expect("tempdir");
+        bootstrap(root.path())?;
+        let mut manifest = EnterpriseAutonomyManifest::default();
+        manifest.enabled = true;
+        manifest.updated_at = Some(Utc::now().to_rfc3339());
+        manifest.enabled_at = manifest.updated_at.clone();
+        manifest.enabled_by = Some("owner-1".to_string());
+        manifest.override_policy = default_override_policy();
+        manifest.baseline_policy = crate::commands::control::AutonomyPolicy::default();
+        manifest.expires_at = Some((Utc::now() - Duration::seconds(1)).to_rfc3339());
+        save_manifest(root.path(), &manifest)?;
+        crate::commands::control::set_runtime_autonomy(root.path(), &manifest.override_policy)?;
+
+        let report = summary(root.path(), 5)?;
+        assert_eq!(report.status, "expired");
+        assert!(!report.enabled);
+        assert!(report.expired_at.is_some());
+        assert_eq!(
+            crate::commands::control::runtime_autonomy_policy(root.path())?.approval_policy,
+            crate::commands::control::AutonomyPolicy::default().approval_policy
+        );
         Ok(())
     }
 }

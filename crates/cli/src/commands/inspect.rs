@@ -2285,7 +2285,7 @@ mod tests {
             Some("acme")
         );
         assert!(report.detail.contains(
-            "manage policy, identity, governance, audit export, supervised-runtime controls, and the explicit full-autonomy lane"
+            "manage policy, identity, governance, audit export, supervised-runtime controls, and the explicit God Mode lane"
         ));
         assert!(report.access.governance.dual_approval_rule_count >= 1);
         assert_eq!(

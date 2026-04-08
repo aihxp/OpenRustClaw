@@ -2789,6 +2789,8 @@ enum ControlAction {
         autonomy_level: Option<String>,
         #[arg(long)]
         execution_mode: Option<String>,
+        #[arg(long, default_value_t = false)]
+        god_mode_origin: bool,
     },
     /// Approve, reject, or supersede a learning candidate
     ReviewCandidate {
@@ -2815,6 +2817,14 @@ enum ControlAction {
         id: String,
         #[arg(long)]
         rolled_back_by: Option<String>,
+        #[arg(long)]
+        reason: Option<String>,
+    },
+    /// Quarantine a learning candidate and contain any promoted lesson
+    QuarantineLearningCandidate {
+        id: String,
+        #[arg(long)]
+        quarantined_by: Option<String>,
         #[arg(long)]
         reason: Option<String>,
     },
@@ -2845,6 +2855,8 @@ enum ControlAction {
         source_detail: Option<String>,
         #[arg(long)]
         namespace: Option<String>,
+        #[arg(long, default_value_t = false)]
+        god_mode_origin: bool,
     },
     /// Approve, reject, or supersede a skill proposal
     ReviewSkillProposal {
@@ -2877,6 +2889,14 @@ enum ControlAction {
         id: String,
         #[arg(long)]
         rolled_back_by: Option<String>,
+        #[arg(long)]
+        reason: Option<String>,
+    },
+    /// Quarantine a skill proposal and contain any installed skill
+    QuarantineSkillProposal {
+        id: String,
+        #[arg(long)]
+        quarantined_by: Option<String>,
         #[arg(long)]
         reason: Option<String>,
     },
@@ -4659,6 +4679,7 @@ async fn main() -> Result<()> {
                 provider,
                 autonomy_level,
                 execution_mode,
+                god_mode_origin,
             } => {
                 let workspace_root = std::env::current_dir()?;
                 commands::control::queue_learning_candidate_cli(
@@ -4679,6 +4700,7 @@ async fn main() -> Result<()> {
                             detail: source_detail,
                         },
                         evidence: vec![],
+                        god_mode_origin,
                         task_id,
                         category,
                         claw_id,
@@ -4742,6 +4764,22 @@ async fn main() -> Result<()> {
                 )
                 .await
             }
+            ControlAction::QuarantineLearningCandidate {
+                id,
+                quarantined_by,
+                reason,
+            } => {
+                let workspace_root = std::env::current_dir()?;
+                commands::control::quarantine_learning_candidate_cli(
+                    &workspace_root,
+                    &id,
+                    &openrustclaw_core::types::LearningCandidateQuarantineRequest {
+                        quarantined_by,
+                        reason,
+                    },
+                )
+                .await
+            }
             ControlAction::SkillProposals {
                 namespace,
                 status,
@@ -4769,6 +4807,7 @@ async fn main() -> Result<()> {
                 source_id,
                 source_detail,
                 namespace,
+                god_mode_origin,
             } => {
                 let workspace_root = std::env::current_dir()?;
                 commands::control::queue_skill_proposal_cli(
@@ -4786,6 +4825,7 @@ async fn main() -> Result<()> {
                             source_id,
                             detail: source_detail,
                         },
+                        god_mode_origin,
                     },
                 )
                 .await
@@ -4845,6 +4885,22 @@ async fn main() -> Result<()> {
                     &id,
                     &openrustclaw_core::types::SkillProposalRollbackRequest {
                         rolled_back_by,
+                        reason,
+                    },
+                )
+                .await
+            }
+            ControlAction::QuarantineSkillProposal {
+                id,
+                quarantined_by,
+                reason,
+            } => {
+                let workspace_root = std::env::current_dir()?;
+                commands::control::quarantine_skill_proposal_cli(
+                    &workspace_root,
+                    &id,
+                    &openrustclaw_core::types::SkillProposalQuarantineRequest {
+                        quarantined_by,
                         reason,
                     },
                 )

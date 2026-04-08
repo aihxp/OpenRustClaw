@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.43 Learning Loop, Memory Depth, and God Mode (Shipped: 2026-04-08)
+
+**Phases completed:** 5 phases, 10 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.43-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Replaced opaque recall ranking with explainable hybrid retrieval and bounded recall packs that stay inside the recall-only memory contract.
+- Added durable structured memory artifacts for user, operator, project, and archive lanes with bounded projection into reserved active-memory slots.
+- Added a review-first learning loop and proposal-first skill reuse path so successful work becomes inspectable candidates and proposals before promotion.
+- Added an explicit God Mode operator lane with TTL-backed expiry, baseline restore, visible audit labeling, and quarantine-capable learned artifacts.
+
+---
+
 ## v1.42 Onboarding Primary LLM Selection (Shipped: 2026-03-31)
 
 **Phases completed:** 4 phases, 4 plans, 0 tasks

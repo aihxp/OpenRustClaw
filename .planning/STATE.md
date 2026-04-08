@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.43
 milestone_name: Learning Loop, Memory Depth, and God Mode
-current_phase: 185
-current_phase_name: God Mode Overlay, Audit, and Recovery
+current_phase: none
+current_phase_name: milestone complete
 current_plan: none
-status: phase complete
-stopped_at: Phase 184 completed with durable skill proposals, inactive diffable proposal artifacts, CLI and MCP proposal lifecycle flows, and a workspace-root-aware install and rollback bridge; Phase 185 is ready for discuss/planning.
-last_updated: "2026-04-08T09:15:00Z"
+status: milestone complete
+stopped_at: Phase 185 completed with explicit God Mode TTL and restore behavior, durable God Mode provenance on learned artifacts, and quarantine controls across CLI, HTTP control, and MCP surfaces. Milestone v1.43 is complete and ready for archive.
+last_updated: "2026-04-08T14:30:00Z"
 last_activity: 2026-04-08
 progress:
   total_phases: 5
-  completed_phases: 4
-  total_plans: 8
-  completed_plans: 8
-  percent: 80
+  completed_phases: 5
+  total_plans: 10
+  completed_plans: 10
+  percent: 100
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-07)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** v1.43 is now organized as Phases 181-185 across retrieval, structured memory artifacts, reviewable learning, skill improvement, and God Mode.
+**Current focus:** v1.43 is shipped; the next planning action is milestone archive or a new milestone.
 
 ## Current Position
 
-Current Phase: 185
-Current Phase Name: God Mode Overlay, Audit, and Recovery
+Current Phase: none
+Current Phase Name: milestone complete
 Total Phases: 5
 Current Plan: none
 Total Plans in Phase: 2
-Status: phase complete
+Status: milestone complete
 Last activity: 2026-04-08
 
 Phase: 5 of 5
 Plan: 2 of 2
-Progress: [########--] 80%
+Progress: [##########] 100%
 
 ## Performance Metrics
 
@@ -65,6 +65,7 @@ Recent decisions affecting current work:
 - Phase 182 now stores structured user/operator/project/archive artifacts durably, projects only reserved typed slots into core memory, and exposes correction/deactivation/removal through CLI and MCP surfaces.
 - Phase 183 now routes reflections into a durable learning-candidate queue, requires explicit review for lesson promotion, and keeps rollback history linked to the active lesson lane.
 - Phase 184 now routes reusable skill improvement through a durable proposal queue, inactive proposal artifacts, compile-preview verification, and a workspace-root-aware install and rollback bridge.
+- Phase 185 now treats God Mode as a named stronger lane with TTL-backed expiry, baseline restore, visible audit labeling, and quarantine-capable learned artifacts.
 
 ### Pending Todos
 
@@ -72,11 +73,10 @@ Recent decisions affecting current work:
 
 ### Blockers/Concerns
 
-- v1.0 archive notes missing phase verification artifacts as lifecycle debt already captured in the archive.
-- Phase 185 must keep God Mode explicit, quarantinable, and baseline-restorable so the new learned-skill and learned-guidance lanes do not silently inherit full-power execution.
+- None.
 
 ## Session Continuity
 
 Last session: 2026-04-08
-Stopped at: Phase 184 completed with durable skill proposals, inactive diffable proposal artifacts, CLI and MCP proposal lifecycle flows, and a workspace-root-aware install and rollback bridge; Phase 185 is ready for discuss/planning.
+Stopped at: Phase 185 completed with explicit God Mode TTL and restore behavior, durable God Mode provenance on learned artifacts, and quarantine controls across CLI, HTTP control, and MCP surfaces. Milestone v1.43 is complete and ready for archive.
 Resume file: None

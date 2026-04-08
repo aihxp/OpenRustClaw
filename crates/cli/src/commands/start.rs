@@ -79,12 +79,12 @@ use openrustclaw_core::error::{ChannelError as CoreChannelError, Error as CoreEr
 use openrustclaw_core::traits::{Channel, LlmProvider};
 use openrustclaw_core::types::{
     CompletionRequest, CompletionResponse, Event, LearningCandidateCreateRequest,
-    LearningCandidatePromotionRequest, LearningCandidateReviewRequest,
-    LearningCandidateRollbackRequest, LearningCandidateSourceRef, MemoryEntry, MemoryQuery,
-    MemorySource, MemoryType, Message, OutgoingMessage, Platform, SessionType,
-    SkillProposalCreateRequest, SkillProposalInstallRequest, SkillProposalReviewRequest,
-    SkillProposalRollbackRequest, SkillProposalSourceRef, SkillProposalVerifyRequest, SourceType,
-    StreamChunk, ToolFormat,
+    LearningCandidatePromotionRequest, LearningCandidateQuarantineRequest,
+    LearningCandidateReviewRequest, LearningCandidateRollbackRequest, LearningCandidateSourceRef,
+    MemoryEntry, MemoryQuery, MemorySource, MemoryType, Message, OutgoingMessage, Platform,
+    SessionType, SkillProposalCreateRequest, SkillProposalInstallRequest,
+    SkillProposalQuarantineRequest, SkillProposalReviewRequest, SkillProposalRollbackRequest,
+    SkillProposalSourceRef, SkillProposalVerifyRequest, SourceType, StreamChunk, ToolFormat,
 };
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
@@ -3500,6 +3500,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             post(rollback_learning_candidate_handler),
         )
         .route(
+            "/control/learning/candidates/{id}/quarantine",
+            post(quarantine_learning_candidate_handler),
+        )
+        .route(
             "/control/skills/proposals",
             get(list_skill_proposals_handler),
         )
@@ -3526,6 +3530,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         .route(
             "/control/skills/proposals/{id}/rollback",
             post(rollback_skill_proposal_handler),
+        )
+        .route(
+            "/control/skills/proposals/{id}/quarantine",
+            post(quarantine_skill_proposal_handler),
         )
         .route("/control/browser/navigate", post(browser_navigate_handler))
         .route(
@@ -5107,6 +5115,8 @@ struct EnterpriseAutonomyEnablePayload {
     max_runtime_secs: Option<u64>,
     #[serde(default)]
     max_lesson_hints: Option<usize>,
+    #[serde(default)]
+    ttl_secs: Option<u64>,
 }
 
 #[derive(serde::Deserialize)]
@@ -8386,6 +8396,7 @@ async fn enterprise_autonomy_enable_handler(
             max_iterations: payload.max_iterations,
             max_runtime_secs: payload.max_runtime_secs,
             max_lesson_hints: payload.max_lesson_hints,
+            ttl_secs: payload.ttl_secs,
         },
     );
     record_operator_tool_result("enterprise.autonomy.enable", started_at, &result);
@@ -9429,6 +9440,8 @@ struct QueueLearningCandidatePayload {
     autonomy_level: Option<String>,
     #[serde(default)]
     execution_mode: Option<String>,
+    #[serde(default)]
+    god_mode_origin: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -9459,6 +9472,14 @@ struct RollbackLearningCandidatePayload {
 }
 
 #[derive(Debug, Deserialize)]
+struct QuarantineLearningCandidatePayload {
+    #[serde(default)]
+    quarantined_by: Option<String>,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct SkillProposalsQuery {
     #[serde(default)]
     namespace: Option<String>,
@@ -9482,6 +9503,8 @@ struct QueueSkillProposalPayload {
     source_detail: Option<String>,
     #[serde(default)]
     namespace: Option<String>,
+    #[serde(default)]
+    god_mode_origin: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -9513,6 +9536,14 @@ struct InstallSkillProposalPayload {
 struct RollbackSkillProposalPayload {
     #[serde(default)]
     rolled_back_by: Option<String>,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct QuarantineSkillProposalPayload {
+    #[serde(default)]
+    quarantined_by: Option<String>,
     #[serde(default)]
     reason: Option<String>,
 }
@@ -9643,6 +9674,7 @@ async fn queue_learning_candidate_handler(
                 detail: payload.source_detail,
             },
             evidence: vec![],
+            god_mode_origin: payload.god_mode_origin.unwrap_or(false),
             task_id: payload.task_id,
             category: payload.category,
             claw_id: payload.claw_id,
@@ -9760,6 +9792,35 @@ async fn rollback_learning_candidate_handler(
     }
 }
 
+async fn quarantine_learning_candidate_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<QuarantineLearningCandidatePayload>,
+) -> impl IntoResponse {
+    let service = learning_review_service_from_state(&state);
+    match service
+        .quarantine(
+            &id,
+            &LearningCandidateQuarantineRequest {
+                quarantined_by: payload.quarantined_by,
+                reason: payload.reason,
+            },
+        )
+        .await
+    {
+        Ok(candidate) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "candidate": candidate })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
 async fn list_skill_proposals_handler(
     State(state): State<RuntimeControlState>,
     Query(query): Query<SkillProposalsQuery>,
@@ -9839,6 +9900,7 @@ async fn queue_skill_proposal_handler(
                     source_id: payload.source_id,
                     detail: payload.source_detail,
                 },
+                god_mode_origin: payload.god_mode_origin.unwrap_or(false),
             })
             .await
             .map_err(|error| error.to_string())?;
@@ -9957,6 +10019,35 @@ async fn rollback_skill_proposal_handler(
             &id,
             &SkillProposalRollbackRequest {
                 rolled_back_by: payload.rolled_back_by,
+                reason: payload.reason,
+            },
+        )
+        .await
+    {
+        Ok(proposal) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "proposal": proposal })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn quarantine_skill_proposal_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<QuarantineSkillProposalPayload>,
+) -> impl IntoResponse {
+    let service = skill_proposal_service_from_state(&state);
+    match service
+        .quarantine(
+            &id,
+            &SkillProposalQuarantineRequest {
+                quarantined_by: payload.quarantined_by,
                 reason: payload.reason,
             },
         )
@@ -11299,7 +11390,8 @@ fn build_mcp_server(
                         "model_profile_id": {"type": "string"},
                         "provider": {"type": "string"},
                         "autonomy_level": {"type": "string"},
-                        "execution_mode": {"type": "string"}
+                        "execution_mode": {"type": "string"},
+                        "god_mode_origin": {"type": "boolean"}
                     },
                     "required": ["kind", "signal", "recommendation", "source_id"]
                 }),
@@ -11346,6 +11438,19 @@ fn build_mcp_server(
                 }),
             },
             McpServerTool {
+                name: "quarantine_learning_candidate".to_string(),
+                description: "Quarantine a learning candidate and contain any promoted lesson.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "quarantined_by": {"type": "string"},
+                        "reason": {"type": "string"}
+                    },
+                    "required": ["id"]
+                }),
+            },
+            McpServerTool {
                 name: "list_skill_proposals".to_string(),
                 description: "List reusable skill proposals and their review and verification state.".to_string(),
                 input_schema: serde_json::json!({
@@ -11370,7 +11475,8 @@ fn build_mcp_server(
                         "rationale": {"type": "string"},
                         "source_kind": {"type": "string"},
                         "source_id": {"type": "string"},
-                        "source_detail": {"type": "string"}
+                        "source_detail": {"type": "string"},
+                        "god_mode_origin": {"type": "boolean"}
                     },
                     "required": ["skill_name", "summary", "body", "source_id"]
                 }),
@@ -11423,6 +11529,19 @@ fn build_mcp_server(
                     "properties": {
                         "id": {"type": "string"},
                         "rolled_back_by": {"type": "string"},
+                        "reason": {"type": "string"}
+                    },
+                    "required": ["id"]
+                }),
+            },
+            McpServerTool {
+                name: "quarantine_skill_proposal".to_string(),
+                description: "Quarantine a skill proposal and contain any installed skill.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "quarantined_by": {"type": "string"},
                         "reason": {"type": "string"}
                     },
                     "required": ["id"]
@@ -12535,6 +12654,7 @@ fn build_mcp_server(
                             detail: request.source_detail,
                         },
                         evidence: vec![],
+                        god_mode_origin: request.god_mode_origin.unwrap_or(false),
                         task_id: request.task_id,
                         category: request.category,
                         claw_id: request.claw_id,
@@ -12646,6 +12766,37 @@ fn build_mcp_server(
         ),
     );
 
+    let pool_for_quarantine_learning_candidate = pool.clone();
+    let workspace_root_for_quarantine_learning_candidate = workspace_root.clone();
+    server.register_handler(
+        "quarantine_learning_candidate",
+        traced_mcp_handler(
+            langsmith.clone(),
+            "quarantine_learning_candidate",
+            move |args| {
+                let request: McpQuarantineLearningCandidateArgs = parse_tool_args(args)?;
+                let pool = pool_for_quarantine_learning_candidate.clone();
+                let workspace_root = workspace_root_for_quarantine_learning_candidate.clone();
+                block_on_tool(async move {
+                    let service = LearningReviewService::new(
+                        control::WorkspaceLearningReviewSource::from_pool(workspace_root, pool),
+                    );
+                    let candidate = service
+                        .quarantine(
+                            &request.id,
+                            &LearningCandidateQuarantineRequest {
+                                quarantined_by: request.quarantined_by,
+                                reason: request.reason,
+                            },
+                        )
+                        .await
+                        .map_err(|error| mcp_tool_error(error.to_string()))?;
+                    Ok(serde_json::json!({ "candidate": candidate }))
+                })
+            },
+        ),
+    );
+
     let pool_for_list_skill_proposals = pool.clone();
     let workspace_root_for_list_skill_proposals = workspace_root.clone();
     server.register_handler(
@@ -12704,6 +12855,7 @@ fn build_mcp_server(
                             source_id: request.source_id,
                             detail: request.source_detail,
                         },
+                        god_mode_origin: request.god_mode_origin.unwrap_or(false),
                     })
                     .await
                     .map_err(|error| mcp_tool_error(error.to_string()))?;
@@ -12820,6 +12972,37 @@ fn build_mcp_server(
                 Ok(serde_json::json!({ "proposal": proposal }))
             })
         }),
+    );
+
+    let pool_for_quarantine_skill_proposal = pool.clone();
+    let workspace_root_for_quarantine_skill_proposal = workspace_root.clone();
+    server.register_handler(
+        "quarantine_skill_proposal",
+        traced_mcp_handler(
+            langsmith.clone(),
+            "quarantine_skill_proposal",
+            move |args| {
+                let request: McpQuarantineSkillProposalArgs = parse_tool_args(args)?;
+                let pool = pool_for_quarantine_skill_proposal.clone();
+                let workspace_root = workspace_root_for_quarantine_skill_proposal.clone();
+                block_on_tool(async move {
+                    let service = SkillProposalService::new(
+                        control::WorkspaceSkillProposalSource::from_pool(workspace_root, pool),
+                    );
+                    let proposal = service
+                        .quarantine(
+                            &request.id,
+                            &SkillProposalQuarantineRequest {
+                                quarantined_by: request.quarantined_by,
+                                reason: request.reason,
+                            },
+                        )
+                        .await
+                        .map_err(|error| mcp_tool_error(error.to_string()))?;
+                    Ok(serde_json::json!({ "proposal": proposal }))
+                })
+            },
+        ),
     );
 
     let session_store_for_list = session_store.clone();
@@ -14625,6 +14808,7 @@ struct McpQueueLearningCandidateArgs {
     provider: Option<String>,
     autonomy_level: Option<String>,
     execution_mode: Option<String>,
+    god_mode_origin: Option<bool>,
 }
 
 #[derive(serde::Deserialize)]
@@ -14651,6 +14835,13 @@ struct McpRollbackLearningCandidateArgs {
 }
 
 #[derive(serde::Deserialize, Default)]
+struct McpQuarantineLearningCandidateArgs {
+    id: String,
+    quarantined_by: Option<String>,
+    reason: Option<String>,
+}
+
+#[derive(serde::Deserialize, Default)]
 struct McpListSkillProposalsArgs {
     namespace: Option<String>,
     status: Option<String>,
@@ -14667,6 +14858,7 @@ struct McpQueueSkillProposalArgs {
     source_kind: Option<String>,
     source_id: String,
     source_detail: Option<String>,
+    god_mode_origin: Option<bool>,
 }
 
 #[derive(serde::Deserialize)]
@@ -14695,6 +14887,13 @@ struct McpInstallSkillProposalArgs {
 struct McpRollbackSkillProposalArgs {
     id: String,
     rolled_back_by: Option<String>,
+    reason: Option<String>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct McpQuarantineSkillProposalArgs {
+    id: String,
+    quarantined_by: Option<String>,
     reason: Option<String>,
 }
 

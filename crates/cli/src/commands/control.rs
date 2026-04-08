@@ -14,10 +14,11 @@ use openrustclaw_core::config::AppConfig;
 use openrustclaw_core::error::{Error as CoreError, Result as CoreResult};
 use openrustclaw_core::types::{
     LearningCandidate, LearningCandidateCreateRequest, LearningCandidateImpact,
-    LearningCandidatePromotionRequest, LearningCandidateReviewAction,
-    LearningCandidateReviewRequest, LearningCandidateRollbackRequest, LearningCandidateSourceKind,
-    LearningCandidateStatus, SkillProposal, SkillProposalCreateRequest,
-    SkillProposalInstallRequest, SkillProposalReviewAction, SkillProposalReviewRequest,
+    LearningCandidatePromotionRequest, LearningCandidateQuarantineRequest,
+    LearningCandidateReviewAction, LearningCandidateReviewRequest,
+    LearningCandidateRollbackRequest, LearningCandidateSourceKind, LearningCandidateStatus,
+    SkillProposal, SkillProposalCreateRequest, SkillProposalInstallRequest,
+    SkillProposalQuarantineRequest, SkillProposalReviewAction, SkillProposalReviewRequest,
     SkillProposalRollbackRequest, SkillProposalSourceKind, SkillProposalStatus,
     SkillProposalVerificationReport, SkillProposalVerificationStatus, SkillProposalVerifyRequest,
     SkillSource,
@@ -1622,6 +1623,17 @@ impl LearningReviewSource for WorkspaceLearningReviewSource {
             .await
     }
 
+    async fn mark_learning_candidate_quarantined(
+        &self,
+        id: &str,
+        actor: Option<&str>,
+        reason: Option<&str>,
+    ) -> CoreResult<LearningCandidate> {
+        self.learning_store
+            .mark_quarantined(id, actor, reason)
+            .await
+    }
+
     async fn create_lesson(&self, request: &AutonomyLessonRequest) -> CoreResult<()> {
         create_lesson(
             Some(
@@ -1748,6 +1760,14 @@ impl SkillProposalSource for WorkspaceSkillProposalSource {
         self.proposal_store.get_proposal(id).await
     }
 
+    async fn learning_candidate_god_mode_origin(&self, id: &str) -> CoreResult<bool> {
+        Ok(SqliteLearningStore::new(self.pool.clone())
+            .get_candidate(id)
+            .await?
+            .map(|candidate| candidate.god_mode_origin)
+            .unwrap_or(false))
+    }
+
     async fn create_skill_proposal(&self, proposal: &SkillProposal) -> CoreResult<SkillProposal> {
         self.proposal_store.create_proposal(proposal).await
     }
@@ -1792,6 +1812,17 @@ impl SkillProposalSource for WorkspaceSkillProposalSource {
     ) -> CoreResult<SkillProposal> {
         self.proposal_store
             .mark_rolled_back(id, actor, reason)
+            .await
+    }
+
+    async fn mark_skill_proposal_quarantined(
+        &self,
+        id: &str,
+        actor: Option<&str>,
+        reason: Option<&str>,
+    ) -> CoreResult<SkillProposal> {
+        self.proposal_store
+            .mark_quarantined(id, actor, reason)
             .await
     }
 
@@ -2007,10 +2038,25 @@ pub async fn list_learning_candidates_cli(
         println!("  namespace: {}", candidate.namespace);
         println!("  impact: {}", learning_impact_label(candidate.impact));
         println!(
+            "  lane: {}",
+            if candidate.god_mode_origin {
+                "God Mode"
+            } else {
+                "trust-first"
+            }
+        );
+        println!(
             "  source: {}:{}",
             learning_source_kind_label(candidate.source.kind),
             candidate.source.source_id
         );
+        if let Some(quarantined_at) = candidate.quarantined_at {
+            println!(
+                "  quarantine: {} by {}",
+                quarantined_at.to_rfc3339(),
+                candidate.quarantined_by.as_deref().unwrap_or("-")
+            );
+        }
         if let Some(lesson_id) = candidate.promoted_lesson_id.as_deref() {
             println!("  lesson: {lesson_id}");
         }
@@ -2087,6 +2133,28 @@ pub async fn rollback_learning_candidate_cli(
     Ok(())
 }
 
+pub async fn quarantine_learning_candidate_cli(
+    workspace_root: &Path,
+    id: &str,
+    request: &LearningCandidateQuarantineRequest,
+) -> Result<()> {
+    let service = learning_review_service_for_workspace(workspace_root).await?;
+    let candidate = service
+        .quarantine(id, request)
+        .await
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    println!(
+        "Quarantined learning candidate {}{}",
+        candidate.id,
+        if candidate.god_mode_origin {
+            " (God Mode)"
+        } else {
+            ""
+        }
+    );
+    Ok(())
+}
+
 pub async fn list_skill_proposals_cli(
     workspace_root: &Path,
     namespace: Option<&str>,
@@ -2112,11 +2180,26 @@ pub async fn list_skill_proposals_cli(
         );
         println!("  namespace: {}", proposal.namespace);
         println!(
+            "  lane: {}",
+            if proposal.god_mode_origin {
+                "God Mode"
+            } else {
+                "trust-first"
+            }
+        );
+        println!(
             "  source: {}:{}",
             skill_proposal_source_kind_label(proposal.source.kind),
             proposal.source.source_id
         );
         println!("  artifact: {}", proposal.artifact_path);
+        if let Some(quarantined_at) = proposal.quarantined_at {
+            println!(
+                "  quarantine: {} by {}",
+                quarantined_at.to_rfc3339(),
+                proposal.quarantined_by.as_deref().unwrap_or("-")
+            );
+        }
         if let Some(installed_skill_name) = proposal.installed_skill_name.as_deref() {
             println!("  installed: {installed_skill_name}");
         }
@@ -2204,6 +2287,28 @@ pub async fn rollback_skill_proposal_cli(
         "Rolled back skill proposal {} to {}",
         proposal.id,
         skill_proposal_status_label(proposal.status)
+    );
+    Ok(())
+}
+
+pub async fn quarantine_skill_proposal_cli(
+    workspace_root: &Path,
+    id: &str,
+    request: &SkillProposalQuarantineRequest,
+) -> Result<()> {
+    let service = skill_proposal_service_for_workspace(workspace_root).await?;
+    let proposal = service
+        .quarantine(id, request)
+        .await
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    println!(
+        "Quarantined skill proposal {}{}",
+        proposal.id,
+        if proposal.god_mode_origin {
+            " (God Mode)"
+        } else {
+            ""
+        }
     );
     Ok(())
 }

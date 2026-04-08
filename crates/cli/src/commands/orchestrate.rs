@@ -1796,6 +1796,7 @@ pub async fn promote_reflection_candidate(
                 detail: Some(source),
             },
             evidence: vec![],
+            god_mode_origin: run.routing.autonomy.autonomy_level == "yolo",
             task_id: run.request.task_id.clone(),
             category,
             claw_id,

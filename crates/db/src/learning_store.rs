@@ -108,11 +108,12 @@ impl SqliteLearningStore {
             r#"
             INSERT INTO learning_candidates (
                 id, namespace, kind, signal, recommendation, rationale, confidence, impact, status,
-                source_kind, source_id, source_detail, review_note, reviewed_by, task_id, category,
-                claw_id, model_profile_id, provider, autonomy_level, execution_mode, promoted_lesson_id,
-                created_at, updated_at, reviewed_at, rolled_back_at
+                source_kind, source_id, source_detail, review_note, reviewed_by, god_mode_origin,
+                task_id, category, claw_id, model_profile_id, provider, autonomy_level, execution_mode,
+                promoted_lesson_id, created_at, updated_at, reviewed_at, quarantined_at, quarantined_by,
+                quarantine_reason, rolled_back_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending_review', ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL, NULL)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending_review', ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL, NULL, NULL, NULL, NULL)
             "#,
         )
         .bind(&id)
@@ -126,6 +127,9 @@ impl SqliteLearningStore {
         .bind(Self::source_kind_to_string(request.source.kind))
         .bind(&request.source.source_id)
         .bind(request.source.detail.as_deref())
+        .bind(i64::from(
+            request.god_mode_origin || request.autonomy_level.as_deref() == Some("yolo"),
+        ))
         .bind(request.task_id.as_deref())
         .bind(request.category.as_deref())
         .bind(request.claw_id.as_deref())
@@ -325,6 +329,75 @@ impl SqliteLearningStore {
         })
     }
 
+    pub async fn mark_quarantined(
+        &self,
+        id: &str,
+        actor: Option<&str>,
+        reason: Option<&str>,
+    ) -> Result<LearningCandidate> {
+        let current = self.get_candidate(id).await?.ok_or_else(|| {
+            Error::Database(DatabaseError::NotFound {
+                entity: "LearningCandidate".to_string(),
+                id: id.to_string(),
+            })
+        })?;
+        let now = Utc::now().to_rfc3339();
+        let status = if current.promoted_lesson_id.is_some() {
+            "rolled_back"
+        } else {
+            Self::status_to_string(current.status)
+        };
+        sqlx::query(
+            r#"
+            UPDATE learning_candidates
+            SET status = ?,
+                review_note = COALESCE(?, review_note),
+                reviewed_by = COALESCE(?, reviewed_by),
+                updated_at = ?,
+                quarantined_at = ?,
+                quarantined_by = ?,
+                quarantine_reason = ?,
+                rolled_back_at = CASE
+                    WHEN promoted_lesson_id IS NOT NULL THEN COALESCE(rolled_back_at, ?)
+                    ELSE rolled_back_at
+                END
+            WHERE id = ?
+            "#,
+        )
+        .bind(status)
+        .bind(reason)
+        .bind(actor)
+        .bind(&now)
+        .bind(&now)
+        .bind(actor)
+        .bind(reason)
+        .bind(&now)
+        .bind(id)
+        .execute(&self.pool)
+        .await
+        .map_err(|error| {
+            Error::Database(DatabaseError::Query(format!(
+                "Failed to quarantine learning candidate: {error}"
+            )))
+        })?;
+
+        self.insert_history(
+            id,
+            "quarantined",
+            current.promoted_lesson_id.as_deref(),
+            actor,
+            reason,
+        )
+        .await?;
+
+        self.get_candidate(id).await?.ok_or_else(|| {
+            Error::Database(DatabaseError::NotFound {
+                entity: "LearningCandidate".to_string(),
+                id: id.to_string(),
+            })
+        })
+    }
+
     async fn list_candidate_evidence(
         &self,
         candidate_id: &str,
@@ -435,6 +508,7 @@ impl SqliteLearningStore {
             evidence,
             review_note: row.review_note.clone(),
             reviewed_by: row.reviewed_by.clone(),
+            god_mode_origin: row.god_mode_origin.unwrap_or(0) == 1,
             task_id: row.task_id.clone(),
             category: row.category.clone(),
             claw_id: row.claw_id.clone(),
@@ -450,6 +524,13 @@ impl SqliteLearningStore {
                 .as_deref()
                 .map(parse_timestamp)
                 .transpose()?,
+            quarantined_at: row
+                .quarantined_at
+                .as_deref()
+                .map(parse_timestamp)
+                .transpose()?,
+            quarantined_by: row.quarantined_by.clone(),
+            quarantine_reason: row.quarantine_reason.clone(),
             rolled_back_at: row
                 .rolled_back_at
                 .as_deref()
@@ -594,6 +675,7 @@ mod tests {
                 source_id: Some("eval-1".to_string()),
                 recorded_by: Some("test".to_string()),
             }],
+            god_mode_origin: false,
             task_id: Some("task-1".to_string()),
             category: Some("code".to_string()),
             claw_id: Some("main".to_string()),

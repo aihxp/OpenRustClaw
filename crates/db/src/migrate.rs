@@ -549,6 +549,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
 
     ensure_scheduler_task_registry_columns(pool).await?;
     ensure_phase4_session_columns(pool).await?;
+    ensure_learning_candidate_god_mode_columns(pool).await?;
+    ensure_skill_proposal_god_mode_columns(pool).await?;
 
     info!("All {} database migrations completed", MIGRATIONS.len());
     Ok(())
@@ -649,5 +651,33 @@ async fn ensure_phase4_session_columns(pool: &SqlitePool) -> Result<()> {
             )))
         })?;
 
+    Ok(())
+}
+
+async fn ensure_learning_candidate_god_mode_columns(pool: &SqlitePool) -> Result<()> {
+    add_column_if_missing(
+        pool,
+        "learning_candidates",
+        "god_mode_origin",
+        "INTEGER NOT NULL DEFAULT 0",
+    )
+    .await?;
+    add_column_if_missing(pool, "learning_candidates", "quarantined_at", "TEXT").await?;
+    add_column_if_missing(pool, "learning_candidates", "quarantined_by", "TEXT").await?;
+    add_column_if_missing(pool, "learning_candidates", "quarantine_reason", "TEXT").await?;
+    Ok(())
+}
+
+async fn ensure_skill_proposal_god_mode_columns(pool: &SqlitePool) -> Result<()> {
+    add_column_if_missing(
+        pool,
+        "skill_proposals",
+        "god_mode_origin",
+        "INTEGER NOT NULL DEFAULT 0",
+    )
+    .await?;
+    add_column_if_missing(pool, "skill_proposals", "quarantined_at", "TEXT").await?;
+    add_column_if_missing(pool, "skill_proposals", "quarantined_by", "TEXT").await?;
+    add_column_if_missing(pool, "skill_proposals", "quarantine_reason", "TEXT").await?;
     Ok(())
 }

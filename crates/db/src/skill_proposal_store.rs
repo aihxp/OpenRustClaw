@@ -92,11 +92,12 @@ impl SqliteSkillProposalStore {
             INSERT INTO skill_proposals (
                 id, namespace, skill_name, summary, body, rationale, status, verification_status,
                 source_kind, source_id, source_detail, artifact_path, review_note, reviewed_by,
-                verification_summary, verification_compiled_skill_name, verification_artifact_path,
-                verification_blocked, verified_by, installed_skill_name, created_at, updated_at,
-                reviewed_at, verified_at, installed_at, rolled_back_at
+                god_mode_origin, verification_summary, verification_compiled_skill_name,
+                verification_artifact_path, verification_blocked, verified_by, installed_skill_name,
+                created_at, updated_at, reviewed_at, quarantined_at, quarantined_by,
+                quarantine_reason, verified_at, installed_at, rolled_back_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&proposal.id)
@@ -115,6 +116,7 @@ impl SqliteSkillProposalStore {
         .bind(&proposal.artifact_path)
         .bind(proposal.review_note.as_deref())
         .bind(proposal.reviewed_by.as_deref())
+        .bind(i64::from(proposal.god_mode_origin))
         .bind(
             proposal
                 .verification_report
@@ -145,6 +147,9 @@ impl SqliteSkillProposalStore {
         .bind(proposal.created_at.to_rfc3339())
         .bind(proposal.updated_at.to_rfc3339())
         .bind(proposal.reviewed_at.map(|value| value.to_rfc3339()))
+        .bind(proposal.quarantined_at.map(|value| value.to_rfc3339()))
+        .bind(proposal.quarantined_by.as_deref())
+        .bind(proposal.quarantine_reason.as_deref())
         .bind(proposal.verified_at.map(|value| value.to_rfc3339()))
         .bind(proposal.installed_at.map(|value| value.to_rfc3339()))
         .bind(proposal.rolled_back_at.map(|value| value.to_rfc3339()))
@@ -430,6 +435,79 @@ impl SqliteSkillProposalStore {
         })
     }
 
+    pub async fn mark_quarantined(
+        &self,
+        id: &str,
+        actor: Option<&str>,
+        reason: Option<&str>,
+    ) -> Result<SkillProposal> {
+        let current = self.get_proposal(id).await?.ok_or_else(|| {
+            Error::Database(DatabaseError::NotFound {
+                entity: "SkillProposal".to_string(),
+                id: id.to_string(),
+            })
+        })?;
+        let now = Utc::now().to_rfc3339();
+        let status = if current.installed_skill_name.is_some() {
+            "rolled_back"
+        } else {
+            Self::status_to_string(current.status)
+        };
+
+        sqlx::query(
+            r#"
+            UPDATE skill_proposals
+            SET status = ?,
+                review_note = COALESCE(?, review_note),
+                reviewed_by = COALESCE(?, reviewed_by),
+                updated_at = ?,
+                quarantined_at = ?,
+                quarantined_by = ?,
+                quarantine_reason = ?,
+                rolled_back_at = CASE
+                    WHEN installed_skill_name IS NOT NULL THEN COALESCE(rolled_back_at, ?)
+                    ELSE rolled_back_at
+                END
+            WHERE id = ?
+            "#,
+        )
+        .bind(status)
+        .bind(reason)
+        .bind(actor)
+        .bind(&now)
+        .bind(&now)
+        .bind(actor)
+        .bind(reason)
+        .bind(&now)
+        .bind(id)
+        .execute(&self.pool)
+        .await
+        .map_err(|error| {
+            Error::Database(DatabaseError::Query(format!(
+                "Failed to quarantine skill proposal: {error}"
+            )))
+        })?;
+
+        self.insert_history(
+            id,
+            "quarantined",
+            actor,
+            reason,
+            Some(Self::verification_status_to_string(
+                current.verification_status,
+            )),
+            current.installed_skill_name.as_deref(),
+        )
+        .await?;
+
+        self.get_proposal(id).await?.ok_or_else(|| {
+            Error::Database(DatabaseError::NotFound {
+                entity: "SkillProposal".to_string(),
+                id: id.to_string(),
+            })
+        })
+    }
+
     async fn insert_history(
         &self,
         proposal_id: &str,
@@ -496,6 +574,7 @@ impl SqliteSkillProposalStore {
             artifact_path: row.artifact_path.clone(),
             review_note: row.review_note.clone(),
             reviewed_by: row.reviewed_by.clone(),
+            god_mode_origin: row.god_mode_origin.unwrap_or(0) == 1,
             verification_report,
             verified_by: row.verified_by.clone(),
             installed_skill_name: row.installed_skill_name.clone(),
@@ -506,6 +585,13 @@ impl SqliteSkillProposalStore {
                 .as_deref()
                 .map(parse_timestamp)
                 .transpose()?,
+            quarantined_at: row
+                .quarantined_at
+                .as_deref()
+                .map(parse_timestamp)
+                .transpose()?,
+            quarantined_by: row.quarantined_by.clone(),
+            quarantine_reason: row.quarantine_reason.clone(),
             verified_at: row
                 .verified_at
                 .as_deref()
@@ -625,12 +711,16 @@ mod tests {
             artifact_path: "/tmp/skill-proposals/triage-helper/SKILL.md".to_string(),
             review_note: None,
             reviewed_by: None,
+            god_mode_origin: false,
             verification_report: None,
             verified_by: None,
             installed_skill_name: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
             reviewed_at: None,
+            quarantined_at: None,
+            quarantined_by: None,
+            quarantine_reason: None,
             verified_at: None,
             installed_at: None,
             rolled_back_at: None,
