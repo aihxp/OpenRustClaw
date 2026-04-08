@@ -3,6 +3,7 @@
 //! This crate hosts use-case services and stable interfaces that delivery and
 //! operator surfaces can call without reintroducing CLI or transport coupling.
 
+pub mod agent_backend_catalog;
 pub mod assistant_continuity;
 pub mod autonomy_lessons_control;
 pub mod browser_backend_control;

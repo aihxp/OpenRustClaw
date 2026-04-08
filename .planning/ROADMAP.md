@@ -32,7 +32,7 @@
   2. Discovery results include durable evidence for path, version, invocation mode, auth status or auth capability, model-discovery support, and policy classification.
   3. Unsupported or ambiguous tools remain visible as detected-but-unavailable with clear reasons instead of disappearing or being mislabeled as ready.
   4. Discovery feeds one shared app-level catalog that later onboarding, model selection, and runtime routing can reuse.
-**Plans**: TBD
+**Plans**: 1/2 complete (`186-01` complete, `186-02` pending)
 
 ### Phase 187: OAuth-Safe Delegated Backend Contracts
 **Goal**: OpenRustClaw can use supported local vendor agent surfaces without scraping credentials or pretending subscription logins are general API keys.
@@ -82,7 +82,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 186. Local Agent Discovery and Compliance Inventory | 0/2 | Not Started | — |
+| 186. Local Agent Discovery and Compliance Inventory | 1/2 | In Progress | — |
 | 187. OAuth-Safe Delegated Backend Contracts | 0/2 | Not Started | — |
 | 188. Onboarding and Model Selection Cohesion | 0/2 | Not Started | — |
 | 189. Runtime Integration and Agent Journey Delivery | 0/2 | Not Started | — |
@@ -92,5 +92,5 @@
 
 - Active milestone: v1.44 Agent Discovery, Journey Cohesion, and Provider Access
 - Roadmap progress: 0/5 phases complete
-- Current work: defining the discovery, onboarding, routing, and UX denominator for local agent backends and provider cohesion
-- Next step: `$gsd-autonomous` starting at Phase 186
+- Current work: Phase 186 is in progress through the shared local-agent discovery catalog and the first shipped operator-facing catalog surface
+- Next step: complete Phase 186 plan 02 by wiring the shared catalog into onboarding, inspect, and policy-aware persistence surfaces

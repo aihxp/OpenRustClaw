@@ -1,6 +1,10 @@
 //! Model management commands.
 
 use anyhow::Result;
+use openrustclaw_app::agent_backend_catalog::{
+    AgentBackendAuthStatus, AgentBackendCapability, AgentBackendCatalogEntry,
+    AgentBackendCatalogService, AgentBackendReadiness,
+};
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -122,6 +126,37 @@ fn get_default_models() -> HashMap<&'static str, Vec<ModelInfo>> {
         ],
     );
 
+    // Gemini models
+    providers.insert(
+        "gemini",
+        vec![
+            ModelInfo {
+                name: "gemini-2.5-pro".to_string(),
+                provider: "gemini".to_string(),
+                description: "Gemini 2.5 Pro - Higher capability Google model".to_string(),
+                context_window: 1_000_000,
+                supports_tools: true,
+                supports_vision: true,
+            },
+            ModelInfo {
+                name: "gemini-2.5-flash".to_string(),
+                provider: "gemini".to_string(),
+                description: "Gemini 2.5 Flash - Faster general-purpose Google model".to_string(),
+                context_window: 1_000_000,
+                supports_tools: true,
+                supports_vision: true,
+            },
+            ModelInfo {
+                name: "gemini-1.5-pro".to_string(),
+                provider: "gemini".to_string(),
+                description: "Gemini 1.5 Pro - Broad-context Google model".to_string(),
+                context_window: 1_000_000,
+                supports_tools: true,
+                supports_vision: true,
+            },
+        ],
+    );
+
     // Ollama models (local)
     providers.insert(
         "ollama",
@@ -180,6 +215,7 @@ pub async fn list() -> Result<()> {
     let anthropic_key = std::env::var("ANTHROPIC_API_KEY").is_ok();
     let openai_key = std::env::var("OPENAI_API_KEY").is_ok();
     let openrouter_key = std::env::var("OPENROUTER_API_KEY").is_ok();
+    let gemini_key = std::env::var("GEMINI_API_KEY").is_ok();
     let ollama_available = check_ollama().await;
 
     for (provider_name, models) in providers {
@@ -190,6 +226,8 @@ pub async fn list() -> Result<()> {
             "openai" => "\x1b[90m○ not configured\x1b[0m",
             "openrouter" if openrouter_key => "\x1b[32m✓ configured\x1b[0m",
             "openrouter" => "\x1b[90m○ not configured\x1b[0m",
+            "gemini" if gemini_key => "\x1b[32m✓ configured\x1b[0m",
+            "gemini" => "\x1b[90m○ not configured\x1b[0m",
             "ollama" if ollama_available => "\x1b[32m✓ available\x1b[0m",
             "ollama" => "\x1b[90m○ not detected\x1b[0m",
             _ => "",
@@ -212,8 +250,11 @@ pub async fn list() -> Result<()> {
     println!("  ANTHROPIC_API_KEY  - Required for Anthropic models");
     println!("  OPENAI_API_KEY     - Required for OpenAI models");
     println!("  OPENROUTER_API_KEY - Required for OpenRouter models");
+    println!("  GEMINI_API_KEY     - Required for Gemini API models");
     println!("  OLLAMA_BASE_URL    - Optional, defaults to http://localhost:11434");
     println!();
+
+    print_local_agent_backends(&AgentBackendCatalogService::new().discover());
 
     Ok(())
 }
@@ -369,6 +410,61 @@ fn format_features(tools: bool, vision: bool) -> String {
         String::new()
     } else {
         format!("\x1b[90m[{}]\x1b[0m", features.join(", "))
+    }
+}
+
+fn print_local_agent_backends(entries: &[AgentBackendCatalogEntry]) {
+    println!("╔══════════════════════════════════════════════════════════╗");
+    println!("║           Detected Local Agent Backends                  ║");
+    println!("╚══════════════════════════════════════════════════════════╝");
+    println!();
+
+    for entry in entries {
+        let status = match entry.readiness {
+            AgentBackendReadiness::Ready => "\x1b[32m✓ ready\x1b[0m",
+            AgentBackendReadiness::Candidate => "\x1b[33m◐ candidate\x1b[0m",
+            AgentBackendReadiness::DetectionOnly => "\x1b[34m◌ detected only\x1b[0m",
+            AgentBackendReadiness::Unavailable => "\x1b[90m○ not detected\x1b[0m",
+        };
+        println!("\x1b[1m{}\x1b[0m {}", entry.display_name(), status);
+        println!(
+            "  Binary: {}",
+            entry
+                .executable_path
+                .as_deref()
+                .unwrap_or("not found on PATH")
+        );
+        if let Some(version) = entry.version_text.as_deref() {
+            println!("  Version: {version}");
+        }
+        println!(
+            "  Auth: {}",
+            match entry.auth_status {
+                AgentBackendAuthStatus::LoggedIn => entry
+                    .auth_method
+                    .as_deref()
+                    .map(|method| format!("logged in via `{method}`"))
+                    .unwrap_or_else(|| "logged in".to_string()),
+                AgentBackendAuthStatus::LoggedOut => "not logged in".to_string(),
+                AgentBackendAuthStatus::Unknown => "status unknown".to_string(),
+                AgentBackendAuthStatus::NotSupported =>
+                    "vendor-specific or not exposed".to_string(),
+            }
+        );
+        println!(
+            "  Model discovery: {}",
+            match entry.model_discovery {
+                AgentBackendCapability::Supported => "supported",
+                AgentBackendCapability::Candidate => "candidate",
+                AgentBackendCapability::Unsupported => "not exposed",
+                AgentBackendCapability::Unknown => "unknown",
+            }
+        );
+        println!("  Policy class: {}", entry.policy_classification);
+        if let Some(reason) = entry.readiness_reason.as_deref() {
+            println!("  Note: {reason}");
+        }
+        println!();
     }
 }
 
