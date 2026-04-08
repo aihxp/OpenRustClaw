@@ -2946,6 +2946,34 @@ enum ControlAction {
         #[arg(long)]
         path: Option<String>,
     },
+    /// Resolve one delegated route across local and trusted remote fabric
+    RouteResolve {
+        #[arg(long)]
+        preferred_backend: Option<String>,
+        #[arg(long)]
+        preferred_provider: Option<String>,
+        #[arg(long)]
+        preferred_host: Option<String>,
+        #[arg(long)]
+        operator_id: Option<String>,
+        #[arg(long)]
+        task: Option<String>,
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// List recent delegated route receipts
+    RouteReceipts {
+        #[arg(short, long, default_value_t = 20)]
+        limit: usize,
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// Build a bounded remote execution envelope from a remote route receipt
+    RouteEnvelope {
+        receipt_id: String,
+        #[arg(long)]
+        path: Option<String>,
+    },
 }
 
 #[cfg(feature = "cursor")]
@@ -4988,6 +5016,38 @@ async fn main() -> Result<()> {
             ControlAction::FabricHosts { path } => {
                 let report = commands::control::fabric_hosts(path.as_deref())?;
                 println!("{}", serde_json::to_string_pretty(&report)?);
+                Ok(())
+            }
+            ControlAction::RouteResolve {
+                preferred_backend,
+                preferred_provider,
+                preferred_host,
+                operator_id,
+                task,
+                path,
+            } => {
+                let decision = commands::control::resolve_route(
+                    path.as_deref(),
+                    openrustclaw_app::agent_route_policy::DelegatedRouteRequest {
+                        preferred_backend_id: preferred_backend,
+                        preferred_provider_id: preferred_provider,
+                        preferred_host_id: preferred_host,
+                        operator_id,
+                        task_summary: task,
+                    },
+                )?;
+                println!("{}", serde_json::to_string_pretty(&decision)?);
+                Ok(())
+            }
+            ControlAction::RouteReceipts { limit, path } => {
+                let report = commands::control::route_receipts(path.as_deref(), limit)?;
+                println!("{}", serde_json::to_string_pretty(&report)?);
+                Ok(())
+            }
+            ControlAction::RouteEnvelope { receipt_id, path } => {
+                let envelope =
+                    commands::control::remote_route_envelope(path.as_deref(), &receipt_id)?;
+                println!("{}", serde_json::to_string_pretty(&envelope)?);
                 Ok(())
             }
         },

@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.45
 milestone_name: Agent Fabric, Routing Console, and Guided Delegation
-current_phase: 193
-current_phase_name: delegated route policy, audit, and recovery
+current_phase: 194
+current_phase_name: agent routing console and operator policy ux
 current_plan: none
-status: phase 192 complete
-stopped_at: Phase 192 is complete; trusted remote host inventory now exists as an explicit enrolled fabric, and local plus remote delegated route signals can be compared from one registry.
-last_updated: "2026-04-09T00:15:00Z"
+status: phase 193 complete
+stopped_at: Phase 193 is complete; delegated route decisions now persist durable receipts, recovery hints, and remote execution envelopes across the trusted agent fabric.
+last_updated: "2026-04-08T14:57:20Z"
 last_activity: 2026-04-08
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 10
-  completed_plans: 4
-  percent: 40
+  completed_plans: 6
+  percent: 60
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-08)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** `v1.45` has completed the local Cursor correction and the trusted remote fabric registry, and now moves into route policy, audit, and recovery.
+**Current focus:** `v1.45` has completed delegated route policy and now moves into the operator-facing routing console and policy UX.
 
 ## Current Position
 
-Current Phase: 193
-Current Phase Name: delegated route policy, audit, and recovery
+Current Phase: 194
+Current Phase Name: agent routing console and operator policy ux
 Total Phases: 5
 Current Plan: none
 Total Plans in Phase: 0
-Status: phase 192 complete
+Status: phase 193 complete
 Last activity: 2026-04-08
 
-Phase: 3 of 5
+Phase: 4 of 5
 Plan: 0 of 2
-Progress: [####------] 40%
+Progress: [######----] 60%
 
 ## Performance Metrics
 
@@ -70,7 +70,8 @@ Recent decisions affecting current work:
 - Phase 191 proved the stale Cursor assumption wrong on this machine: `cursor agent` exposes documented auth, model listing, and headless print surfaces, so Cursor now lives inside the delegated backend contract instead of the old detection-only bucket.
 - Subscription-managed delegated backends now validate signed-in local readiness separately from enterprise allowlist policy, which keeps onboarding truthful without weakening the later execution boundary.
 - Phase 192 is complete: local delegated inventory can now be exported, trusted remote hosts can be enrolled or refreshed from explicit snapshots, and one route-signal view can compare local and remote delegated capacity.
-- Phase 193 is next: add route policy, audit evidence, and recovery hints on top of that new multi-host fabric.
+- Phase 193 is complete: route resolution now records bounded local or remote decisions, preserves blocked-candidate evidence, and can emit portable remote execution envelopes with operator attribution and runtime allowlist context.
+- Phase 194 is next: turn that fabric and route evidence into a dedicated routing console across Control UI, CLI, and inspect surfaces.
 
 ### Pending Todos
 
@@ -83,5 +84,5 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-04-08
-Stopped at: Phase 192 is complete; trusted remote host inventory now exists as an explicit enrolled fabric, and local plus remote delegated route signals can be compared from one registry.
+Stopped at: Phase 193 is complete; delegated route decisions now persist durable receipts, recovery hints, and remote execution envelopes across the trusted agent fabric.
 Resume file: None

@@ -12,6 +12,10 @@ use openrustclaw_app::agent_fabric_registry::{
     AgentFabricAdvertisement, AgentFabricRegistry, AgentFabricRegistryService,
     EnrollRemoteHostRequest, FabricRouteSignal, TrustedRemoteHostRecord,
 };
+use openrustclaw_app::agent_route_policy::{
+    AgentRoutePolicyService, DelegatedRouteDecision, DelegatedRouteRequest,
+    RemoteRouteExecutionEnvelope,
+};
 use openrustclaw_app::autonomy_lessons_control::AutonomyLessonRequest;
 use openrustclaw_app::control_registry as app_control_registry;
 use openrustclaw_app::learning_review::{LearningReviewService, LearningReviewSource};
@@ -482,6 +486,10 @@ fn agent_fabric_path(root: &Path) -> PathBuf {
     root.join("agent-fabric.json")
 }
 
+fn agent_route_receipts_path(root: &Path) -> PathBuf {
+    root.join("agent-route-decisions.jsonl")
+}
+
 fn skill_proposals_dir(root: &Path) -> PathBuf {
     root.join("skill-proposals")
 }
@@ -865,6 +873,103 @@ pub fn fabric_hosts(root: Option<&str>) -> Result<FabricRegistryReport> {
         registry,
         route_signals,
     })
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RouteDecisionHistoryReport {
+    pub receipts_path: String,
+    pub entries: Vec<DelegatedRouteDecision>,
+}
+
+fn append_route_receipt(root: &Path, decision: &DelegatedRouteDecision) -> Result<()> {
+    let path = agent_route_receipts_path(root);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)?;
+    use std::io::Write as _;
+    writeln!(file, "{}", serde_json::to_string(decision)?)?;
+    Ok(())
+}
+
+pub fn resolve_route(
+    root: Option<&str>,
+    request: DelegatedRouteRequest,
+) -> Result<DelegatedRouteDecision> {
+    let root = resolve_root(root)?;
+    let report = fabric_hosts(root.to_str())?;
+    let decision = AgentRoutePolicyService::new().resolve_route(
+        &request,
+        &report.route_signals,
+        chrono::Utc::now().to_rfc3339(),
+    );
+    append_route_receipt(&root, &decision)?;
+    Ok(decision)
+}
+
+pub fn route_receipts(root: Option<&str>, limit: usize) -> Result<RouteDecisionHistoryReport> {
+    let root = resolve_root(root)?;
+    let path = agent_route_receipts_path(&root);
+    if !path.exists() {
+        return Ok(RouteDecisionHistoryReport {
+            receipts_path: path.display().to_string(),
+            entries: Vec::new(),
+        });
+    }
+    let raw = fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read '{}'", path.display()))?;
+    let mut entries = raw
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .filter_map(|line| serde_json::from_str::<DelegatedRouteDecision>(line).ok())
+        .collect::<Vec<_>>();
+    entries.reverse();
+    entries.truncate(limit);
+    Ok(RouteDecisionHistoryReport {
+        receipts_path: path.display().to_string(),
+        entries,
+    })
+}
+
+pub fn remote_route_envelope(
+    root: Option<&str>,
+    receipt_id: &str,
+) -> Result<Option<RemoteRouteExecutionEnvelope>> {
+    let root = resolve_root(root)?;
+    let receipt = route_receipts(root.to_str(), 200)?
+        .entries
+        .into_iter()
+        .find(|entry| entry.receipt_id == receipt_id)
+        .ok_or_else(|| anyhow::anyhow!("route receipt '{}' was not found", receipt_id))?;
+    let registry = load_registry(root.clone())?;
+    let runtime = registry.runtime.unwrap_or_else(|| RuntimeModeSpec {
+        mode: "solo_claw".to_string(),
+        default_claw_id: None,
+        orchestrator_claw_id: None,
+        task_assignments: BTreeMap::new(),
+        category_assignments: BTreeMap::new(),
+        allow_shared_context: false,
+        isolation_mode: "strict".to_string(),
+        autonomy: AutonomyPolicy::default(),
+        metadata: serde_json::json!({}),
+    });
+    let config = runtime::load_effective_config(
+        "config/default.toml",
+        &workspace_root_from_control_root(&root),
+    )
+    .unwrap_or_else(|_| AppConfig::default());
+    Ok(AgentRoutePolicyService::new().build_remote_envelope(
+        receipt,
+        &runtime.autonomy.approval_policy,
+        runtime.autonomy.max_runtime_secs,
+        runtime.autonomy.max_delegations,
+        runtime.autonomy.max_iterations,
+        &config.external_backends.command_env_allowlist,
+        chrono::Utc::now().to_rfc3339(),
+    ))
 }
 
 pub fn list(root: Option<&str>) -> Result<()> {

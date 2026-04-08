@@ -15,8 +15,8 @@
 
 - [ ] **FABR-01**: Operator can register and inspect trusted remote hosts that advertise delegated agent backends and their capability metadata.
 - [ ] **FABR-02**: Route selection can evaluate both local and trusted remote delegated backends using explicit readiness, policy, and compatibility signals.
-- [ ] **FABR-03**: Remote delegated execution preserves audit evidence, operator attribution, environment allowlists, and bounded runtime controls.
-- [ ] **FABR-04**: When a delegated backend is blocked or fails, OpenRustClaw records the route decision and recovery hints instead of failing silently.
+- [x] **FABR-03**: Remote delegated execution preserves audit evidence, operator attribution, environment allowlists, and bounded runtime controls.
+- [x] **FABR-04**: When a delegated backend is blocked or fails, OpenRustClaw records the route decision and recovery hints instead of failing silently.
 
 ### Routing Console
 
@@ -64,8 +64,8 @@
 | CURS-03 | Phase 191 | Complete |
 | FABR-01 | Phase 192 | Complete |
 | FABR-02 | Phase 192 | Complete |
-| FABR-03 | Phase 193 | Pending |
-| FABR-04 | Phase 193 | Pending |
+| FABR-03 | Phase 193 | Complete |
+| FABR-04 | Phase 193 | Complete |
 | ROUTX-01 | Phase 194 | Pending |
 | ROUTX-02 | Phase 194 | Pending |
 | ROUTX-03 | Phase 194 | Pending |
