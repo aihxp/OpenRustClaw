@@ -6034,6 +6034,7 @@ dependencies = [
  "openrustclaw-agent",
  "openrustclaw-core",
  "openrustclaw-db",
+ "openrustclaw-memory",
  "openrustclaw-observability",
  "openrustclaw-security",
  "regex",

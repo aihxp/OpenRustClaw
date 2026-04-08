@@ -33,8 +33,23 @@ impl EmbeddingService {
         self.provider.embed(texts).await
     }
 
+    pub async fn embed_query(&self, text: &str) -> Result<Vec<f32>> {
+        let mut embeddings = self.embed(&[text]).await?;
+        embeddings.pop().ok_or_else(|| {
+            openrustclaw_core::error::Error::Memory(
+                openrustclaw_core::error::MemoryError::Embedding(
+                    "embedding provider returned no query embedding".to_string(),
+                ),
+            )
+        })
+    }
+
     /// Get embedding dimensions.
     pub fn dimensions(&self) -> usize {
         self.provider.dimensions()
+    }
+
+    pub fn model_id(&self) -> &str {
+        self.provider.model_id()
     }
 }

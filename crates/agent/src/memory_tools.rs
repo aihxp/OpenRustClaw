@@ -7,6 +7,7 @@ use chrono::Utc;
 use openrustclaw_core::error::Result;
 use openrustclaw_core::traits::{CoreMemoryStore, MemoryStore, Tool, ToolContext};
 use openrustclaw_core::types::{CoreEntry, MemoryQuery, MemorySource, MemoryType, ToolOutput};
+use openrustclaw_memory::embeddings::EmbeddingService;
 use openrustclaw_memory::{AssistantMemoryWriteBasis, MemoryPolicies, RecallMemory};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -16,12 +17,19 @@ use tracing::{debug, info, instrument, warn};
 /// Tool: Search recall memory for relevant information.
 pub struct MemorySearchTool {
     memory_store: Arc<dyn MemoryStore>,
+    embedding_service: Option<Arc<EmbeddingService>>,
 }
 
 impl MemorySearchTool {
     /// Create a new MemorySearchTool with the given memory store.
-    pub fn new(memory_store: Arc<dyn MemoryStore>) -> Self {
-        Self { memory_store }
+    pub fn new(
+        memory_store: Arc<dyn MemoryStore>,
+        embedding_service: Option<Arc<EmbeddingService>>,
+    ) -> Self {
+        Self {
+            memory_store,
+            embedding_service,
+        }
     }
 }
 
@@ -87,44 +95,65 @@ impl Tool for MemorySearchTool {
             recency_weight: 0.0,
         };
 
-        match self.memory_store.search(&query).await {
-            Ok(results) => {
-                info!(count = results.len(), "Memory search completed");
-
-                if results.is_empty() {
-                    return Ok(ToolOutput {
-                        tool_call_id: String::new(),
-                        content: "No relevant memories found.".to_string(),
-                        is_error: false,
-                    });
+        let results = if let Some(embedding_service) = &self.embedding_service {
+            match embedding_service.embed_query(query_text).await {
+                Ok(query_embedding) => match self
+                    .memory_store
+                    .search_with_embedding(&query, &query_embedding)
+                    .await
+                {
+                    Ok(results) => results,
+                    Err(error) => {
+                        warn!(error = %error, "Hybrid memory search unavailable, falling back to lexical retrieval");
+                        self.memory_store.search(&query).await?
+                    }
+                },
+                Err(error) => {
+                    warn!(error = %error, "Query embedding unavailable, falling back to lexical retrieval");
+                    self.memory_store.search(&query).await?
                 }
-
-                let mut content = String::from("Found the following relevant memories:\n\n");
-                for (i, scored) in results.iter().enumerate() {
-                    content.push_str(&format!(
-                        "{}. {} (score: {:.2}, importance: {:.2})\n",
-                        i + 1,
-                        scored.entry.content,
-                        scored.score,
-                        scored.entry.importance
-                    ));
-                }
-
-                Ok(ToolOutput {
-                    tool_call_id: String::new(),
-                    content,
-                    is_error: false,
-                })
             }
-            Err(e) => {
-                warn!(error = %e, "Memory search failed");
-                Ok(ToolOutput {
-                    tool_call_id: String::new(),
-                    content: format!("Error searching memory: {}", e),
-                    is_error: true,
-                })
-            }
+        } else {
+            self.memory_store.search(&query).await?
+        };
+
+        info!(count = results.len(), "Memory search completed");
+
+        if results.is_empty() {
+            return Ok(ToolOutput {
+                tool_call_id: String::new(),
+                content: "No relevant memories found.".to_string(),
+                is_error: false,
+            });
         }
+
+        let degraded_messages: Vec<String> = results
+            .iter()
+            .filter_map(|scored| scored.explanation.degraded_state.as_ref())
+            .map(|state| state.message.clone())
+            .collect();
+
+        let mut content = String::from("Found the following relevant memories:\n\n");
+        if !degraded_messages.is_empty() {
+            content.push_str("Retrieval status: degraded vector lane.\n");
+            content.push_str(&format!("Reason: {}\n\n", degraded_messages.join(" | ")));
+        }
+        for (i, scored) in results.iter().enumerate() {
+            content.push_str(&format!(
+                "{}. {} (score: {:.2}, importance: {:.2}, vector lane: {:?})\n",
+                i + 1,
+                scored.entry.content,
+                scored.score,
+                scored.entry.importance,
+                scored.explanation.factors.vector_lane
+            ));
+        }
+
+        Ok(ToolOutput {
+            tool_call_id: String::new(),
+            content,
+            is_error: false,
+        })
     }
 }
 
@@ -445,11 +474,11 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use chrono::Utc;
-    use openrustclaw_core::traits::{EmbeddingProvider, MemoryStore};
+    use openrustclaw_core::traits::{EmbeddingProvider, MemoryStore, ToolContext};
     use openrustclaw_core::types::{
-        MemoryEntry, RetrievalArtifactKind, RetrievalExplanation, ScoredMemory, ToolContext,
+        MemoryEntry, RetrievalArtifactKind, RetrievalExplanation, ScoredMemory,
     };
-    use openrustclaw_memory::EmbeddingService;
+    use openrustclaw_memory::embeddings::EmbeddingService;
     use serde_json::json;
     use std::sync::Mutex;
     use uuid::Uuid;

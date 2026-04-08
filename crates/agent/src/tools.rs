@@ -6,6 +6,7 @@ use std::sync::Arc;
 use openrustclaw_core::error::{Error, Result, ToolError};
 use openrustclaw_core::traits::{CoreMemoryStore, MemoryStore, Tool, ToolContext};
 use openrustclaw_core::types::{ToolCall, ToolDefinition, ToolOutput};
+use openrustclaw_memory::embeddings::EmbeddingService;
 use tracing::{info, warn};
 
 use crate::tool_factory::ToolFactory;
@@ -51,6 +52,18 @@ impl ToolRegistry {
     ) -> Self {
         let mut registry = Self::new();
         let factory = ToolFactory::new(memory_store, core_memory_store);
+        factory.register_all(&mut registry);
+        registry
+    }
+
+    pub fn with_memory_tools_and_embeddings(
+        memory_store: Arc<dyn MemoryStore>,
+        core_memory_store: Arc<dyn CoreMemoryStore>,
+        embedding_service: Arc<EmbeddingService>,
+    ) -> Self {
+        let mut registry = Self::new();
+        let factory = ToolFactory::new(memory_store, core_memory_store)
+            .with_embedding_service(embedding_service);
         factory.register_all(&mut registry);
         registry
     }

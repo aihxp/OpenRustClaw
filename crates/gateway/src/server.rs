@@ -16,6 +16,7 @@ use openrustclaw_core::error::{Error, Result as CoreResult, SecurityError};
 use openrustclaw_core::traits::{CoreMemoryStore, MemoryStore};
 use openrustclaw_core::types::{MemoryEntry, MemoryQuery, MemoryType, SourceType};
 use openrustclaw_db::{RagChunkInput, SqliteCoreMemoryStore, SqliteMemoryStore, SqliteRagStore};
+use openrustclaw_memory::embeddings::EmbeddingService;
 use openrustclaw_observability::LangSmithClient;
 use openrustclaw_observability::langsmith::{RunType, TraceRun};
 use openrustclaw_observability::metrics::{
@@ -42,6 +43,7 @@ pub struct GatewayState {
     pub memory_store: Option<Arc<SqliteMemoryStore>>,
     pub core_memory_store: Option<Arc<SqliteCoreMemoryStore>>,
     pub rag_store: Option<Arc<SqliteRagStore>>,
+    pub embedding_service: Option<Arc<EmbeddingService>>,
     pub langsmith: Option<LangSmithClient>,
 }
 
@@ -345,37 +347,87 @@ async fn internal_memory_search_handler(
         recency_weight: 0.0,
     };
 
-    match memory_store.search(&query).await {
-        Ok(results) => {
-            let body = json!({
-                "memories": results.into_iter().map(|scored| json!({
-                    "id": scored.entry.id,
-                    "content": scored.entry.content,
-                    "score": scored.score,
-                    "importance": scored.entry.importance,
-                })).collect::<Vec<_>>()
-            });
-            complete_gateway_trace(
-                state.langsmith.as_ref(),
-                trace.as_mut(),
-                Some(body.clone()),
-                None,
-            )
-            .await;
-            Json(body).into_response()
+    let results = if let Some(embedding_service) = &state.embedding_service {
+        match embedding_service.embed_query(&query.text).await {
+            Ok(query_embedding) => match memory_store.search_with_embedding(&query, &query_embedding).await {
+                Ok(results) => results,
+                Err(error) => {
+                    warn!(error = %error, "Hybrid gateway memory search unavailable, falling back to lexical retrieval");
+                    match memory_store.search(&query).await {
+                        Ok(results) => results,
+                        Err(error) => {
+                            let error_message = format!("memory search failed: {}", error);
+                            complete_gateway_trace(
+                                state.langsmith.as_ref(),
+                                trace.as_mut(),
+                                None,
+                                Some(error_message.clone()),
+                            )
+                            .await;
+                            return (StatusCode::INTERNAL_SERVER_ERROR, error_message).into_response();
+                        }
+                    }
+                }
+            },
+            Err(error) => {
+                warn!(error = %error, "Query embedding unavailable, falling back to lexical retrieval");
+                match memory_store.search(&query).await {
+                    Ok(results) => results,
+                    Err(error) => {
+                        let error_message = format!("memory search failed: {}", error);
+                        complete_gateway_trace(
+                            state.langsmith.as_ref(),
+                            trace.as_mut(),
+                            None,
+                            Some(error_message.clone()),
+                        )
+                        .await;
+                        return (StatusCode::INTERNAL_SERVER_ERROR, error_message).into_response();
+                    }
+                }
+            }
         }
-        Err(error) => {
-            let error_message = format!("memory search failed: {}", error);
-            complete_gateway_trace(
-                state.langsmith.as_ref(),
-                trace.as_mut(),
-                None,
-                Some(error_message.clone()),
-            )
-            .await;
-            (StatusCode::INTERNAL_SERVER_ERROR, error_message).into_response()
+    } else {
+        match memory_store.search(&query).await {
+            Ok(results) => results,
+            Err(error) => {
+                let error_message = format!("memory search failed: {}", error);
+                complete_gateway_trace(
+                    state.langsmith.as_ref(),
+                    trace.as_mut(),
+                    None,
+                    Some(error_message.clone()),
+                )
+                .await;
+                return (StatusCode::INTERNAL_SERVER_ERROR, error_message).into_response();
+            }
         }
-    }
+    };
+
+    let body = json!({
+        "retrieval": {
+            "degraded": results.iter().any(|scored| scored.explanation.degraded_state.is_some()),
+            "vector_lane": results
+                .first()
+                .map(|scored| format!("{:?}", scored.explanation.factors.vector_lane))
+                .unwrap_or_else(|| "none".to_string()),
+        },
+        "memories": results.into_iter().map(|scored| json!({
+            "id": scored.entry.id,
+            "content": scored.entry.content,
+            "score": scored.score,
+            "importance": scored.entry.importance,
+            "explanation": scored.explanation,
+        })).collect::<Vec<_>>()
+    });
+    complete_gateway_trace(
+        state.langsmith.as_ref(),
+        trace.as_mut(),
+        Some(body.clone()),
+        None,
+    )
+    .await;
+    Json(body).into_response()
 }
 
 async fn internal_memory_store_handler(
@@ -1274,6 +1326,7 @@ async fn handle_socket(mut socket: WebSocket) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
     use axum::body::{Body, to_bytes};
     use http::Request;
     use http::header::{CONTENT_TYPE, HeaderValue};
@@ -1282,7 +1335,7 @@ mod tests {
     use openrustclaw_db::{
         SqliteCoreMemoryStore, SqliteMemoryStore, SqliteRagStore, init_pool, run_migrations,
     };
-    use openrustclaw_memory::EmbeddingService;
+    use openrustclaw_memory::embeddings::EmbeddingService;
     use tower::ServiceExt;
 
     struct StaticEmbeddingProvider;
@@ -1746,8 +1799,23 @@ mod tests {
             .unwrap();
         run_migrations(&pool).await.unwrap();
 
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS memory_vectors (
+                memory_id TEXT PRIMARY KEY,
+                vector BLOB NOT NULL,
+                dimensions INTEGER NOT NULL,
+                model_id TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
         let memory_store = Arc::new(SqliteMemoryStore::new(pool.clone()));
-        let mut entry = MemoryEntry {
+        let entry = MemoryEntry {
             id: Uuid::new_v4(),
             memory_type: MemoryType::Semantic,
             content: "Rust ownership matters".to_string(),

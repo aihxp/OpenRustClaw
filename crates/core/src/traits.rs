@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use futures::Stream;
 use serde_json::Value;
 
-use crate::error::Result;
+use crate::error::{Error, MemoryError, Result};
 use crate::types::{
     CompletionRequest, CompletionResponse, CoreEntry, IncomingMessage, MemoryEntry, MemoryQuery,
     OutgoingMessage, Platform, ScoredMemory, SkillCapability, StreamChunk, ToolFormat, ToolOutput,
@@ -139,6 +139,18 @@ pub trait MemoryStore: Send + Sync {
 
     /// Search memories using hybrid BM25 + vector + MMR + temporal decay.
     async fn search(&self, query: &MemoryQuery) -> Result<Vec<ScoredMemory>>;
+
+    /// Search memories using a caller-supplied query embedding when available.
+    async fn search_with_embedding(
+        &self,
+        query: &MemoryQuery,
+        _query_embedding: &[f32],
+    ) -> Result<Vec<ScoredMemory>> {
+        let _ = query;
+        Err(Error::Memory(MemoryError::Search(
+            "vector-aware search is not available for this memory store".to_string(),
+        )))
+    }
 
     /// Get a memory entry by ID.
     async fn get(&self, id: &str) -> Result<Option<MemoryEntry>>;

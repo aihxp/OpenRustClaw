@@ -6,6 +6,7 @@
 use crate::memory_tools::{CoreMemoryUpdateTool, MemorySearchTool, MemoryStoreTool};
 use crate::tools::ToolRegistry;
 use openrustclaw_core::traits::{CoreMemoryStore, MemoryStore};
+use openrustclaw_memory::embeddings::EmbeddingService;
 use std::sync::Arc;
 
 /// Factory for creating tools with their dependencies injected.
@@ -15,6 +16,7 @@ use std::sync::Arc;
 pub struct ToolFactory {
     memory_store: Arc<dyn MemoryStore>,
     core_memory_store: Arc<dyn CoreMemoryStore>,
+    embedding_service: Option<Arc<EmbeddingService>>,
 }
 
 impl ToolFactory {
@@ -31,7 +33,13 @@ impl ToolFactory {
         Self {
             memory_store,
             core_memory_store,
+            embedding_service: None,
         }
+    }
+
+    pub fn with_embedding_service(mut self, embedding_service: Arc<EmbeddingService>) -> Self {
+        self.embedding_service = Some(embedding_service);
+        self
     }
 
     /// Create a MemorySearchTool instance.
@@ -39,7 +47,7 @@ impl ToolFactory {
     /// The returned tool will use the factory's memory store to search
     /// for relevant memories based on user queries.
     pub fn create_memory_search_tool(&self) -> MemorySearchTool {
-        MemorySearchTool::new(self.memory_store.clone())
+        MemorySearchTool::new(self.memory_store.clone(), self.embedding_service.clone())
     }
 
     /// Create a MemoryStoreTool instance.
