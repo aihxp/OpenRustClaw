@@ -286,7 +286,7 @@ Source: [VERIFIED: crates/core/src/types.rs]
 | A2 | `artifact_type` metadata for Phase 181 can be represented from current memory classes and metadata without waiting for Phase 182 model stores. [ASSUMED] | Summary; Common Pitfalls | If false, `RETR-02` needs an interim artifact taxonomy task before assembly work. |
 | A3 | A new app-layer retrieval assembly service is the cleanest place for explanation shaping, instead of only extending formatter functions. [ASSUMED] | Recommended Project Structure; Architecture Patterns | If false, work may need to stay inside `crates/memory` plus `inspect.rs`, which changes task slicing but not overall scope. |
 
-## Open Questions
+## Wave 0 Gates (Resolved for Planning)
 
 1. **Can the current Rust runtime actually execute native libSQL vector search on the live database path?**
    - What we know: the workspace depends on `libsql`, official docs expose `Builder` setup and native vector primitives, and the repo currently uses `sqlx::SqlitePool` with no runtime `libsql` calls. [VERIFIED: Cargo.toml][VERIFIED: crates/db/src/pool.rs][VERIFIED: `rg -n "libsql::|use libsql"` codebase search][CITED: https://docs.rs/libsql/latest/libsql/][CITED: https://docs.turso.tech/sdk/rust/quickstart][CITED: https://docs.turso.tech/sdk/ts/orm/drizzle]
@@ -302,6 +302,13 @@ Source: [VERIFIED: crates/core/src/types.rs]
    - What we know: current runtime has `memory_type`, source/source_type, archive rows, and metadata fields, but not structured user/operator/project model stores yet. [VERIFIED: crates/core/src/types.rs][VERIFIED: crates/db/src/memory_store.rs][VERIFIED: crates/db/src/migrate.rs]
    - What's unclear: whether `artifact_type` should be a new retrieval-only enum or a derived display field. [ASSUMED]
    - Recommendation: keep it retrieval-facing and derived in Phase 181 unless that proves too lossy in the spike. [ASSUMED]
+
+**Planning resolution (2026-04-08):** These items are accepted as Wave 0 execution gates, not roadmap blockers. Phase 181 planning proceeds with three bounded assumptions that must be verified before Wave 1 implementation work is considered complete:
+- Keep vector rescoring inside the existing Rust retrieval path unless the current live database seam proves native libSQL vector execution is usable without broader storage or connection redesign.
+- Introduce one typed retrieval explanation report in `openrustclaw-app` that existing CLI, control, and MCP surfaces can render differently, instead of inventing a separate explanation subsystem.
+- Treat `artifact_type` as a retrieval-facing derived taxonomy in Phase 181, using current memory/archive/source metadata rather than pre-building Phase 182 model stores.
+
+These Wave 0 gates are carried into `181-VALIDATION.md` and `181-01-PLAN.md`, and execution should not silently skip them.
 
 ## Environment Availability
 
