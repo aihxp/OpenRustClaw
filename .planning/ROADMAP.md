@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.0 through v1.44** - shipped. Full milestone history and archives: `.planning/MILESTONES.md`
-- 🚧 **v1.45 Agent Fabric, Routing Console, and Guided Delegation** - in progress
+- ✅ **v1.45 Agent Fabric, Routing Console, and Guided Delegation** - shipped 2026-04-08
 
 ## Overview
 
@@ -19,7 +19,7 @@
 - [x] **Phase 192: Trusted Remote Backend Registry and Fabric Signals** - Add trusted remote hosts and routeable delegated backend inventory beyond one machine.
 - [x] **Phase 193: Delegated Route Policy, Audit, and Recovery** - Extend delegated execution controls so multi-host routes stay bounded, attributable, and recoverable.
 - [x] **Phase 194: Agent Routing Console and Operator Policy UX** - Build a dedicated routing console across Control UI, CLI, and inspect surfaces.
-- [ ] **Phase 195: Guided First-Task Orchestration and Fallbacks** - Make the first real task after onboarding or repair choose a coherent route with actionable fallback guidance.
+- [x] **Phase 195: Guided First-Task Orchestration and Fallbacks** - Make the first real task after onboarding or repair choose a coherent route with actionable fallback guidance.
 
 ## Phase Details
 
@@ -91,7 +91,12 @@
   1. First-task suggestions reflect the selected lane, available backends, and current policy state.
   2. Orchestration can prefill or recommend a coherent initial route, claw, and profile path.
   3. Blocked or unsupported preferred lanes produce actionable fallback choices before execution starts.
-**Plans**: TBD
+**Plans**:
+- [195-CONTEXT.md](./phases/195-guided-first-task-orchestration-and-fallbacks/195-CONTEXT.md)
+- [195-01-PLAN.md](./phases/195-guided-first-task-orchestration-and-fallbacks/195-01-PLAN.md)
+- [195-02-PLAN.md](./phases/195-guided-first-task-orchestration-and-fallbacks/195-02-PLAN.md)
+- [195-01-SUMMARY.md](./phases/195-guided-first-task-orchestration-and-fallbacks/195-01-SUMMARY.md)
+- [195-02-SUMMARY.md](./phases/195-guided-first-task-orchestration-and-fallbacks/195-02-SUMMARY.md)
 
 ## Progress
 
@@ -101,11 +106,11 @@
 | 192. Trusted Remote Backend Registry and Fabric Signals | 2/2 | Complete | 2026-04-08 |
 | 193. Delegated Route Policy, Audit, and Recovery | 2/2 | Complete | 2026-04-08 |
 | 194. Agent Routing Console and Operator Policy UX | 2/2 | Complete | 2026-04-08 |
-| 195. Guided First-Task Orchestration and Fallbacks | 0/2 | Not Started | — |
+| 195. Guided First-Task Orchestration and Fallbacks | 2/2 | Complete | 2026-04-08 |
 
 ## Current Status
 
-- Active milestone: v1.45 Agent Fabric, Routing Console, and Guided Delegation
-- Roadmap progress: 4/5 phases complete
-- Current work: Phase 194 is complete; Phase 195 is next
-- Next step: `$gsd-autonomous` or `$gsd-plan-phase 195`
+- Active milestone: none
+- Roadmap progress: 5/5 phases complete
+- Current work: v1.45 is complete and shipped
+- Next step: `$gsd-new-milestone`

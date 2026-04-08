@@ -2,6 +2,9 @@ use anyhow::Result;
 use chrono::Utc;
 use openrustclaw_app::agent_backend_catalog::AgentBackendCatalogService;
 use openrustclaw_app::agent_backend_control::AgentBackendControlService;
+use openrustclaw_app::agent_route_policy::{
+    AgentRoutePolicyService, DelegatedRouteDecision, DelegatedRouteRequest,
+};
 use openrustclaw_app::assistant_continuity::AssistantContinuityService;
 use openrustclaw_app::enterprise_admin::{
     EnterpriseAdminAccessState as AppEnterpriseAdminAccessState,
@@ -285,6 +288,29 @@ pub struct AgentRoutingConsoleReport {
     pub blocked_signal_count: usize,
     pub selected_receipt_count: usize,
     pub blocked_receipt_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FirstTaskLaunchReport {
+    pub status: String,
+    pub detail: String,
+    pub prompt: String,
+    pub suggested_task_id: String,
+    pub suggested_category: String,
+    pub suggested_mode: String,
+    pub suggested_provider: Option<String>,
+    pub suggested_backend_id: Option<String>,
+    pub suggested_claw_id: Option<String>,
+    pub suggested_model_profile_id: Option<String>,
+    pub setup_next_action: Option<String>,
+    pub route_preview: DelegatedRouteDecision,
+    pub orchestration_request: orchestrate::OrchestrationRequest,
+    #[serde(default)]
+    pub orchestration_preview: Option<orchestrate::RoutingDecision>,
+    #[serde(default)]
+    pub fallback_choices: Vec<String>,
+    #[serde(default)]
+    pub blockers: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1281,6 +1307,248 @@ pub fn agent_routing_console_summary(
     })
 }
 
+fn default_first_task_prompt(report: &SetupHandoffReport) -> String {
+    let lane = report
+        .selected_lane_label
+        .as_deref()
+        .or(report.selected_provider.as_deref())
+        .unwrap_or("the current lane");
+    if report.workspace_action.as_deref() == Some("repair_existing") {
+        format!(
+            "Validate the repaired {} lane with one meaningful task and summarize any remaining blockers, missing credentials, or route mismatches.",
+            lane
+        )
+    } else {
+        format!(
+            "Run the first meaningful task through {} and report which lane, model path, and delegated route were used.",
+            lane
+        )
+    }
+}
+
+fn recommended_first_task_category(report: &SetupHandoffReport) -> String {
+    if report.workspace_action.as_deref() == Some("repair_existing") {
+        "repair_validation".to_string()
+    } else {
+        "first_task".to_string()
+    }
+}
+
+fn recommended_first_task_model_profile(
+    report: &SetupHandoffReport,
+    registry: &control::ControlRegistry,
+) -> Option<String> {
+    if let Some(backend_id) = report.selected_backend_id.as_deref() {
+        let delegated_id = format!("delegated-{backend_id}");
+        if registry.model_profiles.contains_key(&delegated_id) {
+            return Some(delegated_id);
+        }
+    }
+
+    if let Some(provider) = report.selected_provider.as_deref() {
+        if let Some(profile) = registry
+            .model_profiles
+            .values()
+            .find(|profile| profile.provider == provider)
+        {
+            return Some(profile.id.clone());
+        }
+        match provider {
+            "openrouter" if registry.model_profiles.contains_key("control-openrouter") => {
+                return Some("control-openrouter".to_string());
+            }
+            "ollama" if registry.model_profiles.contains_key("local-ollama") => {
+                return Some("local-ollama".to_string());
+            }
+            _ => {}
+        }
+    }
+
+    registry
+        .runtime
+        .as_ref()
+        .and_then(|runtime| runtime.default_claw_id.as_deref())
+        .and_then(|claw_id| registry.claws.get(claw_id))
+        .map(|claw| claw.model_profile_id.clone())
+        .or_else(|| {
+            registry
+                .claws
+                .values()
+                .next()
+                .map(|claw| claw.model_profile_id.clone())
+        })
+}
+
+fn recommended_first_task_claw_id(registry: &control::ControlRegistry) -> Option<String> {
+    registry
+        .runtime
+        .as_ref()
+        .and_then(|runtime| runtime.default_claw_id.clone())
+        .or_else(|| {
+            registry
+                .claws
+                .values()
+                .find(|claw| claw.enabled)
+                .map(|claw| claw.id.clone())
+        })
+        .or_else(|| registry.claws.values().next().map(|claw| claw.id.clone()))
+}
+
+fn first_task_fallback_choices(
+    report: &SetupHandoffReport,
+    route_preview: &DelegatedRouteDecision,
+    routing_console: &AgentRoutingConsoleReport,
+    recommended_provider: Option<&str>,
+    recommended_model_profile_id: Option<&str>,
+) -> Vec<String> {
+    let mut fallbacks = Vec::new();
+    if let Some(next_action) = report.next_action.as_deref() {
+        fallbacks.push(next_action.to_string());
+    }
+    if !report.pending_steps.is_empty() {
+        fallbacks.push(format!(
+            "Finish pending onboarding steps: {}.",
+            report.pending_steps.join(", ")
+        ));
+    }
+    for blocker in &report.blockers {
+        fallbacks.push(format!("Clear blocker: {blocker}"));
+    }
+    for hint in &route_preview.recovery_hints {
+        fallbacks.push(hint.clone());
+    }
+    for signal in routing_console
+        .fabric
+        .route_signals
+        .iter()
+        .filter(|signal| signal.routeable)
+        .take(3)
+    {
+        fallbacks.push(format!(
+            "Use delegated backend `{}` on `{}` as the first-task fallback route.",
+            signal.backend_id, signal.host_label
+        ));
+    }
+    if let Some(provider) = recommended_provider {
+        let model_detail = recommended_model_profile_id
+            .map(|value| format!(" with model profile `{value}`"))
+            .unwrap_or_default();
+        fallbacks.push(format!(
+            "Stay on the direct provider lane `{provider}`{model_detail} if delegated routing is unavailable."
+        ));
+    }
+    fallbacks.sort();
+    fallbacks.dedup();
+    fallbacks
+}
+
+pub fn first_task_launch_summary(
+    workspace_root: &Path,
+    config_path: &str,
+    prompt_override: Option<String>,
+) -> Result<FirstTaskLaunchReport> {
+    let setup = setup_handoff_summary(workspace_root)?;
+    let routing_console = agent_routing_console_summary(workspace_root, config_path, 8)?;
+    let control_root = control::control_root_for(workspace_root);
+    let registry = control::load_registry(control_root)?;
+    let prompt = prompt_override.unwrap_or_else(|| default_first_task_prompt(&setup));
+    let suggested_task_id = if setup.workspace_action.as_deref() == Some("repair_existing") {
+        "repair-first-task".to_string()
+    } else {
+        "first-task".to_string()
+    };
+    let suggested_category = recommended_first_task_category(&setup);
+    let suggested_claw_id = recommended_first_task_claw_id(&registry);
+    let suggested_model_profile_id = recommended_first_task_model_profile(&setup, &registry);
+    let suggested_provider = setup.selected_provider.clone();
+    let suggested_backend_id = setup.selected_backend_id.clone();
+    let route_preview = AgentRoutePolicyService::new().resolve_route(
+        &DelegatedRouteRequest {
+            preferred_backend_id: suggested_backend_id.clone(),
+            preferred_provider_id: suggested_provider.clone(),
+            preferred_host_id: None,
+            operator_id: None,
+            task_summary: Some(prompt.clone()),
+        },
+        &routing_console.fabric.route_signals,
+        Utc::now().to_rfc3339(),
+    );
+    let orchestration_request = orchestrate::OrchestrationRequest {
+        prompt: prompt.clone(),
+        task_id: Some(suggested_task_id.clone()),
+        category: Some(suggested_category.clone()),
+        claw_id: suggested_claw_id.clone(),
+        mode: "auto".to_string(),
+        overrides: orchestrate::OrchestrationRequestOverrides {
+            model_profile_id: suggested_model_profile_id.clone(),
+            ..Default::default()
+        },
+    };
+    let orchestration_preview =
+        orchestrate::resolve(orchestration_request.clone(), workspace_root).ok();
+    let fallback_choices = first_task_fallback_choices(
+        &setup,
+        &route_preview,
+        &routing_console,
+        suggested_provider.as_deref(),
+        suggested_model_profile_id.as_deref(),
+    );
+
+    let delegated_lane_blocked =
+        suggested_backend_id.is_some() && route_preview.status.as_str() != "selected";
+    let status = if !setup.ready_for_first_start {
+        "blocked"
+    } else if delegated_lane_blocked {
+        "fallback_required"
+    } else {
+        "ready"
+    }
+    .to_string();
+
+    let detail = if status == "blocked" {
+        format!(
+            "First-task launch is blocked until onboarding or repair completes. {}",
+            setup.detail
+        )
+    } else if delegated_lane_blocked {
+        format!(
+            "The preferred delegated lane is not currently routeable. OpenRustClaw prepared a first-task request plus actionable fallback choices instead of dropping you into a blind run."
+        )
+    } else if let Some(backend_id) = suggested_backend_id.as_deref() {
+        format!(
+            "First task is prefilled for delegated backend `{backend_id}` with claw `{}` and model profile `{}`.",
+            suggested_claw_id.as_deref().unwrap_or("-"),
+            suggested_model_profile_id.as_deref().unwrap_or("-")
+        )
+    } else {
+        format!(
+            "First task stays on provider lane `{}` with claw `{}` and model profile `{}`.",
+            suggested_provider.as_deref().unwrap_or("-"),
+            suggested_claw_id.as_deref().unwrap_or("-"),
+            suggested_model_profile_id.as_deref().unwrap_or("-")
+        )
+    };
+
+    Ok(FirstTaskLaunchReport {
+        status,
+        detail,
+        prompt,
+        suggested_task_id,
+        suggested_category,
+        suggested_mode: "auto".to_string(),
+        suggested_provider,
+        suggested_backend_id,
+        suggested_claw_id,
+        suggested_model_profile_id,
+        setup_next_action: setup.next_action.clone(),
+        route_preview,
+        orchestration_request,
+        orchestration_preview,
+        fallback_choices,
+        blockers: setup.blockers,
+    })
+}
+
 pub fn enterprise_access_summary(workspace_root: &Path) -> Result<EnterpriseAccessReport> {
     let registry_path = enterprise_access::enterprise_access_path(workspace_root)
         .display()
@@ -2052,9 +2320,9 @@ fn build_voice_operator_recent_activity(
 mod tests {
     use super::{
         agent_routing_console_summary, enterprise_access_summary, enterprise_admin_summary,
-        enterprise_foundations_summary, greenfield_progress_summary, memory_model_artifacts,
-        memory_timeline, new_tool_execution_record, self_hosted_product_mode_summary,
-        setup_handoff_summary, tool_execution_log_path,
+        enterprise_foundations_summary, first_task_launch_summary, greenfield_progress_summary,
+        memory_model_artifacts, memory_timeline, new_tool_execution_record,
+        self_hosted_product_mode_summary, setup_handoff_summary, tool_execution_log_path,
         transition_self_hosted_product_mode_summary,
     };
     use anyhow::Result;
@@ -2476,6 +2744,68 @@ mod tests {
         assert_eq!(
             report.selected_receipt_count + report.blocked_receipt_count,
             report.receipts.entries.len()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn first_task_launch_summary_prefills_ready_direct_lane() -> Result<()> {
+        let root = tempdir().expect("tempdir");
+        let control_root = crate::commands::control::control_root_for(root.path());
+        crate::commands::control::init(Some(control_root.to_str().unwrap()))?;
+        onboard::save_setup_state(
+            root.path(),
+            &onboard::SetupStateManifest {
+                version: 1,
+                setup: onboard::SetupState {
+                    started_at: Utc::now().to_rfc3339(),
+                    updated_at: Utc::now().to_rfc3339(),
+                    completed_at: Some(Utc::now().to_rfc3339()),
+                    status: "ready".to_string(),
+                    workspace_action: "new_workspace".to_string(),
+                    deployment_mode: None,
+                    deployment_path: None,
+                    remote_connectivity_profile: None,
+                    setup_path: Some("Standard".to_string()),
+                    selected_provider: Some("openrouter".to_string()),
+                    selected_lane_id: Some("openrouter".to_string()),
+                    selected_lane_label: Some("OpenRouter (Multiple models)".to_string()),
+                    selected_lane_kind: Some("direct_api".to_string()),
+                    selected_backend_id: None,
+                    selected_lane_detail: Some(
+                        "Use a provider API key stored in `.env`.".to_string(),
+                    ),
+                    selected_lane_compatibility_note: None,
+                    selected_access_mode: Some("api_key".to_string()),
+                    selected_primary_model: Some("openrouter/auto".to_string()),
+                    selected_primary_model_source: Some("live_discovery".to_string()),
+                    selected_steps: vec!["gateway".to_string(), "model".to_string()],
+                    completed_steps: vec!["gateway".to_string(), "model".to_string()],
+                    blockers: Vec::new(),
+                    next_action: Some("Run the first task.".to_string()),
+                    current_step: None,
+                    bootstrap_outcomes: Vec::new(),
+                },
+            },
+        )?;
+
+        let report = first_task_launch_summary(root.path(), "config/default.toml", None)?;
+
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.suggested_task_id, "first-task");
+        assert_eq!(report.suggested_category, "first_task");
+        assert_eq!(report.suggested_provider.as_deref(), Some("openrouter"));
+        assert_eq!(
+            report.suggested_model_profile_id.as_deref(),
+            Some("control-openrouter")
+        );
+        assert_eq!(
+            report
+                .orchestration_request
+                .overrides
+                .model_profile_id
+                .as_deref(),
+            Some("control-openrouter")
         );
         Ok(())
     }

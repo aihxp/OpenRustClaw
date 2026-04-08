@@ -111,6 +111,15 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_includes_first_task_launch_panel() {
+        assert!(CONTROL_UI_HTML.contains("first-task-launch"));
+        assert!(CONTROL_UI_HTML.contains("first-task-fallbacks"));
+        assert!(CONTROL_UI_HTML.contains("first-task-request"));
+        assert!(CONTROL_UI_HTML.contains("function loadFirstTaskLaunch"));
+        assert!(CONTROL_UI_HTML.contains("function renderFirstTaskLaunch"));
+    }
+
+    #[test]
     fn dashboard_includes_orchestration_supervision_tables() {
         assert!(CONTROL_UI_HTML.contains("orchestration-workers"));
         assert!(CONTROL_UI_HTML.contains("orchestration-delegations"));

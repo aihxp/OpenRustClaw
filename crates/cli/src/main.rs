@@ -607,6 +607,13 @@ enum ToolsAction {
 
 #[derive(Subcommand)]
 enum OrchestrateAction {
+    /// Preview the routed first-task launch path after onboarding or repair
+    FirstTask {
+        #[arg(long)]
+        prompt: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
     /// Resolve which claw and model profile would handle a task
     Resolve {
         #[arg(long)]
@@ -5448,6 +5455,35 @@ async fn main() -> Result<()> {
             }
         }
         Commands::Orchestrate { action } => match action {
+            OrchestrateAction::FirstTask { prompt, json } => {
+                let workspace_root = std::env::current_dir()?;
+                let report = commands::inspect::first_task_launch_summary(
+                    &workspace_root,
+                    "config/default.toml",
+                    prompt,
+                )?;
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&report)?);
+                } else {
+                    println!("status: {}", report.status);
+                    println!("detail: {}", report.detail);
+                    println!("prompt: {}", report.prompt);
+                    println!(
+                        "route: provider={} backend={} claw={} model_profile={}",
+                        report.suggested_provider.as_deref().unwrap_or("-"),
+                        report.suggested_backend_id.as_deref().unwrap_or("-"),
+                        report.suggested_claw_id.as_deref().unwrap_or("-"),
+                        report.suggested_model_profile_id.as_deref().unwrap_or("-")
+                    );
+                    if !report.fallback_choices.is_empty() {
+                        println!("fallbacks:");
+                        for fallback in &report.fallback_choices {
+                            println!("- {}", fallback);
+                        }
+                    }
+                }
+                Ok(())
+            }
             OrchestrateAction::Resolve {
                 task_id,
                 category,

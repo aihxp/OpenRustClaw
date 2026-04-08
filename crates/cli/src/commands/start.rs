@@ -3018,6 +3018,7 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             get(self_hosted_product_mode_handler).post(self_hosted_product_mode_transition_handler),
         )
         .route("/control/setup/handoff", get(setup_handoff_handler))
+        .route("/control/setup/first-task", get(first_task_launch_handler))
         .route("/control/enterprise/access", get(enterprise_access_handler))
         .route("/control/enterprise/admin", get(enterprise_admin_handler))
         .route(
@@ -6998,6 +6999,17 @@ async fn self_hosted_product_mode_handler(
 
 async fn setup_handoff_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
     match inspect::setup_handoff_summary(&state.workspace_root) {
+        Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn first_task_launch_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
+    match inspect::first_task_launch_summary(&state.workspace_root, &state.config_path, None) {
         Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,

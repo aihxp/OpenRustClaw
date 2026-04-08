@@ -26,9 +26,9 @@
 
 ### Guided First-Task Orchestration
 
-- [ ] **TASK-01**: The first task after onboarding or repair suggests a truthful execution path based on the selected lane, available backends, and current policy state.
-- [ ] **TASK-02**: Orchestration can recommend or prefill the right provider, delegated backend, claw, or model-profile path for an initial task instead of dropping operators into generic defaults.
-- [ ] **TASK-03**: If the preferred lane is blocked, unavailable, or detection-only, OpenRustClaw offers actionable fallback choices before first-task execution begins.
+- [x] **TASK-01**: The first task after onboarding or repair suggests a truthful execution path based on the selected lane, available backends, and current policy state.
+- [x] **TASK-02**: Orchestration can recommend or prefill the right provider, delegated backend, claw, or model-profile path for an initial task instead of dropping operators into generic defaults.
+- [x] **TASK-03**: If the preferred lane is blocked, unavailable, or detection-only, OpenRustClaw offers actionable fallback choices before first-task execution begins.
 
 ## v2 Requirements
 
@@ -69,9 +69,9 @@
 | ROUTX-01 | Phase 194 | Complete |
 | ROUTX-02 | Phase 194 | Complete |
 | ROUTX-03 | Phase 194 | Complete |
-| TASK-01 | Phase 195 | Pending |
-| TASK-02 | Phase 195 | Pending |
-| TASK-03 | Phase 195 | Pending |
+| TASK-01 | Phase 195 | Complete |
+| TASK-02 | Phase 195 | Complete |
+| TASK-03 | Phase 195 | Complete |
 
 **Coverage:**
 - v1 requirements: 13 total

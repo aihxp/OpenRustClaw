@@ -483,6 +483,20 @@
           </div>
         </article>
         <article class="panel span-12">
+          <h2>First Task Launch</h2>
+          <p class="muted">A prefilled first-task path that uses the selected lane, current routing policy, and available backend fabric before execution begins.</p>
+          <div class="surface"><div id="first-task-launch" class="summary-card empty">Loading…</div></div>
+          <div class="surface" style="margin-top: 12px"><pre id="first-task-request">Loading…</pre></div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
+                <tr><th>Fallback</th></tr>
+              </thead>
+              <tbody id="first-task-fallbacks"><tr><td class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+        <article class="panel span-12">
           <h2>Agent Routing Console</h2>
           <p class="muted">Delegated backend inventory, trusted remote hosts, route policy, and recent routing receipts on one operator surface.</p>
           <div class="surface"><div id="agent-routing-console" class="summary-card empty">Loading…</div></div>
@@ -3169,6 +3183,49 @@
         renderSetupHandoff(payload);
       }
 
+      function renderFirstTaskLaunch(report) {
+        if (!report || report.error) {
+          renderSummaryCard("first-task-launch", report?.error || "No first-task launch summary available.", null);
+          setText("first-task-request", report?.error || "No first-task request available.");
+          renderTableRows("first-task-fallbacks", [], "No first-task fallback choices available.");
+          return;
+        }
+
+        renderSummaryCard("first-task-launch", "No first-task launch summary available.", buildSummaryMarkup({
+          kicker: "Guided First Task",
+          title: `${report.status || "unknown"} launch path`,
+          copy: report.detail || "No first-task launch summary available.",
+          stats: [
+            { label: "Provider", value: report.suggested_provider || "-", detail: report.suggested_backend_id || "direct lane" },
+            { label: "Claw", value: report.suggested_claw_id || "-", detail: report.suggested_model_profile_id || "-" },
+            { label: "Task", value: report.suggested_task_id || "-", detail: report.suggested_category || "-" },
+            { label: "Mode", value: report.suggested_mode || "-", detail: report.setup_next_action || "-" },
+          ],
+        }));
+
+        setText("first-task-request", {
+          prompt: report.prompt,
+          orchestration_request: report.orchestration_request,
+          route_preview: report.route_preview,
+          orchestration_preview: report.orchestration_preview,
+        });
+
+        renderTableRows(
+          "first-task-fallbacks",
+          (report.fallback_choices || []).map((entry) => `
+            <tr>
+              <td>${escapeHtml(entry)}</td>
+            </tr>
+          `),
+          "No first-task fallback choices available."
+        );
+      }
+
+      async function loadFirstTaskLaunch() {
+        const payload = await fetchJson("/control/setup/first-task");
+        renderFirstTaskLaunch(payload);
+      }
+
       function parseCommaSeparatedList(raw) {
         return String(raw || "")
           .split(",")
@@ -5744,6 +5801,7 @@
             loadSecurityPosture(),
             loadSelfHostedProductMode(),
             loadSetupHandoff(),
+            loadFirstTaskLaunch(),
             loadRoutingConsole(),
             loadEnterpriseFoundations(),
             loadEnterpriseAdmin(),

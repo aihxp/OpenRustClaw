@@ -1,5 +1,21 @@
 # Project Milestones: OpenRustClaw
 
+## v1.45 Agent Fabric, Routing Console, and Guided Delegation (Shipped: 2026-04-08)
+
+**Phases completed:** 5 phases, 10 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.45-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Promoted Cursor from stale detection-only assumptions into a truthful delegated backend lane using its documented local `cursor agent` surface and live auth or model evidence.
+- Added a trusted multi-host delegated backend fabric with portable local inventory export, explicit remote-host enrollment, and comparable local versus remote route signals.
+- Added durable delegated route policy, route receipts, recovery hints, and remote execution envelopes so multi-host routing stays attributable and bounded.
+- Built a dedicated routing console across Control UI, inspect, and CLI so backend inventory, policy state, routeability, and recent route receipts now tell one story.
+- Added a guided first-task launch path after onboarding or repair with prefilled orchestration requests, route previews, and actionable fallbacks.
+
+---
+
 ## v1.44 Agent Discovery, Journey Cohesion, and Provider Access (Shipped: 2026-04-08)
 
 **Phases completed:** 5 phases, 10 plans, 0 tasks
