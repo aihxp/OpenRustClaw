@@ -2,7 +2,7 @@
 
 ## What This Is
 
-OpenRustClaw is a self-hosted open-source Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.44 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane, an explicit self-hosted product-mode contract across `solo`, `team`, `company`, and `enterprise` deployments, a truthful setup lifecycle from first install through repair and handoff, a canonical documentation contract that keeps the repo entrypoint, guided docs, and planning docs aligned, a cleaner codebase baseline with explicit cleanup inventory, repo-hygiene guardrails, an extracted control-auth boundary, a repaired tagged-release workflow that now produces truthful downloadable binary artifacts on GitHub, a maintained public Rust package surface on crates.io, a bounded remote-connectivity story around node-first guidance with SSH tunnel and reverse-proxy fallbacks preserved explicitly in setup state and operator surfaces, a public `1.4.x` release line, a first-run onboarding lane that now captures provider access mode, verifies live connectivity, and persists an explicit primary task model through handoff and first launch, a bounded learning plus memory depth baseline with explicit God Mode containment, and a truthful delegated-agent journey that keeps direct providers, local runtimes, and supported local agent CLIs legible from onboarding through runtime inspection. The closed architecture and verification programs remain preserved internally, `v1.40` closed the public-product convergence queue at `1/1`, `v1.41` closed the markdown-surface audit queue at `1/1`, `v1.42` closed the onboarding primary-model selection queue at `4/4`, `v1.43` closed the learning-loop, memory-depth, and God Mode queue at `5/5`, and `v1.44` closed the agent-discovery and journey-cohesion queue at `5/5`.
+OpenRustClaw is a self-hosted open-source Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.44 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane, an explicit self-hosted product-mode contract across `solo`, `team`, `company`, and `enterprise` deployments, a truthful setup lifecycle from first install through repair and handoff, a canonical documentation contract that keeps the repo entrypoint, guided docs, and planning docs aligned, a cleaner codebase baseline with explicit cleanup inventory, repo-hygiene guardrails, an extracted control-auth boundary, a repaired tagged-release workflow that now produces truthful downloadable binary artifacts on GitHub, a maintained public Rust package surface on crates.io, a bounded remote-connectivity story around node-first guidance with SSH tunnel and reverse-proxy fallbacks preserved explicitly in setup state and operator surfaces, a public `1.4.x` release line, a first-run onboarding lane that now captures provider access mode, verifies live connectivity, and persists an explicit primary task model through handoff and first launch, a bounded learning plus memory depth baseline with explicit God Mode containment, and a truthful delegated-agent journey that keeps direct providers, local runtimes, and supported local agent CLIs legible from onboarding through runtime inspection. The next step is to turn those delegated lanes into a richer agent fabric with trustworthy remote backends, operator-visible routing decisions, and a smoother first-task experience.
 
 The product target remains broader than the MVP: a general-purpose assistant platform that can eventually support coding, communications, business operations, and deeper autonomous workflows. After v1.7, the repo also has one clearer documentation story instead of several drifting versions of the product. After v1.8, the repo also has a more explicit cleanup contract for keeping that surface maintainable.
 
@@ -14,7 +14,7 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 - **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, v1.9 GitHub Repository Presence and Actions Recovery, v1.10 Release Binaries Workflow Recovery, v1.11 Crates.io and Docs.rs Publication Foundation, v1.12 Secure Node Connectivity and SSH Tunnel Revisit, v1.13 Brownfield-to-Greenfield Transition, v1.14 Continued Greenfield Conversion, v1.15 Deeper Greenfield Conversion, v1.16 Greenfield Conversion: Skills and Runtime Hotspots, v1.17 Greenfield Conversion: Completion Metrics and Remaining Hotspots, v1.18 Greenfield Conversion: Final Ranked Seam and 100% Completion Path, v1.19 Full Greenfield Conversion: Control Plane Route Families I, v1.20 Full Greenfield Conversion: Control Plane Route Families II, v1.21 Full Greenfield Conversion: Mobile and Voice Runtime Services, v1.22 Full Greenfield Conversion: Orchestration and Browser Services, v1.23 Full Greenfield Conversion: Setup and Secondary Command Surfaces, v1.24 Full Greenfield Conversion: Adapter-Only Exit and Enforcement, v1.25 Native Delivery Layer: Port Contracts and Legacy Inventory, v1.26 Native Delivery Layer: Control, MCP, and Gateway Delivery, v1.27 Native Delivery Layer: CLI Core Dispatch and Operator Commands I, v1.28 Native Delivery Layer: CLI Operator Commands II and UI-Adjacent Flows, v1.29 Native Delivery Layer: Runtime Hosts and Background Workers, v1.30 Native Delivery Layer: Repositories and Integration Adapters, v1.31 Native Delivery Layer: Legacy Module Retirement and Compatibility Shutdown, v1.32 Native Delivery Layer: Native Product Exit Audit and Packaging, v1.33 Native Delivery Implementation: Gateway and MCP Successor Entry Points, v1.34 Native Delivery Implementation: Native CLI Dispatch and Core Operator Paths, v1.35 Native Delivery Implementation: Runtime Hosts and Background Workers, v1.36 Native Delivery Implementation: Repository and Integration Adapter Lift, v1.37 Native Delivery Implementation: Legacy Command Tree Retirement, v1.38 Native Delivery Implementation: Native Product Verification and Packaging Exit, v1.39 Native Product E2E Verification and Greenfield Repairs, v1.40 Public Product Cleanup, Documentation Convergence, CI Repair, and Release, v1.41 Markdown Surface Audit, Cleanup, and Consolidation, v1.42 Onboarding Primary LLM Selection, v1.43 Learning Loop, Memory Depth, and God Mode, and v1.44 Agent Discovery, Journey Cohesion, and Provider Access
 - **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.44-*`
-- **Planning state:** milestone complete; next step is `$gsd-new-milestone`
+- **Planning state:** active milestone `v1.45 Agent Fabric, Routing Console, and Guided Delegation`
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closed that workflow gap going forward
 - **Program baselines:** the internal architecture and verification denominators remain closed, and the public-product convergence roadmap is now complete at `1/1`, or `100%`
 
@@ -24,7 +24,23 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 **Archive:** `.planning/milestones/v1.44-ROADMAP.md`, `.planning/milestones/v1.44-REQUIREMENTS.md`, `.planning/milestones/v1.44-MILESTONE-AUDIT.md`, `.planning/milestones/v1.44-VERIFICATIONS.md`
 
-## Previous Milestone: v1.43 Learning Loop, Memory Depth, and God Mode
+## Current Milestone: v1.45 Agent Fabric, Routing Console, and Guided Delegation
+
+**Goal:** Turn delegated agents from truthful single-host lanes into a real operator-controlled execution fabric with richer routing visibility, trusted remote backends, and a guided first-task path.
+
+**Target features:**
+- Validate Cursor honestly and either add a supported execution lane or keep it detection-only with explicit compliance reasons
+- Add a trusted multi-host delegated-backend registry with routeable local and remote agent capacity
+- Build a dedicated agent-routing console instead of relying on a broad dashboard alone
+- Improve first-task orchestration so onboarding selections, route decisions, and fallback guidance stay coherent
+
+## Previous Milestone: v1.44 Agent Discovery, Journey Cohesion, and Provider Access
+
+**Result:** Shipped 2026-04-08. OpenRustClaw closed the delegated-agent discovery and journey-cohesion roadmap at `5/5`, added truthful local-agent discovery, compliance-safe delegated backend contracts, onboarding and model-menu convergence, bounded delegated runtime routing, and a repaired operator journey across README, inspect, and Control UI.
+
+**Archive:** `.planning/milestones/v1.44-MILESTONE-AUDIT.md`, `.planning/milestones/v1.44-phases`
+
+## Older Milestone: v1.43 Learning Loop, Memory Depth, and God Mode
 
 **Result:** Shipped 2026-04-08. OpenRustClaw closed the learning-loop and memory-depth roadmap at `5/5`, added explainable hybrid retrieval and bounded recall packs, durable structured memory artifacts, reviewable learning candidates, proposal-first skill reuse, and a named God Mode lane with TTL-backed restore plus quarantine controls.
 
@@ -172,12 +188,10 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ### Active
 
-- **MEM-01:** Memory recall uses better retrieval ranking, score shaping, and result assembly so relevant prior context is surfaced reliably across sessions.
-- **MEM-02:** The runtime can consolidate durable memory summaries and explicit user or operator model artifacts without injecting raw memory files into prompts.
-- **LEARN-01:** Completed runs can produce reviewable learning candidates that become durable lessons or memory artifacts under explicit policy.
-- **LEARN-02:** Successful workflows can suggest new or improved reusable skills without hidden self-modification.
-- **GOD-01:** Operators can explicitly enable a `God Mode` lane that grants full autonomy, full access, and full power.
-- **GOD-02:** God Mode remains auditable, clearly signposted, reversible, and separated from the default trust-first runtime path.
+- **CURS-01:** Cursor support must stay truthful: either OpenRustClaw proves a documented programmable surface and uses it safely, or it keeps Cursor as detection-only with explicit reasons.
+- **FABR-01:** Operators can register and inspect trusted local and remote delegated-agent backends as one execution fabric instead of one-host-only lanes.
+- **ROUTX-01:** Control surfaces expose a dedicated routing console with backend readiness, policy state, route choices, and receipts instead of burying that story inside a general dashboard.
+- **TASK-01:** The first task after onboarding or repair uses the selected lane and available backends to suggest a coherent execution path with actionable fallback guidance.
 
 ### Out of Scope
 
@@ -238,6 +252,8 @@ The next follow-on queue returned to onboarding behavior rather than broad repo 
 - **Cleanup without regressions:** Internal refactors must preserve the shipped operator, runtime, and control-surface behavior
 - **Canonical ownership:** Every major docs surface should have one primary owner and clearly documented mirrors or derived views
 - **Security baseline:** Production auth, secret handling, sandboxing, and origin/runtime trust boundaries stay on by default
+- **Vendor compliance:** Account-backed vendors must only be used through documented execution or API surfaces, never through scraped sessions or inferred token reuse
+- **Operator trust:** Multi-host delegation must be explicit, inspectable, and reversible rather than ambient or implicit
 
 ## Key Decisions
 
@@ -253,6 +269,8 @@ The next follow-on queue returned to onboarding behavior rather than broad repo 
 | Prioritize deeper OpenClaw parity through a focused top-five surface slice | Browser depth, supervision, mobile, Control UI, and voice/calls are the clearest next parity gains without scattering effort | ✓ Good |
 | Keep deeper parity work grounded in typed runtime summaries instead of frontend-only stitching | Browser, supervision, mobile, Control UI, and voice parity all landed more cleanly when the Rust-owned control plane aggregated the operator story first | ✓ Good |
 | Sequence enterprise expansion ahead of another broad parity milestone | Identity, policy, audit, and supervised-autonomy controls are now the clearest blockers to enterprise readiness | ✓ Good |
+| Treat Cursor as execution-capable only if a documented programmable surface is confirmed | The product cannot claim backend support on top of opaque desktop behavior or login reuse | ✓ Good |
+| Evolve delegated backends into a trusted fabric instead of a hidden router | Operators need explicit control over where work runs, why it routed there, and how to recover when a lane is blocked | ✓ Good |
 | Layer enterprise operator identity on top of the existing control auth boundary | The control bearer and trusted-proxy transport boundary already exists, so enterprise identity should narrow sensitive operator actions instead of replacing the outer control contract | ✓ Good |
 | Keep the v1.3 enterprise admin surface inside the shipped Control UI and typed runtime reports | The current goal was operator usability for the existing enterprise/autonomy contract, not a separate admin product or frontend-only state layer | ✓ Good |
 | Interpret “god mode” as an explicit operator-gated full-autonomy lane rather than a removal of audit or control boundaries | The platform’s trust-first contract still needs to hold even when trusted operators deliberately enable a stronger autonomy mode | ✓ Good |
@@ -296,7 +314,7 @@ The next follow-on queue returned to onboarding behavior rather than broad repo 
 - the internal native-product E2E roadmap is closed at `1/1`, or `100%`
 - the public-product convergence roadmap is now closed at `1/1`, or `100%`
 - the markdown-surface audit roadmap is now closed at `1/1`, or `100%`
-- there is no active milestone yet; the next planning step is `$gsd-new-milestone`
+- there is an active milestone: `v1.45 Agent Fabric, Routing Console, and Guided Delegation`
 
 ## Evolution
 
@@ -316,4 +334,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-08 after completing v1.44 milestone*
+*Last updated: 2026-04-08 after starting v1.45 milestone*

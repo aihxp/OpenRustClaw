@@ -1,20 +1,20 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.44
-milestone_name: Agent Discovery, Journey Cohesion, and Provider Access
-current_phase: none
-current_phase_name: none
+milestone: v1.45
+milestone_name: Agent Fabric, Routing Console, and Guided Delegation
+current_phase: 191
+current_phase_name: cursor surface verification and backend expansion
 current_plan: none
-status: milestone complete
-stopped_at: Phase 190 completed after repairing the remaining provider-versus-agent journey seams across README, onboarding, inspect, and Control UI.
+status: roadmap defined
+stopped_at: Milestone v1.45 was initialized with a five-phase roadmap covering Cursor truthfulness, multi-host delegation, routing UX, and first-task orchestration.
 last_updated: "2026-04-08T23:59:00Z"
 last_activity: 2026-04-08
 progress:
   total_phases: 5
-  completed_phases: 5
-  total_plans: 10
-  completed_plans: 10
-  percent: 100
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-08)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** `v1.44` is complete. The next planning action is to start a new milestone from this stronger agent-lane baseline.
+**Current focus:** `v1.45` is ready to begin at Phase 191, starting with Cursor truthfulness and delegated backend expansion before the wider fabric and routing UX work.
 
 ## Current Position
 
-Current Phase: none
-Current Phase Name: none
+Current Phase: 191
+Current Phase Name: cursor surface verification and backend expansion
 Total Phases: 5
 Current Plan: none
 Total Plans in Phase: 0
-Status: milestone complete
+Status: roadmap defined
 Last activity: 2026-04-08
 
-Phase: 5 of 5
-Plan: 2 of 2
-Progress: [##########] 100%
+Phase: 1 of 5
+Plan: 0 of 2
+Progress: [----------] 0%
 
 ## Performance Metrics
 
@@ -65,7 +65,9 @@ Recent decisions affecting current work:
 - Phase 187 is now complete after surfacing delegated backend contracts through setup handoff and enterprise policy while keeping the allowlist boundary unified.
 - Phase 188 is complete: onboarding and `openrustclaw models` share one provider-or-agent lane catalog, and durable setup state remembers selected lane identity through inspect and repair flows.
 - Phase 189 is complete: delegated local-agent backends now resolve through the runtime provider factory as bounded audited runtime lanes, and control init can seed vendor-managed model-profile templates for eligible backends.
-- Phase 190 is complete: README, onboarding, inspect, and Control UI now use the same truthful provider-lane versus delegated-agent language and expose delegated runtime receipts more clearly.
+- `v1.44` closed the basic delegated-agent journey, but Cursor remains detection-only, multi-host delegation does not exist yet, the Control UI is still a broad dashboard instead of a focused routing console, and first-task orchestration can still feel generic after onboarding.
+- `v1.45` will treat those as one connected execution-fabric problem rather than four unrelated cleanup items.
+- Phase 191 is next: verify Cursor’s programmable surface honestly and either expand backend support or preserve a consistent detection-only boundary.
 
 ### Pending Todos
 
@@ -78,5 +80,5 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-04-08
-Stopped at: Phase 190 completed after repairing the remaining provider-versus-agent journey seams across README, onboarding, inspect, and Control UI.
+Stopped at: Milestone v1.45 was initialized with a five-phase roadmap covering Cursor truthfulness, multi-host delegation, routing UX, and first-task orchestration.
 Resume file: None

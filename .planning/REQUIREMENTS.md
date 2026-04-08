@@ -1,102 +1,83 @@
-# Requirements: OpenRustClaw v1.44 Agent Discovery, Journey Cohesion, and Provider Access
+# Requirements: OpenRustClaw v1.45 Agent Fabric, Routing Console, and Guided Delegation
 
 **Defined:** 2026-04-08
 **Core Value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
 
 ## v1 Requirements
 
-### Local Agent Discovery and Compliance
+### Cursor and Backend Expansion
 
-- [x] **DISC-01**: OpenRustClaw detects supported local agent tools such as `claude`, `codex`, `gemini`, and any documented Cursor agent surface without unsafe probing or hidden side effects.
-- [x] **DISC-02**: Discovery records durable evidence for each detected backend, including binary path, version, invocation style, auth status or auth capability, model-discovery capability, and policy classification.
-- [x] **DISC-03**: Detected-but-unusable agent tools stay visible with truthful reasons such as unsupported auth reuse, missing model discovery, blocked policy, or missing vendor support.
-- [x] **DISC-04**: Local agent discovery and refresh actions are policy-gated, auditable, and available through shared app services instead of disconnected CLI-only checks.
+- [ ] **CURS-01**: Operator can see whether Cursor exposes a documented programmable execution surface and why it is supported, blocked, or detection-only.
+- [ ] **CURS-02**: If Cursor exposes a supported execution surface, OpenRustClaw can route bounded delegated work through it with the same audit, sandbox, and policy controls used for other delegated backends.
+- [ ] **CURS-03**: If Cursor does not expose a supported execution surface, onboarding, models, inspect, and Control UI all keep Cursor visible as detection-only with explicit compliance reasons.
 
-### OAuth-Safe Account-Backed Access
+### Delegation Fabric
 
-- [x] **AUTH-01**: Subscription-managed or account-managed access is only used through supported vendor execution surfaces or documented APIs; OpenRustClaw must not import cached browser sessions, copy tokens from vendor stores, or impersonate vendor logins.
-- [x] **AUTH-02**: OpenRustClaw distinguishes direct API providers from delegated local agent backends and preserves truthful capability metadata for each lane.
-- [x] **AUTH-03**: Backend policy can allow or deny delegated local agent execution per backend while preserving environment allowlists, audit logging, and runtime controls.
-- [x] **AUTH-04**: Model availability for delegated agent backends is discovered truthfully when supported and otherwise labeled as vendor-managed or unknown instead of guessed.
+- [ ] **FABR-01**: Operator can register and inspect trusted remote hosts that advertise delegated agent backends and their capability metadata.
+- [ ] **FABR-02**: Route selection can evaluate both local and trusted remote delegated backends using explicit readiness, policy, and compatibility signals.
+- [ ] **FABR-03**: Remote delegated execution preserves audit evidence, operator attribution, environment allowlists, and bounded runtime controls.
+- [ ] **FABR-04**: When a delegated backend is blocked or fails, OpenRustClaw records the route decision and recovery hints instead of failing silently.
 
-### Onboarding and Model Selection Cohesion
+### Routing Console
 
-- [x] **ONBR-01**: Onboarding surfaces detected local agent backends alongside API-key and local-runtime providers with clear access-mode labels and compatibility notes.
-- [x] **ONBR-02**: Provider, access-mode, and model selection persist delegated-agent choices and restore them through handoff, repair, resume, and first launch.
-- [x] **ONBR-03**: Onboarding explains vendor constraints and fallback options whenever a detected local agent backend cannot safely serve as a general-purpose provider lane.
-- [x] **ONBR-04**: `openrustclaw models`, onboarding menus, inspect surfaces, and control surfaces share one canonical provider or agent catalog instead of diverging static lists.
+- [ ] **ROUTX-01**: Control UI exposes a dedicated routing console that shows delegated backend inventory, readiness, policy state, and routeable capacity.
+- [ ] **ROUTX-02**: Operator can enable, disable, or constrain delegated backends and route policy through shipped CLI and Control UI surfaces without editing raw files.
+- [ ] **ROUTX-03**: Operators can inspect route decisions and delegated receipts per task or run using the same vocabulary across CLI, Control UI, and inspect surfaces.
 
-### Runtime Integration and Agent Journey
+### Guided First-Task Orchestration
 
-- [x] **ROUT-01**: Eligible tasks can route through installed local agent backends as bounded external backends with durable audit evidence and consistent session attribution.
-- [x] **ROUT-02**: Model profiles and control-registry flows can reference delegated agent backends without breaking existing provider traits, fallback chains, or runtime mode controls.
-- [x] **ROUT-03**: Delegated agent execution preserves approval, autonomy, memory, and artifact boundaries instead of widening authority implicitly.
-- [x] **ROUT-04**: Operators can inspect backend selection, execution receipts, failures, and recovery hints for delegated local-agent runs.
-
-### Journey Audit and UX Repair
-
-- [x] **JOUR-01**: The user journey from install to onboarding to first task to inspect or repair contains no dead-end steps or contradictory terminology around providers, agents, or access modes.
-- [x] **JOUR-02**: The agent journey from discovery to selection to routing to result to inspection is explicit and testable across CLI, Control UI, and MCP surfaces.
-- [x] **JOUR-03**: Disconnected provider catalogs, model menus, policy surfaces, and inspection reports are converged behind shared app services or typed contracts.
-- [x] **JOUR-04**: Docs, onboarding text, inspect output, and control UI tell the same truthful story about supported local agents, provider access, and delegated execution.
+- [ ] **TASK-01**: The first task after onboarding or repair suggests a truthful execution path based on the selected lane, available backends, and current policy state.
+- [ ] **TASK-02**: Orchestration can recommend or prefill the right provider, delegated backend, claw, or model-profile path for an initial task instead of dropping operators into generic defaults.
+- [ ] **TASK-03**: If the preferred lane is blocked, unavailable, or detection-only, OpenRustClaw offers actionable fallback choices before first-task execution begins.
 
 ## v2 Requirements
 
-### Multi-Host Agent Fabric
+### Delegation Fabric Depth
 
-- **FABR-01**: OpenRustClaw can discover and manage trusted agent backends across multiple hosts instead of one local machine.
-- **FABR-02**: Delegated agent pools can advertise quotas, concurrency, and priority routing to the orchestrator.
+- **FABR-05**: Delegated backend routing can weight latency, quotas, and spend hints across multiple hosts.
+- **FABR-06**: Operator can group remote backends into pools and assign workload classes to those pools.
 
-### Billing and Usage Awareness
+### Routing UX Depth
 
-- **BILL-01**: Delegated agent execution can surface vendor-specific quota or billing hints where the vendor exposes them safely.
-- **BILL-02**: Operators can enforce per-backend spend or usage ceilings before launching delegated work.
+- **ROUTX-04**: Control UI visualizes live route saturation, queue depth, and backend health trends over time.
+- **ROUTX-05**: Operators can simulate a route decision before sending a task.
 
-### Deeper UX Surfaces
+### Guided Task UX Depth
 
-- **UX-01**: Control UI can visualize the full backend discovery graph, policy state, and route decisions in one operator-facing panel.
-- **UX-02**: Onboarding can run a guided compatibility audit for all detected agent tools before the first model selection decision.
+- **TASK-04**: OpenRustClaw can turn the onboarding handoff into a one-click “run the first meaningful task” journey with preflight and rollback baked in.
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Importing vendor session cookies, OAuth tokens, or credential-store secrets into OpenRustClaw | Breaks the trust-first posture and is not a documented vendor integration path |
-| Treating an installed desktop launcher as a full model backend without a documented execution surface | Detection is useful, but pretending capability would make onboarding dishonest |
-| Using consumer subscriptions as raw API replacements when vendor docs require direct API or cloud credentials | Risks violating vendor boundaries and produces fragile integrations |
-| Silent background delegation to external agent CLIs without audit evidence or operator inspection | Conflicts with the existing bounded-autonomy contract |
-| Broad visual redesign work unrelated to journey coherence or agent usability | Valuable later, but not required to close the current product truthfulness and UX gaps |
+| Importing vendor browser sessions, cached OAuth tokens, or desktop secrets from Cursor, Claude Code, Codex, or Gemini CLI | Violates the trust-first and compliance-safe backend contract |
+| Pretending Cursor is a supported backend without a documented programmable surface | Detection is useful, but fake support would reopen the exact truthfulness gap v1.44 just closed |
+| Fully automatic ambient discovery of remote hosts without explicit operator trust enrollment | Multi-host delegation needs a clear trust and audit boundary |
+| Broad visual redesign work unrelated to routing clarity, backend policy, or first-task guidance | Valuable later, but not required to close this milestone’s product-shape gap |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DISC-01 | Phase 186 | Completed |
-| DISC-02 | Phase 186 | Completed |
-| DISC-03 | Phase 186 | Completed |
-| DISC-04 | Phase 186 | Completed |
-| AUTH-01 | Phase 187 | Completed |
-| AUTH-02 | Phase 187 | Completed |
-| AUTH-03 | Phase 187 | Completed |
-| AUTH-04 | Phase 187 | Completed |
-| ONBR-01 | Phase 188 | Completed |
-| ONBR-02 | Phase 188 | Completed |
-| ONBR-03 | Phase 188 | Completed |
-| ONBR-04 | Phase 188 | Completed |
-| ROUT-01 | Phase 189 | Completed |
-| ROUT-02 | Phase 189 | Completed |
-| ROUT-03 | Phase 189 | Completed |
-| ROUT-04 | Phase 189 | Completed |
-| JOUR-01 | Phase 190 | Completed |
-| JOUR-02 | Phase 190 | Completed |
-| JOUR-03 | Phase 190 | Completed |
-| JOUR-04 | Phase 190 | Completed |
+| CURS-01 | Phase 191 | Pending |
+| CURS-02 | Phase 191 | Pending |
+| CURS-03 | Phase 191 | Pending |
+| FABR-01 | Phase 192 | Pending |
+| FABR-02 | Phase 192 | Pending |
+| FABR-03 | Phase 193 | Pending |
+| FABR-04 | Phase 193 | Pending |
+| ROUTX-01 | Phase 194 | Pending |
+| ROUTX-02 | Phase 194 | Pending |
+| ROUTX-03 | Phase 194 | Pending |
+| TASK-01 | Phase 195 | Pending |
+| TASK-02 | Phase 195 | Pending |
+| TASK-03 | Phase 195 | Pending |
 
 **Coverage:**
-- v1 requirements: 20 total
-- Mapped to phases: 20
+- v1 requirements: 13 total
+- Mapped to phases: 13
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-08*
-*Last updated: 2026-04-08 after completing Phase 190*
+*Last updated: 2026-04-08 after initial definition*

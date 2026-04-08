@@ -2,95 +2,90 @@
 
 ## Milestones
 
-- ✅ **v1.0 through v1.43** - shipped. Full milestone history and archives: `.planning/MILESTONES.md`
-- ✅ **v1.44 Agent Discovery, Journey Cohesion, and Provider Access** - shipped
+- ✅ **v1.0 through v1.44** - shipped. Full milestone history and archives: `.planning/MILESTONES.md`
+- 🚧 **v1.45 Agent Fabric, Routing Console, and Guided Delegation** - in progress
 
 ## Overview
 
-`v1.44` focuses on the part of the product that still feels disconnected even after truthful provider onboarding shipped in `v1.42` and bounded learning or God Mode shipped in `v1.43`: the actual agent experience. This milestone unifies discovery of installed local agent tools, defines a compliance-safe way to use account-backed vendor CLIs without scraping credentials, converges onboarding and model selection around one truthful provider or agent catalog, routes delegated agent runs through bounded audited backends, and closes the remaining user-journey and agent-journey seams across CLI, Control UI, inspect, and docs.
+`v1.45` builds on the truthful delegated-agent baseline from `v1.44` instead of reopening it. This milestone turns delegated local agents into a richer execution fabric by validating Cursor honestly, adding trusted remote backends, exposing a real routing console, and making the first-task path after onboarding feel intentional instead of generic.
 
 ## Phases
 
 **Phase Numbering:**
 - Integer phases continue the live sequence from the prior milestone.
-- This milestone starts at Phase 186 because `v1.43` ended at Phase 185.
+- This milestone starts at Phase 191 because `v1.44` ended at Phase 190.
 
-- [x] **Phase 186: Local Agent Discovery and Compliance Inventory** - Detect installed local agent backends and expose truthful capability and policy metadata.
-- [x] **Phase 187: OAuth-Safe Delegated Backend Contracts** - Add compliance-safe delegated backend rules for subscription-managed vendor surfaces.
-- [x] **Phase 188: Onboarding and Model Selection Cohesion** - Converge onboarding, model menus, inspect, and control around one shared provider or agent catalog.
-- [x] **Phase 189: Runtime Integration and Agent Journey Delivery** - Route eligible tasks through delegated local agents with audit, attribution, and bounded autonomy controls.
-- [x] **Phase 190: Journey Audit, UX Repair, and Product Truthfulness** - Audit the end-to-end user and agent journeys, repair disconnected surfaces, and verify the shipped story across docs and runtime surfaces.
+- [ ] **Phase 191: Cursor Surface Verification and Backend Expansion** - Confirm Cursor’s programmable surface truthfully and either add a supported backend lane or preserve detection-only behavior with explicit reasons.
+- [ ] **Phase 192: Trusted Remote Backend Registry and Fabric Signals** - Add trusted remote hosts and routeable delegated backend inventory beyond one machine.
+- [ ] **Phase 193: Delegated Route Policy, Audit, and Recovery** - Extend delegated execution controls so multi-host routes stay bounded, attributable, and recoverable.
+- [ ] **Phase 194: Agent Routing Console and Operator Policy UX** - Build a dedicated routing console across Control UI, CLI, and inspect surfaces.
+- [ ] **Phase 195: Guided First-Task Orchestration and Fallbacks** - Make the first real task after onboarding or repair choose a coherent route with actionable fallback guidance.
 
 ## Phase Details
 
-### Phase 186: Local Agent Discovery and Compliance Inventory
-**Goal**: OpenRustClaw can truthfully detect supported local agent tools and classify what they can safely do before onboarding or routing depends on them.
+### Phase 191: Cursor Surface Verification and Backend Expansion
+**Goal**: OpenRustClaw can describe Cursor truthfully and, if supported, execute through it without weakening the current delegated-backend contract.
 **Depends on**: Nothing (first phase)
-**Requirements**: DISC-01, DISC-02, DISC-03, DISC-04
+**Requirements**: CURS-01, CURS-02, CURS-03
 **Success Criteria** (what must be TRUE):
-  1. The runtime can detect local installations of supported agent tools such as `claude`, `codex`, `gemini`, and any documented Cursor agent surface without unsafe mutation or brittle heuristics.
-  2. Discovery results include durable evidence for path, version, invocation mode, auth status or auth capability, model-discovery support, and policy classification.
-  3. Unsupported or ambiguous tools remain visible as detected-but-unavailable with clear reasons instead of disappearing or being mislabeled as ready.
-  4. Discovery feeds one shared app-level catalog that later onboarding, model selection, and runtime routing can reuse.
-**Plans**: 2/2 complete (`186-01`, `186-02`)
+  1. Cursor support is explicitly classified as executable or detection-only using documented evidence instead of guesswork.
+  2. If Cursor is execution-capable, it routes through the same bounded audit and policy path as existing delegated backends.
+  3. If Cursor is not execution-capable, every operator surface says so clearly and consistently.
+**Plans**: TBD
 
-### Phase 187: OAuth-Safe Delegated Backend Contracts
-**Goal**: OpenRustClaw can use supported local vendor agent surfaces without scraping credentials or pretending subscription logins are general API keys.
-**Depends on**: Phase 186
-**Requirements**: AUTH-01, AUTH-02, AUTH-03, AUTH-04
+### Phase 192: Trusted Remote Backend Registry and Fabric Signals
+**Goal**: Delegated routing can reason about trusted remote agent backends instead of only local CLIs on one machine.
+**Depends on**: Phase 191
+**Requirements**: FABR-01, FABR-02
 **Success Criteria** (what must be TRUE):
-  1. Delegated local agent backends are modeled separately from direct API providers, with explicit capability and policy differences.
-  2. The runtime can allow or deny delegated local agent execution per backend while preserving audit logs, environment allowlists, and runtime controls.
-  3. Model availability is either discovered from documented vendor surfaces or labeled vendor-managed or unknown instead of guessed.
-  4. No OpenRustClaw flow copies cached vendor tokens, imports browser sessions, or claims unsupported OAuth reuse.
-**Plans**: 2/2 complete (`187-01`, `187-02`)
+  1. Operators can register trusted remote hosts and inspect their delegated backend inventory.
+  2. Route selection can compare local and remote delegated backends using readiness, policy, and compatibility signals.
+  3. Remote backend inventory remains explicit and operator-enrolled instead of ambient or hidden.
+**Plans**: TBD
 
-### Phase 188: Onboarding and Model Selection Cohesion
-**Goal**: The first-run experience presents one truthful menu for API providers, local runtimes, and delegated local agents, and preserves that choice end to end.
-**Depends on**: Phase 187
-**Requirements**: ONBR-01, ONBR-02, ONBR-03, ONBR-04
+### Phase 193: Delegated Route Policy, Audit, and Recovery
+**Goal**: Multi-host delegated execution stays bounded and recoverable under one policy and audit contract.
+**Depends on**: Phase 192
+**Requirements**: FABR-03, FABR-04
 **Success Criteria** (what must be TRUE):
-  1. Onboarding shows detected local agent backends in the model step with access-mode labels, compatibility notes, and truthful fallback guidance.
-  2. The selected provider or agent backend, access mode, and model lane survive handoff, repair, resume, inspect, and first launch.
-  3. `openrustclaw models`, inspect, control, and onboarding no longer disagree about which providers or agent backends exist.
-  4. Operators can understand why a detected backend is ready, blocked, partially supported, or vendor-managed without leaving the product flow.
-**Plans**: 2/2 complete (`188-01`, `188-02`)
+  1. Remote delegated execution preserves audit evidence, operator attribution, and runtime constraints.
+  2. Route decisions record why a backend was chosen, blocked, or failed.
+  3. Operators get actionable recovery hints and fallback route cues when delegated execution cannot proceed.
+**Plans**: TBD
 
-### Phase 189: Runtime Integration and Agent Journey Delivery
-**Goal**: Delegated local agent execution becomes a first-class bounded runtime path with audit receipts, routing visibility, and consistent control behavior.
-**Depends on**: Phase 188
-**Requirements**: ROUT-01, ROUT-02, ROUT-03, ROUT-04
+### Phase 194: Agent Routing Console and Operator Policy UX
+**Goal**: Operators have one dedicated routing console for backend inventory, policy, readiness, and receipts instead of stitching that story together manually.
+**Depends on**: Phase 193
+**Requirements**: ROUTX-01, ROUTX-02, ROUTX-03
 **Success Criteria** (what must be TRUE):
-  1. Eligible tasks can route through delegated local agent backends with durable audit evidence and backend attribution.
-  2. Control-registry and model-profile flows can reference delegated local agent backends without breaking existing provider routing or fallback behavior.
-  3. Approval, autonomy, memory, and artifact boundaries remain enforced when work is delegated externally.
-  4. Operators can inspect backend selection, route decisions, failures, and recovery hints through shipped CLI, inspect, and control surfaces.
-**Plans**: 2/2 complete (`189-01`, `189-02`)
+  1. Control UI exposes a dedicated routing console with backend inventory, routeable capacity, and policy state.
+  2. CLI and Control UI can manage delegated backend policy without raw file editing.
+  3. Route decisions and delegated receipts stay legible across Control UI, inspect, and CLI surfaces.
+**Plans**: TBD
 
-### Phase 190: Journey Audit, UX Repair, and Product Truthfulness
-**Goal**: The user journey and agent journey feel coherent from install through ongoing operation, with disconnected pieces repaired instead of papered over.
-**Depends on**: Phase 189
-**Requirements**: JOUR-01, JOUR-02, JOUR-03, JOUR-04
+### Phase 195: Guided First-Task Orchestration and Fallbacks
+**Goal**: The first task after onboarding or repair uses the selected lane and available backend fabric to guide operators into a real execution path instead of generic defaults.
+**Depends on**: Phase 194
+**Requirements**: TASK-01, TASK-02, TASK-03
 **Success Criteria** (what must be TRUE):
-  1. The install to onboarding to first-task to inspect or repair path contains no contradictory terminology or dead-end steps around agents, providers, or access modes.
-  2. The discovery to selection to routing to result to inspection journey is explicit and testable across CLI, Control UI, and MCP surfaces.
-  3. Previously disconnected provider catalogs, model menus, and backend policy surfaces are converged behind shared typed services or contracts.
-  4. Docs and shipped operator surfaces describe the same truthful support boundary for local agents and delegated execution.
-**Plans**: 2/2 complete (`190-01`, `190-02`)
+  1. First-task suggestions reflect the selected lane, available backends, and current policy state.
+  2. Orchestration can prefill or recommend a coherent initial route, claw, and profile path.
+  3. Blocked or unsupported preferred lanes produce actionable fallback choices before execution starts.
+**Plans**: TBD
 
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 186. Local Agent Discovery and Compliance Inventory | 2/2 | Complete | 2026-04-08 |
-| 187. OAuth-Safe Delegated Backend Contracts | 2/2 | Complete | 2026-04-08 |
-| 188. Onboarding and Model Selection Cohesion | 2/2 | Complete | 2026-04-08 |
-| 189. Runtime Integration and Agent Journey Delivery | 2/2 | Complete | 2026-04-08 |
-| 190. Journey Audit, UX Repair, and Product Truthfulness | 2/2 | Complete | 2026-04-08 |
+| 191. Cursor Surface Verification and Backend Expansion | 0/2 | Not Started | — |
+| 192. Trusted Remote Backend Registry and Fabric Signals | 0/2 | Not Started | — |
+| 193. Delegated Route Policy, Audit, and Recovery | 0/2 | Not Started | — |
+| 194. Agent Routing Console and Operator Policy UX | 0/2 | Not Started | — |
+| 195. Guided First-Task Orchestration and Fallbacks | 0/2 | Not Started | — |
 
 ## Current Status
 
-- Active milestone: v1.44 Agent Discovery, Journey Cohesion, and Provider Access
-- Roadmap progress: 5/5 phases complete
-- Current work: milestone complete
-- Next step: `$gsd-new-milestone`
+- Active milestone: v1.45 Agent Fabric, Routing Console, and Guided Delegation
+- Roadmap progress: 0/5 phases complete
+- Current work: milestone initialized; Phase 191 is next
+- Next step: `$gsd-plan-phase 191`
