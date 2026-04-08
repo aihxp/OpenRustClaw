@@ -13,7 +13,9 @@ use openrustclaw_app::onboarding_lane_catalog::{
 };
 use openrustclaw_app::runtime_model_validation::validate_model_for_provider;
 use openrustclaw_app::setup_lifecycle as app_setup_lifecycle;
+use openrustclaw_channels::WhatsAppChannel;
 use openrustclaw_core::config::AppConfig;
+use openrustclaw_core::traits::Channel;
 use serde::{Deserialize, Serialize};
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
@@ -1186,19 +1188,7 @@ async fn run_channel_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
         0 => Some(setup_telegram(wizard).await?),
         1 => Some(setup_discord(wizard).await?),
         2 => Some(setup_slack(wizard).await?),
-        3 => {
-            let workspace_root = std::env::current_dir()?;
-            record_bootstrap_outcome(
-                &workspace_root,
-                "channel",
-                "whatsapp",
-                "warning",
-                "WhatsApp bootstrap still needs manual setup. Review docs/whatsapp-setup.md before claiming channel readiness.",
-            )?;
-            return Err(anyhow!(
-                "WhatsApp bootstrap is not automated yet. Review docs/whatsapp-setup.md and rerun onboarding after completing the manual steps."
-            ));
-        }
+        3 => Some(setup_whatsapp(wizard).await?),
         _ => return Ok(true),
     };
 
@@ -1297,6 +1287,31 @@ async fn setup_slack(wizard: &mut OnboardingWizard) -> Result<&'static str> {
     }
 
     Ok("slack")
+}
+
+async fn setup_whatsapp(wizard: &mut OnboardingWizard) -> Result<&'static str> {
+    println!("\nTo set up WhatsApp:");
+    println!("1. Make sure Node.js 18+ is installed");
+    println!("2. Make sure bridge dependencies are installed in crates/channels/baileys-bridge");
+    println!("3. Link your device with either a pairing code or QR code");
+
+    let pairing_mode = Select::with_theme(&wizard.theme)
+        .with_prompt("Choose the WhatsApp linking method")
+        .items(&["Pairing code (recommended)", "QR code"])
+        .default(0)
+        .interact()?
+        == 0;
+
+    save_whatsapp_channel_config(pairing_mode).await?;
+    bootstrap_whatsapp_pairing(pairing_mode).await?;
+
+    wizard
+        .state
+        .channels_configured
+        .push("whatsapp".to_string());
+    println!("✓ WhatsApp configured");
+
+    Ok("whatsapp")
 }
 
 // ============================================================================
@@ -2834,6 +2849,105 @@ async fn save_channel_config(channel: &str, token: &str) -> Result<()> {
     Ok(())
 }
 
+async fn save_whatsapp_channel_config(pairing_mode: bool) -> Result<()> {
+    upsert_env_entries(&[
+        (
+            "OPENRUSTCLAW_CHANNELS__WHATSAPP__ENABLED",
+            "true".to_string(),
+        ),
+        (
+            "OPENRUSTCLAW_CHANNELS__WHATSAPP__PAIRING_MODE",
+            pairing_mode.to_string(),
+        ),
+    ])
+    .await?;
+
+    println!("  Configuration saved to .env");
+    Ok(())
+}
+
+async fn upsert_env_entries(entries: &[(&str, String)]) -> Result<()> {
+    let existing = fs::read_to_string(".env").await.unwrap_or_default();
+    let mut lines: Vec<String> = existing
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(ToString::to_string)
+        .collect();
+
+    for (key, _) in entries {
+        let prefix = format!("{key}=");
+        lines.retain(|line| !line.starts_with(&prefix));
+    }
+
+    for (key, value) in entries {
+        lines.push(format!("{key}={value}"));
+    }
+
+    let mut new_content = lines.join("\n");
+    if !new_content.is_empty() {
+        new_content.push('\n');
+    }
+    fs::write(".env", new_content).await?;
+    Ok(())
+}
+
+async fn bootstrap_whatsapp_pairing(pairing_mode: bool) -> Result<()> {
+    let workspace_root = std::env::current_dir()?;
+    let config = runtime::load_effective_config("config/default.toml", &workspace_root)?;
+    let mut channel = WhatsAppChannel::new(config.channels.whatsapp);
+
+    channel.connect().await?;
+
+    let connect_result = async {
+        if channel.is_connected().await {
+            println!("  Existing WhatsApp session detected.");
+            return Ok(());
+        }
+
+        let artifact = channel
+            .wait_for_pairing_artifact(Duration::from_secs(30))
+            .await?;
+
+        if pairing_mode {
+            println!("\nLink this device in WhatsApp using the pairing code below:");
+            println!("  {artifact}");
+            println!(
+                "  Open WhatsApp -> Settings -> Linked Devices -> Link with phone number instead"
+            );
+        } else {
+            println!("\nScan the WhatsApp QR code shown in the runtime output above.");
+            println!(
+                "  QR payload captured: {}",
+                artifact.chars().take(24).collect::<String>()
+            );
+        }
+
+        wait_for_whatsapp_connection(&channel, Duration::from_secs(120)).await
+    }
+    .await;
+
+    channel.disconnect().await?;
+    connect_result
+}
+
+async fn wait_for_whatsapp_connection(
+    channel: &WhatsAppChannel,
+    timeout_duration: Duration,
+) -> Result<()> {
+    let deadline = std::time::Instant::now() + timeout_duration;
+    while std::time::Instant::now() < deadline {
+        if channel.is_connected().await {
+            return Ok(());
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+
+    Err(anyhow!(
+        "WhatsApp pairing did not complete in time. Rerun `openrustclaw onboard` or use `openrustclaw whatsapp pair --timeout-secs 120` after confirming the bridge dependencies are installed."
+    ))
+}
+
 async fn save_provider_config(provider: &str, api_key: &str) -> Result<()> {
     let env_var = match provider {
         "anthropic" => "ANTHROPIC_API_KEY",
@@ -3124,6 +3238,7 @@ pub async fn run() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn test_onboarding_state_default() {
@@ -3461,6 +3576,23 @@ mod tests {
         assert_eq!(outcome.status, "ready");
         assert_eq!(outcome.detail, "provider reachable");
         assert!(outcome.issue_kind.is_none());
+    }
+
+    #[tokio::test]
+    #[serial(cwd)]
+    async fn test_save_whatsapp_channel_config_writes_enabled_and_pairing_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let previous = std::env::current_dir().unwrap();
+        std::env::set_current_dir(dir.path()).unwrap();
+
+        let result = save_whatsapp_channel_config(true).await;
+
+        std::env::set_current_dir(previous).unwrap();
+        result.unwrap();
+
+        let env_content = std::fs::read_to_string(dir.path().join(".env")).unwrap();
+        assert!(env_content.contains("OPENRUSTCLAW_CHANNELS__WHATSAPP__ENABLED=true"));
+        assert!(env_content.contains("OPENRUSTCLAW_CHANNELS__WHATSAPP__PAIRING_MODE=true"));
     }
 
     #[test]

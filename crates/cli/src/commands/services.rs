@@ -686,11 +686,18 @@ fn probe_whatsapp(config: &openrustclaw_core::config::WhatsAppConfig) -> Channel
         );
     }
     let session_dir = Path::new(&config.session_path);
-    if session_dir.exists() {
+    let creds_path = session_dir.join("creds.json");
+    if creds_path.exists() {
         ready_entry(
             "whatsapp",
             "local_runtime",
-            "Baileys bridge path exists and session directory is present",
+            "Baileys bridge path exists and WhatsApp session credentials are present",
+        )
+    } else if session_dir.exists() {
+        warning_entry(
+            "whatsapp",
+            "local_runtime",
+            "Baileys bridge path exists and session directory is present, but WhatsApp pairing is not complete yet",
         )
     } else {
         warning_entry(
@@ -970,7 +977,8 @@ fn enabled_channels(config: &AppConfig) -> Vec<String> {
 mod tests {
     use super::{
         ChannelHealthMonitorStatus, ChannelProbeEntry, ChannelProbeStatus,
-        compose_channel_health_monitor_status, enabled_channels, runtime_events_with_pool,
+        compose_channel_health_monitor_status, enabled_channels, probe_whatsapp,
+        runtime_events_with_pool,
     };
     use chrono::Utc;
     use openrustclaw_core::config::AppConfig;
@@ -1056,6 +1064,29 @@ mod tests {
         assert_eq!(monitor.current_consecutive_failures, 0);
         assert!(!monitor.restart_requested);
         assert!(monitor.last_healthy_at.is_some());
+    }
+
+    #[test]
+    fn probe_whatsapp_requires_credentials_for_ready_status() {
+        let temp = tempdir().unwrap();
+        let session_dir = temp.path().join("whatsapp-session");
+        std::fs::create_dir_all(&session_dir).unwrap();
+        std::fs::write(temp.path().join("bridge.js"), "// bridge").unwrap();
+
+        let mut config = AppConfig::default();
+        config.channels.whatsapp.enabled = true;
+        config.channels.whatsapp.bridge_path = temp.path().join("bridge.js").display().to_string();
+        config.channels.whatsapp.session_path = session_dir.display().to_string();
+
+        let warning = probe_whatsapp(&config.channels.whatsapp);
+        assert_eq!(warning.status, ChannelProbeStatus::Warning);
+        assert!(warning.detail.contains("pairing is not complete"));
+
+        std::fs::write(session_dir.join("creds.json"), "{}").unwrap();
+
+        let ready = probe_whatsapp(&config.channels.whatsapp);
+        assert_eq!(ready.status, ChannelProbeStatus::Ready);
+        assert!(ready.detail.contains("credentials are present"));
     }
 
     #[tokio::test]
