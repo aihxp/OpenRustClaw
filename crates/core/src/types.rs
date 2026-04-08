@@ -990,6 +990,160 @@ pub struct LearningCandidatePromotionReport {
     pub lesson_id: String,
 }
 
+/// Review lifecycle state for a reusable skill proposal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SkillProposalStatus {
+    PendingReview,
+    Approved,
+    Rejected,
+    Superseded,
+    Installed,
+    RolledBack,
+}
+
+/// Technical verification state for a skill proposal artifact.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SkillProposalVerificationStatus {
+    Pending,
+    Passed,
+    Failed,
+    Blocked,
+}
+
+/// Provenance source for a durable skill proposal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SkillProposalSourceKind {
+    LearningCandidate,
+    Lesson,
+    Manual,
+}
+
+/// Durable provenance reference for a skill proposal.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SkillProposalSourceRef {
+    pub kind: SkillProposalSourceKind,
+    pub source_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+/// Bounded verification report captured for a proposed skill artifact.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SkillProposalVerificationReport {
+    pub status: SkillProposalVerificationStatus,
+    pub summary: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compiled_skill_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verification_artifact_path: Option<String>,
+    #[serde(default)]
+    pub blocked: bool,
+}
+
+/// Durable reusable-skill proposal that stays inactive until approval and install.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SkillProposal {
+    pub id: String,
+    pub namespace: String,
+    pub skill_name: String,
+    pub summary: String,
+    pub body: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rationale: Option<String>,
+    pub status: SkillProposalStatus,
+    pub verification_status: SkillProposalVerificationStatus,
+    pub source: SkillProposalSourceRef,
+    pub artifact_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_note: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reviewed_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verification_report: Option<SkillProposalVerificationReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verified_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub installed_skill_name: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reviewed_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verified_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub installed_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rolled_back_at: Option<DateTime<Utc>>,
+}
+
+/// Input contract for queuing a new reusable skill proposal.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SkillProposalCreateRequest {
+    pub namespace: String,
+    pub skill_name: String,
+    pub summary: String,
+    pub body: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rationale: Option<String>,
+    pub source: SkillProposalSourceRef,
+}
+
+/// Review actions that mutate a skill proposal before activation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SkillProposalReviewAction {
+    Approve,
+    Reject,
+    Supersede,
+}
+
+/// Input contract for updating review state on a skill proposal.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SkillProposalReviewRequest {
+    pub action: SkillProposalReviewAction,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reviewed_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_note: Option<String>,
+}
+
+/// Input contract for verifying a skill proposal artifact.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SkillProposalVerifyRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verified_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+/// Input contract for installing an approved verified skill proposal.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SkillProposalInstallRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub installed_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+/// Input contract for rolling back an installed skill proposal.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SkillProposalRollbackRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rolled_back_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// Stable report returned after installing a skill proposal.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SkillProposalInstallReport {
+    pub proposal: SkillProposal,
+    pub installed_skill_name: String,
+}
+
 /// How a memory entry was produced.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

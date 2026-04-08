@@ -469,6 +469,58 @@ CREATE INDEX IF NOT EXISTS idx_learning_candidate_history_candidate
     ON learning_candidate_history(candidate_id, created_at);
 "#,
     },
+    Migration {
+        name: "020_skill_proposals",
+        sql: r#"
+CREATE TABLE IF NOT EXISTS skill_proposals (
+    id TEXT PRIMARY KEY,
+    namespace TEXT NOT NULL DEFAULT 'global',
+    skill_name TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    body TEXT NOT NULL,
+    rationale TEXT,
+    status TEXT NOT NULL DEFAULT 'pending_review' CHECK(status IN ('pending_review', 'approved', 'rejected', 'superseded', 'installed', 'rolled_back')),
+    verification_status TEXT NOT NULL DEFAULT 'pending' CHECK(verification_status IN ('pending', 'passed', 'failed', 'blocked')),
+    source_kind TEXT NOT NULL CHECK(source_kind IN ('learning_candidate', 'lesson', 'manual')),
+    source_id TEXT NOT NULL,
+    source_detail TEXT,
+    artifact_path TEXT NOT NULL,
+    review_note TEXT,
+    reviewed_by TEXT,
+    verification_summary TEXT,
+    verification_compiled_skill_name TEXT,
+    verification_artifact_path TEXT,
+    verification_blocked INTEGER NOT NULL DEFAULT 0,
+    verified_by TEXT,
+    installed_skill_name TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    reviewed_at TEXT,
+    verified_at TEXT,
+    installed_at TEXT,
+    rolled_back_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_skill_proposals_status
+    ON skill_proposals(namespace, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_skill_proposals_source
+    ON skill_proposals(source_kind, source_id);
+CREATE INDEX IF NOT EXISTS idx_skill_proposals_skill_name
+    ON skill_proposals(skill_name, installed_skill_name);
+
+CREATE TABLE IF NOT EXISTS skill_proposal_history (
+    id TEXT PRIMARY KEY,
+    proposal_id TEXT NOT NULL REFERENCES skill_proposals(id) ON DELETE CASCADE,
+    action TEXT NOT NULL,
+    actor TEXT,
+    note TEXT,
+    verification_status TEXT,
+    installed_skill_name TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_skill_proposal_history_proposal
+    ON skill_proposal_history(proposal_id, created_at);
+"#,
+    },
 ];
 
 /// Run all embedded database migrations in order.

@@ -9,15 +9,21 @@ use async_trait::async_trait;
 use openrustclaw_app::autonomy_lessons_control::AutonomyLessonRequest;
 use openrustclaw_app::control_registry as app_control_registry;
 use openrustclaw_app::learning_review::{LearningReviewService, LearningReviewSource};
+use openrustclaw_app::skill_proposals::{SkillProposalService, SkillProposalSource};
 use openrustclaw_core::config::AppConfig;
 use openrustclaw_core::error::{Error as CoreError, Result as CoreResult};
 use openrustclaw_core::types::{
     LearningCandidate, LearningCandidateCreateRequest, LearningCandidateImpact,
     LearningCandidatePromotionRequest, LearningCandidateReviewAction,
     LearningCandidateReviewRequest, LearningCandidateRollbackRequest, LearningCandidateSourceKind,
-    LearningCandidateStatus,
+    LearningCandidateStatus, SkillProposal, SkillProposalCreateRequest,
+    SkillProposalInstallRequest, SkillProposalReviewAction, SkillProposalReviewRequest,
+    SkillProposalRollbackRequest, SkillProposalSourceKind, SkillProposalStatus,
+    SkillProposalVerificationReport, SkillProposalVerificationStatus, SkillProposalVerifyRequest,
+    SkillSource,
 };
-use openrustclaw_db::{SqliteLearningStore, init_pool, run_migrations};
+use openrustclaw_db::{SqliteLearningStore, SqliteSkillProposalStore, init_pool, run_migrations};
+use openrustclaw_skills::{CompiledSkillStatus, compile_skill_to_dir, remove_compiled_artifact};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::SqlitePool;
@@ -463,6 +469,10 @@ fn runtime_path(root: &Path) -> PathBuf {
 
 fn runtime_artifact_path(root: &Path) -> PathBuf {
     root.join("CLAW_RUNTIME.md")
+}
+
+fn skill_proposals_dir(root: &Path) -> PathBuf {
+    root.join("skill-proposals")
 }
 
 pub fn resolve_root(root: Option<&str>) -> Result<PathBuf> {
@@ -1678,6 +1688,275 @@ pub async fn learning_review_source_for_workspace(
     ))
 }
 
+#[derive(Clone)]
+pub struct WorkspaceSkillProposalSource {
+    workspace_root: PathBuf,
+    pool: SqlitePool,
+    proposal_store: SqliteSkillProposalStore,
+}
+
+impl WorkspaceSkillProposalSource {
+    pub fn from_pool(workspace_root: PathBuf, pool: SqlitePool) -> Self {
+        Self {
+            workspace_root,
+            pool: pool.clone(),
+            proposal_store: SqliteSkillProposalStore::new(pool),
+        }
+    }
+
+    fn proposal_root(&self) -> PathBuf {
+        skill_proposals_dir(&control_root_for(&self.workspace_root))
+    }
+
+    fn proposal_file_path(&self, proposal_id: &str) -> PathBuf {
+        self.proposal_root().join(proposal_id).join("SKILL.md")
+    }
+
+    fn proposal_preview_root(&self, proposal_id: &str) -> PathBuf {
+        self.proposal_root().join(proposal_id).join("preview")
+    }
+
+    fn active_skill_file_path(&self, skill_name: &str) -> PathBuf {
+        self.workspace_root
+            .join("skills")
+            .join(skill_name)
+            .join("SKILL.md")
+    }
+
+    fn active_compiled_skill_root(&self) -> PathBuf {
+        self.workspace_root
+            .join(".claw")
+            .join("skills")
+            .join("compiled")
+    }
+}
+
+#[async_trait]
+impl SkillProposalSource for WorkspaceSkillProposalSource {
+    async fn list_skill_proposals(
+        &self,
+        namespace: Option<&str>,
+        status: Option<SkillProposalStatus>,
+        limit: usize,
+    ) -> CoreResult<Vec<SkillProposal>> {
+        self.proposal_store
+            .list_proposals(namespace, status, limit)
+            .await
+    }
+
+    async fn get_skill_proposal(&self, id: &str) -> CoreResult<Option<SkillProposal>> {
+        self.proposal_store.get_proposal(id).await
+    }
+
+    async fn create_skill_proposal(&self, proposal: &SkillProposal) -> CoreResult<SkillProposal> {
+        self.proposal_store.create_proposal(proposal).await
+    }
+
+    async fn review_skill_proposal(
+        &self,
+        id: &str,
+        request: &SkillProposalReviewRequest,
+    ) -> CoreResult<SkillProposal> {
+        self.proposal_store.review_proposal(id, request).await
+    }
+
+    async fn record_skill_proposal_verification(
+        &self,
+        id: &str,
+        report: &SkillProposalVerificationReport,
+        actor: Option<&str>,
+        note: Option<&str>,
+    ) -> CoreResult<SkillProposal> {
+        self.proposal_store
+            .record_verification(id, report, actor, note)
+            .await
+    }
+
+    async fn mark_skill_proposal_installed(
+        &self,
+        id: &str,
+        installed_skill_name: &str,
+        actor: Option<&str>,
+        note: Option<&str>,
+    ) -> CoreResult<SkillProposal> {
+        self.proposal_store
+            .mark_installed(id, installed_skill_name, actor, note)
+            .await
+    }
+
+    async fn mark_skill_proposal_rolled_back(
+        &self,
+        id: &str,
+        actor: Option<&str>,
+        reason: Option<&str>,
+    ) -> CoreResult<SkillProposal> {
+        self.proposal_store
+            .mark_rolled_back(id, actor, reason)
+            .await
+    }
+
+    async fn write_proposal_artifact(&self, proposal: &SkillProposal) -> CoreResult<String> {
+        let path = self.proposal_file_path(&proposal.id);
+        if let Some(parent) = path.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|error| CoreError::Internal(error.to_string()))?;
+        }
+        tokio::fs::write(&path, &proposal.body)
+            .await
+            .map_err(|error| CoreError::Internal(error.to_string()))?;
+        Ok(path.display().to_string())
+    }
+
+    async fn verify_proposal_artifact(
+        &self,
+        proposal: &SkillProposal,
+    ) -> CoreResult<SkillProposalVerificationReport> {
+        let proposal_path = Path::new(&proposal.artifact_path);
+        let preview_root = self.proposal_preview_root(&proposal.id);
+        if preview_root.exists() {
+            let _ = fs::remove_dir_all(&preview_root);
+        }
+        fs::create_dir_all(&preview_root)
+            .map_err(|error| CoreError::Internal(error.to_string()))?;
+
+        match compile_skill_to_dir(proposal_path, &preview_root, SkillSource::Workspace, true) {
+            Ok(artifact) => {
+                let blocked = matches!(artifact.manifest.status, CompiledSkillStatus::Blocked);
+                Ok(SkillProposalVerificationReport {
+                    status: if blocked {
+                        SkillProposalVerificationStatus::Blocked
+                    } else {
+                        SkillProposalVerificationStatus::Passed
+                    },
+                    summary: if blocked {
+                        format!(
+                            "compiled proposal '{}' but the artifact is blocked by skill safety checks",
+                            artifact.manifest.name
+                        )
+                    } else {
+                        format!(
+                            "compiled proposal '{}' successfully",
+                            artifact.manifest.name
+                        )
+                    },
+                    compiled_skill_name: Some(artifact.manifest.name),
+                    verification_artifact_path: Some(preview_root.display().to_string()),
+                    blocked,
+                })
+            }
+            Err(error) => Ok(SkillProposalVerificationReport {
+                status: SkillProposalVerificationStatus::Failed,
+                summary: format!(
+                    "failed to compile proposal '{}': {error}",
+                    proposal.skill_name
+                ),
+                compiled_skill_name: None,
+                verification_artifact_path: Some(preview_root.display().to_string()),
+                blocked: false,
+            }),
+        }
+    }
+
+    async fn install_skill_proposal(&self, proposal: &SkillProposal) -> CoreResult<String> {
+        let active_skill_path = self.active_skill_file_path(&proposal.skill_name);
+        if let Some(parent) = active_skill_path.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|error| CoreError::Internal(error.to_string()))?;
+        }
+        tokio::fs::write(&active_skill_path, &proposal.body)
+            .await
+            .map_err(|error| CoreError::Internal(error.to_string()))?;
+
+        let compiled_root = self.active_compiled_skill_root();
+        fs::create_dir_all(&compiled_root)
+            .map_err(|error| CoreError::Internal(error.to_string()))?;
+        let artifact = compile_skill_to_dir(
+            &active_skill_path,
+            &compiled_root,
+            SkillSource::Workspace,
+            true,
+        )
+        .map_err(|error| CoreError::Internal(error.to_string()))?;
+
+        let capabilities_json = serde_json::to_string(&artifact.manifest.capabilities)
+            .map_err(|error| CoreError::Internal(error.to_string()))?;
+        sqlx::query(
+            r#"
+            INSERT INTO skills (
+                id, name, description, source, version, signature,
+                verified, enabled, capabilities, schema, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, datetime('now'), datetime('now'))
+            ON CONFLICT(name) DO UPDATE SET
+                description = excluded.description,
+                source = excluded.source,
+                version = excluded.version,
+                signature = excluded.signature,
+                verified = excluded.verified,
+                enabled = 1,
+                capabilities = excluded.capabilities,
+                schema = excluded.schema,
+                updated_at = datetime('now')
+            "#,
+        )
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(&artifact.manifest.name)
+        .bind(&artifact.manifest.description)
+        .bind("workspace")
+        .bind(&artifact.manifest.version)
+        .bind::<Option<String>>(None)
+        .bind(1_i64)
+        .bind(&capabilities_json)
+        .bind::<Option<String>>(None)
+        .execute(&self.pool)
+        .await
+        .map_err(|error| CoreError::Internal(error.to_string()))?;
+
+        Ok(artifact.manifest.name)
+    }
+
+    async fn rollback_installed_skill(&self, skill_name: &str) -> CoreResult<()> {
+        sqlx::query("DELETE FROM skills WHERE name = ?")
+            .bind(skill_name)
+            .execute(&self.pool)
+            .await
+            .map_err(|error| CoreError::Internal(error.to_string()))?;
+        let _ = remove_compiled_artifact(&self.active_compiled_skill_root(), skill_name);
+        let skill_dir = self.workspace_root.join("skills").join(skill_name);
+        if skill_dir.exists() {
+            let _ = fs::remove_dir_all(skill_dir);
+        }
+        Ok(())
+    }
+}
+
+pub async fn skill_proposal_service_for_workspace(
+    workspace_root: &Path,
+) -> Result<SkillProposalService<WorkspaceSkillProposalSource>> {
+    let source = skill_proposal_source_for_workspace(workspace_root).await?;
+    Ok(SkillProposalService::new(source))
+}
+
+pub async fn skill_proposal_source_for_workspace(
+    workspace_root: &Path,
+) -> Result<WorkspaceSkillProposalSource> {
+    let config = runtime::load_effective_config("config/default.toml", workspace_root)
+        .unwrap_or_else(|_| AppConfig::default());
+    let database_url = resolve_workspace_database_url(workspace_root, &config.database.url);
+    ensure_workspace_database_parent(&database_url)?;
+    let pool = init_pool(&database_url, 2)
+        .await
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    run_migrations(&pool)
+        .await
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    Ok(WorkspaceSkillProposalSource::from_pool(
+        workspace_root.to_path_buf(),
+        pool,
+    ))
+}
+
 fn resolve_workspace_database_url(workspace_root: &Path, database_url: &str) -> String {
     if let Some(path) = database_url.strip_prefix("sqlite://") {
         let candidate = Path::new(path);
@@ -1808,6 +2087,127 @@ pub async fn rollback_learning_candidate_cli(
     Ok(())
 }
 
+pub async fn list_skill_proposals_cli(
+    workspace_root: &Path,
+    namespace: Option<&str>,
+    status: Option<SkillProposalStatus>,
+    limit: usize,
+) -> Result<()> {
+    let service = skill_proposal_service_for_workspace(workspace_root).await?;
+    let proposals = service
+        .list(namespace, status, limit)
+        .await
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    if proposals.is_empty() {
+        println!("No skill proposals found.");
+        return Ok(());
+    }
+    for proposal in proposals {
+        println!(
+            "{} [{} / {}] {}",
+            proposal.id,
+            skill_proposal_status_label(proposal.status),
+            skill_proposal_verification_label(proposal.verification_status),
+            proposal.skill_name
+        );
+        println!("  namespace: {}", proposal.namespace);
+        println!(
+            "  source: {}:{}",
+            skill_proposal_source_kind_label(proposal.source.kind),
+            proposal.source.source_id
+        );
+        println!("  artifact: {}", proposal.artifact_path);
+        if let Some(installed_skill_name) = proposal.installed_skill_name.as_deref() {
+            println!("  installed: {installed_skill_name}");
+        }
+    }
+    Ok(())
+}
+
+pub async fn queue_skill_proposal_cli(
+    workspace_root: &Path,
+    request: &SkillProposalCreateRequest,
+) -> Result<()> {
+    let service = skill_proposal_service_for_workspace(workspace_root).await?;
+    let proposal = service
+        .queue(request)
+        .await
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    println!("Queued skill proposal {}", proposal.id);
+    Ok(())
+}
+
+pub async fn review_skill_proposal_cli(
+    workspace_root: &Path,
+    id: &str,
+    request: &SkillProposalReviewRequest,
+) -> Result<()> {
+    let service = skill_proposal_service_for_workspace(workspace_root).await?;
+    let proposal = service
+        .review(id, request)
+        .await
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    println!(
+        "Updated skill proposal {} to {}",
+        proposal.id,
+        skill_proposal_status_label(proposal.status)
+    );
+    Ok(())
+}
+
+pub async fn verify_skill_proposal_cli(
+    workspace_root: &Path,
+    id: &str,
+    request: &SkillProposalVerifyRequest,
+) -> Result<()> {
+    let service = skill_proposal_service_for_workspace(workspace_root).await?;
+    let proposal = service
+        .verify(id, request)
+        .await
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    println!(
+        "Verified skill proposal {} as {}",
+        proposal.id,
+        skill_proposal_verification_label(proposal.verification_status)
+    );
+    Ok(())
+}
+
+pub async fn install_skill_proposal_cli(
+    workspace_root: &Path,
+    id: &str,
+    request: &SkillProposalInstallRequest,
+) -> Result<()> {
+    let service = skill_proposal_service_for_workspace(workspace_root).await?;
+    let report = service
+        .install(id, request)
+        .await
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    println!(
+        "Installed skill proposal {} as {}",
+        report.proposal.id, report.installed_skill_name
+    );
+    Ok(())
+}
+
+pub async fn rollback_skill_proposal_cli(
+    workspace_root: &Path,
+    id: &str,
+    request: &SkillProposalRollbackRequest,
+) -> Result<()> {
+    let service = skill_proposal_service_for_workspace(workspace_root).await?;
+    let proposal = service
+        .rollback(id, request)
+        .await
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    println!(
+        "Rolled back skill proposal {} to {}",
+        proposal.id,
+        skill_proposal_status_label(proposal.status)
+    );
+    Ok(())
+}
+
 fn anyhow_to_core(error: anyhow::Error) -> CoreError {
     CoreError::Internal(error.to_string())
 }
@@ -1824,12 +2224,33 @@ pub fn parse_learning_status(value: &str) -> Result<LearningCandidateStatus> {
     }
 }
 
+pub fn parse_skill_proposal_status(value: &str) -> Result<SkillProposalStatus> {
+    match value {
+        "pending_review" | "pending" => Ok(SkillProposalStatus::PendingReview),
+        "approved" | "approve" => Ok(SkillProposalStatus::Approved),
+        "rejected" | "reject" => Ok(SkillProposalStatus::Rejected),
+        "superseded" | "supersede" => Ok(SkillProposalStatus::Superseded),
+        "installed" | "install" => Ok(SkillProposalStatus::Installed),
+        "rolled_back" | "rollback" => Ok(SkillProposalStatus::RolledBack),
+        other => anyhow::bail!("unknown skill proposal status '{other}'"),
+    }
+}
+
 pub fn parse_learning_review_action(value: &str) -> Result<LearningCandidateReviewAction> {
     match value {
         "approved" | "approve" => Ok(LearningCandidateReviewAction::Approve),
         "rejected" | "reject" => Ok(LearningCandidateReviewAction::Reject),
         "superseded" | "supersede" => Ok(LearningCandidateReviewAction::Supersede),
         other => anyhow::bail!("unknown learning review action '{other}'"),
+    }
+}
+
+pub fn parse_skill_proposal_review_action(value: &str) -> Result<SkillProposalReviewAction> {
+    match value {
+        "approved" | "approve" => Ok(SkillProposalReviewAction::Approve),
+        "rejected" | "reject" => Ok(SkillProposalReviewAction::Reject),
+        "superseded" | "supersede" => Ok(SkillProposalReviewAction::Supersede),
+        other => anyhow::bail!("unknown skill proposal review action '{other}'"),
     }
 }
 
@@ -1854,6 +2275,15 @@ pub fn parse_learning_source_kind(value: &str) -> Result<LearningCandidateSource
     }
 }
 
+pub fn parse_skill_proposal_source_kind(value: &str) -> Result<SkillProposalSourceKind> {
+    match value {
+        "learning_candidate" | "candidate" => Ok(SkillProposalSourceKind::LearningCandidate),
+        "lesson" => Ok(SkillProposalSourceKind::Lesson),
+        "manual" => Ok(SkillProposalSourceKind::Manual),
+        other => anyhow::bail!("unknown skill proposal source kind '{other}'"),
+    }
+}
+
 fn learning_status_label(value: LearningCandidateStatus) -> &'static str {
     match value {
         LearningCandidateStatus::PendingReview => "pending_review",
@@ -1862,6 +2292,26 @@ fn learning_status_label(value: LearningCandidateStatus) -> &'static str {
         LearningCandidateStatus::Superseded => "superseded",
         LearningCandidateStatus::Promoted => "promoted",
         LearningCandidateStatus::RolledBack => "rolled_back",
+    }
+}
+
+fn skill_proposal_status_label(value: SkillProposalStatus) -> &'static str {
+    match value {
+        SkillProposalStatus::PendingReview => "pending_review",
+        SkillProposalStatus::Approved => "approved",
+        SkillProposalStatus::Rejected => "rejected",
+        SkillProposalStatus::Superseded => "superseded",
+        SkillProposalStatus::Installed => "installed",
+        SkillProposalStatus::RolledBack => "rolled_back",
+    }
+}
+
+fn skill_proposal_verification_label(value: SkillProposalVerificationStatus) -> &'static str {
+    match value {
+        SkillProposalVerificationStatus::Pending => "pending",
+        SkillProposalVerificationStatus::Passed => "passed",
+        SkillProposalVerificationStatus::Failed => "failed",
+        SkillProposalVerificationStatus::Blocked => "blocked",
     }
 }
 
@@ -1879,6 +2329,14 @@ fn learning_source_kind_label(value: LearningCandidateSourceKind) -> &'static st
         LearningCandidateSourceKind::RuntimeEvent => "runtime_event",
         LearningCandidateSourceKind::ModelArtifact => "model_artifact",
         LearningCandidateSourceKind::Manual => "manual",
+    }
+}
+
+fn skill_proposal_source_kind_label(value: SkillProposalSourceKind) -> &'static str {
+    match value {
+        SkillProposalSourceKind::LearningCandidate => "learning_candidate",
+        SkillProposalSourceKind::Lesson => "lesson",
+        SkillProposalSourceKind::Manual => "manual",
     }
 }
 

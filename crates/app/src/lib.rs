@@ -40,6 +40,7 @@ pub mod setup_lifecycle;
 pub mod skill_auth_plugin_binding;
 pub mod skill_channel_extension_lifecycle;
 pub mod skill_control;
+pub mod skill_proposals;
 pub mod skill_registry_mutation;
 pub mod skill_voice_channel_control;
 pub mod skill_voice_plugin_binding;

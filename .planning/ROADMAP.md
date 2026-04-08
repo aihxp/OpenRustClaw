@@ -18,7 +18,7 @@
 - [x] **Phase 181: Hybrid Retrieval and Recall Inspection** - Make recall retrieval, assembly, and inspection reliable and explainable across sessions.
 - [x] **Phase 182: Structured Memory Artifacts and Model Control** - Promote durable user, operator, project, and archive artifacts through bounded policy-gated memory flows.
 - [x] **Phase 183: Learning Candidate Review and Lesson Promotion** - Turn successful work and reflections into reviewable candidates that can become bounded active lessons.
-- [ ] **Phase 184: Skill Proposal Verification and Reuse** - Generate reviewable reusable-skill proposals and route approved ones through the existing compile and install path.
+- [x] **Phase 184: Skill Proposal Verification and Reuse** - Generate reviewable reusable-skill proposals and route approved ones through the existing compile and install path.
 - [ ] **Phase 185: God Mode Overlay, Audit, and Recovery** - Add a distinct full-power operator lane that remains explicit, auditable, and reversible.
 
 ## Phase Details
@@ -64,7 +64,7 @@
   1. Repeated successful workflows can produce reviewable proposals for new reusable skills or improvements to existing skills.
   2. Skill proposals remain human-readable, diffable, and inactive until they pass verification and explicit approval.
   3. Approved skill proposals flow through the existing compile and install path with durable provenance back to the source candidate or lesson.
-**Plans**: TBD
+**Plans**: 184-01, 184-02
 
 ### Phase 185: God Mode Overlay, Audit, and Recovery
 **Goal**: Operators can use a distinct God Mode lane with full autonomy, full access, and full power without weakening the default trust-first runtime path.
@@ -84,12 +84,12 @@
 | 181. Hybrid Retrieval and Recall Inspection | 2/2 | Complete | 2026-04-08 |
 | 182. Structured Memory Artifacts and Model Control | 2/2 | Complete | 2026-04-08 |
 | 183. Learning Candidate Review and Lesson Promotion | 2/2 | Complete | 2026-04-08 |
-| 184. Skill Proposal Verification and Reuse | 0/0 | Not started | - |
+| 184. Skill Proposal Verification and Reuse | 2/2 | Complete | 2026-04-08 |
 | 185. God Mode Overlay, Audit, and Recovery | 0/0 | Not started | - |
 
 ## Current Status
 
 - Active milestone: v1.43 Learning Loop, Memory Depth, and God Mode
-- Roadmap progress: 3/5 phases complete
-- Current work: Phase 183 is complete across durable candidate storage, review gating, CLI and MCP review flows, and rollback-aware lesson promotion
-- Next step: `$gsd-discuss-phase 184 --auto`
+- Roadmap progress: 4/5 phases complete
+- Current work: Phase 184 is complete across durable proposal storage, inactive artifact verification, CLI and MCP proposal flows, and the active skill install and rollback bridge
+- Next step: `$gsd-discuss-phase 185 --auto`

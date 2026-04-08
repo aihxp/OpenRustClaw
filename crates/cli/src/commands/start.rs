@@ -57,6 +57,7 @@ use openrustclaw_app::skill_control::{
     SkillScheduleBackgroundRequest as AppSkillScheduleBackgroundRequest,
     SkillSearchRequest as AppSkillSearchRequest,
 };
+use openrustclaw_app::skill_proposals::SkillProposalService;
 use openrustclaw_app::skill_voice_channel_control::{
     SkillBindChannelExtensionRequest as AppSkillBindChannelExtensionRequest,
     SkillEndVoiceCallRequest as AppSkillEndVoiceCallRequest,
@@ -80,7 +81,9 @@ use openrustclaw_core::types::{
     CompletionRequest, CompletionResponse, Event, LearningCandidateCreateRequest,
     LearningCandidatePromotionRequest, LearningCandidateReviewRequest,
     LearningCandidateRollbackRequest, LearningCandidateSourceRef, MemoryEntry, MemoryQuery,
-    MemorySource, MemoryType, Message, OutgoingMessage, Platform, SessionType, SourceType,
+    MemorySource, MemoryType, Message, OutgoingMessage, Platform, SessionType,
+    SkillProposalCreateRequest, SkillProposalInstallRequest, SkillProposalReviewRequest,
+    SkillProposalRollbackRequest, SkillProposalSourceRef, SkillProposalVerifyRequest, SourceType,
     StreamChunk, ToolFormat,
 };
 use std::collections::{HashMap, HashSet};
@@ -2651,6 +2654,15 @@ fn learning_review_service_from_state(
     ))
 }
 
+fn skill_proposal_service_from_state(
+    state: &RuntimeControlState,
+) -> SkillProposalService<control::WorkspaceSkillProposalSource> {
+    SkillProposalService::new(control::WorkspaceSkillProposalSource::from_pool(
+        state.workspace_root.clone(),
+        state.pool.clone(),
+    ))
+}
+
 fn record_operator_tool_result<T, E>(
     tool_name: &str,
     started_at: std::time::Instant,
@@ -3486,6 +3498,34 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         .route(
             "/control/learning/candidates/{id}/rollback",
             post(rollback_learning_candidate_handler),
+        )
+        .route(
+            "/control/skills/proposals",
+            get(list_skill_proposals_handler),
+        )
+        .route(
+            "/control/skills/proposals",
+            post(queue_skill_proposal_handler),
+        )
+        .route(
+            "/control/skills/proposals/{id}",
+            get(get_skill_proposal_handler),
+        )
+        .route(
+            "/control/skills/proposals/{id}/review",
+            post(review_skill_proposal_handler),
+        )
+        .route(
+            "/control/skills/proposals/{id}/verify",
+            post(verify_skill_proposal_handler),
+        )
+        .route(
+            "/control/skills/proposals/{id}/install",
+            post(install_skill_proposal_handler),
+        )
+        .route(
+            "/control/skills/proposals/{id}/rollback",
+            post(rollback_skill_proposal_handler),
         )
         .route("/control/browser/navigate", post(browser_navigate_handler))
         .route(
@@ -9418,6 +9458,65 @@ struct RollbackLearningCandidatePayload {
     reason: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct SkillProposalsQuery {
+    #[serde(default)]
+    namespace: Option<String>,
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+struct QueueSkillProposalPayload {
+    skill_name: String,
+    summary: String,
+    body: String,
+    #[serde(default)]
+    rationale: Option<String>,
+    #[serde(default)]
+    source_kind: Option<String>,
+    source_id: String,
+    #[serde(default)]
+    source_detail: Option<String>,
+    #[serde(default)]
+    namespace: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReviewSkillProposalPayload {
+    action: String,
+    #[serde(default)]
+    reviewed_by: Option<String>,
+    #[serde(default)]
+    note: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct VerifySkillProposalPayload {
+    #[serde(default)]
+    verified_by: Option<String>,
+    #[serde(default)]
+    note: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct InstallSkillProposalPayload {
+    #[serde(default)]
+    installed_by: Option<String>,
+    #[serde(default)]
+    note: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RollbackSkillProposalPayload {
+    #[serde(default)]
+    rolled_back_by: Option<String>,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
 fn default_true() -> bool {
     true
 }
@@ -9651,6 +9750,221 @@ async fn rollback_learning_candidate_handler(
         Ok(candidate) => (
             StatusCode::OK,
             Json(serde_json::json!({ "candidate": candidate })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn list_skill_proposals_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<SkillProposalsQuery>,
+) -> impl IntoResponse {
+    let service = skill_proposal_service_from_state(&state);
+    let result = async {
+        let status = query
+            .status
+            .as_deref()
+            .map(control::parse_skill_proposal_status)
+            .transpose()
+            .map_err(|error| error.to_string())?;
+        let proposals = service
+            .list(
+                query.namespace.as_deref(),
+                status,
+                query.limit.unwrap_or(20).max(1),
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok::<serde_json::Value, String>(serde_json::json!({ "proposals": proposals }))
+    }
+    .await;
+
+    match result {
+        Ok(payload) => (StatusCode::OK, Json(payload)).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error })),
+        )
+            .into_response(),
+    }
+}
+
+async fn get_skill_proposal_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    let service = skill_proposal_service_from_state(&state);
+    match service.get(&id).await {
+        Ok(Some(proposal)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "proposal": proposal })),
+        )
+            .into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": format!("Skill proposal '{}' not found", id) })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn queue_skill_proposal_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<QueueSkillProposalPayload>,
+) -> impl IntoResponse {
+    let service = skill_proposal_service_from_state(&state);
+    let result = async {
+        let proposal = service
+            .queue(&SkillProposalCreateRequest {
+                namespace: payload.namespace.unwrap_or_else(|| "global".to_string()),
+                skill_name: payload.skill_name,
+                summary: payload.summary,
+                body: payload.body,
+                rationale: payload.rationale,
+                source: SkillProposalSourceRef {
+                    kind: control::parse_skill_proposal_source_kind(
+                        payload.source_kind.as_deref().unwrap_or("manual"),
+                    )
+                    .map_err(|error| error.to_string())?,
+                    source_id: payload.source_id,
+                    detail: payload.source_detail,
+                },
+            })
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok::<serde_json::Value, String>(serde_json::json!({
+            "status": "queued",
+            "proposal": proposal
+        }))
+    }
+    .await;
+
+    match result {
+        Ok(payload) => (StatusCode::OK, Json(payload)).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error })),
+        )
+            .into_response(),
+    }
+}
+
+async fn review_skill_proposal_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<ReviewSkillProposalPayload>,
+) -> impl IntoResponse {
+    let service = skill_proposal_service_from_state(&state);
+    let result = async {
+        let proposal = service
+            .review(
+                &id,
+                &SkillProposalReviewRequest {
+                    action: control::parse_skill_proposal_review_action(&payload.action)
+                        .map_err(|error| error.to_string())?,
+                    reviewed_by: payload.reviewed_by,
+                    review_note: payload.note,
+                },
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok::<serde_json::Value, String>(serde_json::json!({ "proposal": proposal }))
+    }
+    .await;
+
+    match result {
+        Ok(payload) => (StatusCode::OK, Json(payload)).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error })),
+        )
+            .into_response(),
+    }
+}
+
+async fn verify_skill_proposal_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<VerifySkillProposalPayload>,
+) -> impl IntoResponse {
+    let service = skill_proposal_service_from_state(&state);
+    match service
+        .verify(
+            &id,
+            &SkillProposalVerifyRequest {
+                verified_by: payload.verified_by,
+                note: payload.note,
+            },
+        )
+        .await
+    {
+        Ok(proposal) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "proposal": proposal })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn install_skill_proposal_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<InstallSkillProposalPayload>,
+) -> impl IntoResponse {
+    let service = skill_proposal_service_from_state(&state);
+    match service
+        .install(
+            &id,
+            &SkillProposalInstallRequest {
+                installed_by: payload.installed_by,
+                note: payload.note,
+            },
+        )
+        .await
+    {
+        Ok(report) => (StatusCode::OK, Json(serde_json::json!(report))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn rollback_skill_proposal_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<RollbackSkillProposalPayload>,
+) -> impl IntoResponse {
+    let service = skill_proposal_service_from_state(&state);
+    match service
+        .rollback(
+            &id,
+            &SkillProposalRollbackRequest {
+                rolled_back_by: payload.rolled_back_by,
+                reason: payload.reason,
+            },
+        )
+        .await
+    {
+        Ok(proposal) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "proposal": proposal })),
         )
             .into_response(),
         Err(error) => (
@@ -11032,6 +11346,89 @@ fn build_mcp_server(
                 }),
             },
             McpServerTool {
+                name: "list_skill_proposals".to_string(),
+                description: "List reusable skill proposals and their review and verification state.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "namespace": {"type": "string"},
+                        "status": {"type": "string"},
+                        "limit": {"type": "integer", "minimum": 1}
+                    }
+                }),
+            },
+            McpServerTool {
+                name: "queue_skill_proposal".to_string(),
+                description: "Queue a reusable skill proposal for later review.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "namespace": {"type": "string"},
+                        "skill_name": {"type": "string"},
+                        "summary": {"type": "string"},
+                        "body": {"type": "string"},
+                        "rationale": {"type": "string"},
+                        "source_kind": {"type": "string"},
+                        "source_id": {"type": "string"},
+                        "source_detail": {"type": "string"}
+                    },
+                    "required": ["skill_name", "summary", "body", "source_id"]
+                }),
+            },
+            McpServerTool {
+                name: "review_skill_proposal".to_string(),
+                description: "Approve, reject, or supersede a queued skill proposal.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "action": {"type": "string"},
+                        "reviewed_by": {"type": "string"},
+                        "note": {"type": "string"}
+                    },
+                    "required": ["id", "action"]
+                }),
+            },
+            McpServerTool {
+                name: "verify_skill_proposal".to_string(),
+                description: "Verify an approved skill proposal through the compile preview path.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "verified_by": {"type": "string"},
+                        "note": {"type": "string"}
+                    },
+                    "required": ["id"]
+                }),
+            },
+            McpServerTool {
+                name: "install_skill_proposal".to_string(),
+                description: "Install an approved verified skill proposal into the active skill lane.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "installed_by": {"type": "string"},
+                        "note": {"type": "string"}
+                    },
+                    "required": ["id"]
+                }),
+            },
+            McpServerTool {
+                name: "rollback_skill_proposal".to_string(),
+                description: "Roll back an installed skill proposal and linked skill.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "rolled_back_by": {"type": "string"},
+                        "reason": {"type": "string"}
+                    },
+                    "required": ["id"]
+                }),
+            },
+            McpServerTool {
                 name: "list_sessions".to_string(),
                 description: "List durable sessions and their statuses.".to_string(),
                 input_schema: serde_json::json!({
@@ -12247,6 +12644,182 @@ fn build_mcp_server(
                 })
             },
         ),
+    );
+
+    let pool_for_list_skill_proposals = pool.clone();
+    let workspace_root_for_list_skill_proposals = workspace_root.clone();
+    server.register_handler(
+        "list_skill_proposals",
+        traced_mcp_handler(langsmith.clone(), "list_skill_proposals", move |args| {
+            let request: McpListSkillProposalsArgs = parse_tool_args(args)?;
+            let pool = pool_for_list_skill_proposals.clone();
+            let workspace_root = workspace_root_for_list_skill_proposals.clone();
+            block_on_tool(async move {
+                let service = SkillProposalService::new(
+                    control::WorkspaceSkillProposalSource::from_pool(workspace_root, pool),
+                );
+                let status = request
+                    .status
+                    .as_deref()
+                    .map(control::parse_skill_proposal_status)
+                    .transpose()
+                    .map_err(|error| mcp_tool_error(error.to_string()))?;
+                let proposals = service
+                    .list(
+                        request.namespace.as_deref(),
+                        status,
+                        request.limit.unwrap_or(20).max(1),
+                    )
+                    .await
+                    .map_err(|error| mcp_tool_error(error.to_string()))?;
+                Ok(serde_json::json!({ "proposals": proposals }))
+            })
+        }),
+    );
+
+    let pool_for_queue_skill_proposal = pool.clone();
+    let workspace_root_for_queue_skill_proposal = workspace_root.clone();
+    server.register_handler(
+        "queue_skill_proposal",
+        traced_mcp_handler(langsmith.clone(), "queue_skill_proposal", move |args| {
+            let request: McpQueueSkillProposalArgs = parse_tool_args(args)?;
+            let pool = pool_for_queue_skill_proposal.clone();
+            let workspace_root = workspace_root_for_queue_skill_proposal.clone();
+            block_on_tool(async move {
+                let service = SkillProposalService::new(
+                    control::WorkspaceSkillProposalSource::from_pool(workspace_root, pool),
+                );
+                let proposal = service
+                    .queue(&SkillProposalCreateRequest {
+                        namespace: request.namespace.unwrap_or_else(|| "global".to_string()),
+                        skill_name: request.skill_name,
+                        summary: request.summary,
+                        body: request.body,
+                        rationale: request.rationale,
+                        source: SkillProposalSourceRef {
+                            kind: control::parse_skill_proposal_source_kind(
+                                request.source_kind.as_deref().unwrap_or("manual"),
+                            )
+                            .map_err(|error| mcp_tool_error(error.to_string()))?,
+                            source_id: request.source_id,
+                            detail: request.source_detail,
+                        },
+                    })
+                    .await
+                    .map_err(|error| mcp_tool_error(error.to_string()))?;
+                Ok(serde_json::json!({ "proposal": proposal }))
+            })
+        }),
+    );
+
+    let pool_for_review_skill_proposal = pool.clone();
+    let workspace_root_for_review_skill_proposal = workspace_root.clone();
+    server.register_handler(
+        "review_skill_proposal",
+        traced_mcp_handler(langsmith.clone(), "review_skill_proposal", move |args| {
+            let request: McpReviewSkillProposalArgs = parse_tool_args(args)?;
+            let pool = pool_for_review_skill_proposal.clone();
+            let workspace_root = workspace_root_for_review_skill_proposal.clone();
+            block_on_tool(async move {
+                let service = SkillProposalService::new(
+                    control::WorkspaceSkillProposalSource::from_pool(workspace_root, pool),
+                );
+                let proposal = service
+                    .review(
+                        &request.id,
+                        &SkillProposalReviewRequest {
+                            action: control::parse_skill_proposal_review_action(&request.action)
+                                .map_err(|error| mcp_tool_error(error.to_string()))?,
+                            reviewed_by: request.reviewed_by,
+                            review_note: request.note,
+                        },
+                    )
+                    .await
+                    .map_err(|error| mcp_tool_error(error.to_string()))?;
+                Ok(serde_json::json!({ "proposal": proposal }))
+            })
+        }),
+    );
+
+    let pool_for_verify_skill_proposal = pool.clone();
+    let workspace_root_for_verify_skill_proposal = workspace_root.clone();
+    server.register_handler(
+        "verify_skill_proposal",
+        traced_mcp_handler(langsmith.clone(), "verify_skill_proposal", move |args| {
+            let request: McpVerifySkillProposalArgs = parse_tool_args(args)?;
+            let pool = pool_for_verify_skill_proposal.clone();
+            let workspace_root = workspace_root_for_verify_skill_proposal.clone();
+            block_on_tool(async move {
+                let service = SkillProposalService::new(
+                    control::WorkspaceSkillProposalSource::from_pool(workspace_root, pool),
+                );
+                let proposal = service
+                    .verify(
+                        &request.id,
+                        &SkillProposalVerifyRequest {
+                            verified_by: request.verified_by,
+                            note: request.note,
+                        },
+                    )
+                    .await
+                    .map_err(|error| mcp_tool_error(error.to_string()))?;
+                Ok(serde_json::json!({ "proposal": proposal }))
+            })
+        }),
+    );
+
+    let pool_for_install_skill_proposal = pool.clone();
+    let workspace_root_for_install_skill_proposal = workspace_root.clone();
+    server.register_handler(
+        "install_skill_proposal",
+        traced_mcp_handler(langsmith.clone(), "install_skill_proposal", move |args| {
+            let request: McpInstallSkillProposalArgs = parse_tool_args(args)?;
+            let pool = pool_for_install_skill_proposal.clone();
+            let workspace_root = workspace_root_for_install_skill_proposal.clone();
+            block_on_tool(async move {
+                let service = SkillProposalService::new(
+                    control::WorkspaceSkillProposalSource::from_pool(workspace_root, pool),
+                );
+                let report = service
+                    .install(
+                        &request.id,
+                        &SkillProposalInstallRequest {
+                            installed_by: request.installed_by,
+                            note: request.note,
+                        },
+                    )
+                    .await
+                    .map_err(|error| mcp_tool_error(error.to_string()))?;
+                Ok(serde_json::json!(report))
+            })
+        }),
+    );
+
+    let pool_for_rollback_skill_proposal = pool.clone();
+    let workspace_root_for_rollback_skill_proposal = workspace_root.clone();
+    server.register_handler(
+        "rollback_skill_proposal",
+        traced_mcp_handler(langsmith.clone(), "rollback_skill_proposal", move |args| {
+            let request: McpRollbackSkillProposalArgs = parse_tool_args(args)?;
+            let pool = pool_for_rollback_skill_proposal.clone();
+            let workspace_root = workspace_root_for_rollback_skill_proposal.clone();
+            block_on_tool(async move {
+                let service = SkillProposalService::new(
+                    control::WorkspaceSkillProposalSource::from_pool(workspace_root, pool),
+                );
+                let proposal = service
+                    .rollback(
+                        &request.id,
+                        &SkillProposalRollbackRequest {
+                            rolled_back_by: request.rolled_back_by,
+                            reason: request.reason,
+                        },
+                    )
+                    .await
+                    .map_err(|error| mcp_tool_error(error.to_string()))?;
+                Ok(serde_json::json!({ "proposal": proposal }))
+            })
+        }),
     );
 
     let session_store_for_list = session_store.clone();
@@ -14072,6 +14645,54 @@ struct McpPromoteLearningCandidateArgs {
 
 #[derive(serde::Deserialize, Default)]
 struct McpRollbackLearningCandidateArgs {
+    id: String,
+    rolled_back_by: Option<String>,
+    reason: Option<String>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct McpListSkillProposalsArgs {
+    namespace: Option<String>,
+    status: Option<String>,
+    limit: Option<usize>,
+}
+
+#[derive(serde::Deserialize)]
+struct McpQueueSkillProposalArgs {
+    namespace: Option<String>,
+    skill_name: String,
+    summary: String,
+    body: String,
+    rationale: Option<String>,
+    source_kind: Option<String>,
+    source_id: String,
+    source_detail: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct McpReviewSkillProposalArgs {
+    id: String,
+    action: String,
+    reviewed_by: Option<String>,
+    note: Option<String>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct McpVerifySkillProposalArgs {
+    id: String,
+    verified_by: Option<String>,
+    note: Option<String>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct McpInstallSkillProposalArgs {
+    id: String,
+    installed_by: Option<String>,
+    note: Option<String>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct McpRollbackSkillProposalArgs {
     id: String,
     rolled_back_by: Option<String>,
     reason: Option<String>,
@@ -16330,6 +16951,147 @@ background_services:
             .unwrap();
         let rollback_payload: serde_json::Value = serde_json::from_str(rollback_text).unwrap();
         assert_eq!(rollback_payload["candidate"]["status"], "rolled_back");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn mcp_server_control_tools_manage_skill_proposals() {
+        let workspace = tempdir().unwrap();
+        control::init(Some(
+            control::control_root_for(workspace.path())
+                .to_str()
+                .unwrap(),
+        ))
+        .unwrap();
+        let db_path = workspace.path().join("mcp-skill-proposals.db");
+        let db_url = format!("sqlite://{}", db_path.display());
+        let pool = init_pool(&db_url, 1).await.unwrap();
+        run_migrations(&pool).await.unwrap();
+
+        let server = build_mcp_server(
+            workspace.path().to_path_buf(),
+            pool,
+            AppConfig::default(),
+            None,
+        );
+
+        let queue_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 30,
+            "method": "tools/call",
+            "params": {
+                "name": "queue_skill_proposal",
+                "arguments": {
+                    "namespace": "user-1",
+                    "skill_name": "demo-skill",
+                    "summary": "Turn recurring work into a reusable skill",
+                    "body": "# Demo Skill\n\nUseful compiled skill.\n",
+                    "source_kind": "manual",
+                    "source_id": "proposal-source-1"
+                }
+            }
+        });
+        let queue_resp = server.handle_request(&queue_req);
+        let queue_text = queue_resp["result"]["content"][0]["text"].as_str().unwrap();
+        let queue_payload: serde_json::Value = serde_json::from_str(queue_text).unwrap();
+        let proposal_id = queue_payload["proposal"]["id"].as_str().unwrap();
+        assert_eq!(queue_payload["proposal"]["status"], "pending_review");
+
+        let review_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 31,
+            "method": "tools/call",
+            "params": {
+                "name": "review_skill_proposal",
+                "arguments": {
+                    "id": proposal_id,
+                    "action": "approve",
+                    "reviewed_by": "operator",
+                    "note": "approved"
+                }
+            }
+        });
+        let review_resp = server.handle_request(&review_req);
+        let review_text = review_resp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap();
+        let review_payload: serde_json::Value = serde_json::from_str(review_text).unwrap();
+        assert_eq!(review_payload["proposal"]["status"], "approved");
+
+        let verify_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 32,
+            "method": "tools/call",
+            "params": {
+                "name": "verify_skill_proposal",
+                "arguments": {
+                    "id": proposal_id,
+                    "verified_by": "operator"
+                }
+            }
+        });
+        let verify_resp = server.handle_request(&verify_req);
+        let verify_text = verify_resp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap();
+        let verify_payload: serde_json::Value = serde_json::from_str(verify_text).unwrap();
+        assert_eq!(verify_payload["proposal"]["verification_status"], "passed");
+
+        let install_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 33,
+            "method": "tools/call",
+            "params": {
+                "name": "install_skill_proposal",
+                "arguments": {
+                    "id": proposal_id,
+                    "installed_by": "operator"
+                }
+            }
+        });
+        let install_resp = server.handle_request(&install_req);
+        let install_text = install_resp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap();
+        let install_payload: serde_json::Value = serde_json::from_str(install_text).unwrap();
+        assert_eq!(install_payload["proposal"]["status"], "installed");
+        assert_eq!(install_payload["installed_skill_name"], "Demo Skill");
+
+        let list_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 34,
+            "method": "tools/call",
+            "params": {
+                "name": "list_skill_proposals",
+                "arguments": {
+                    "namespace": "user-1",
+                    "limit": 10
+                }
+            }
+        });
+        let list_resp = server.handle_request(&list_req);
+        let list_text = list_resp["result"]["content"][0]["text"].as_str().unwrap();
+        let list_payload: serde_json::Value = serde_json::from_str(list_text).unwrap();
+        assert_eq!(list_payload["proposals"].as_array().unwrap().len(), 1);
+
+        let rollback_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 35,
+            "method": "tools/call",
+            "params": {
+                "name": "rollback_skill_proposal",
+                "arguments": {
+                    "id": proposal_id,
+                    "rolled_back_by": "operator",
+                    "reason": "not needed"
+                }
+            }
+        });
+        let rollback_resp = server.handle_request(&rollback_req);
+        let rollback_text = rollback_resp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap();
+        let rollback_payload: serde_json::Value = serde_json::from_str(rollback_text).unwrap();
+        assert_eq!(rollback_payload["proposal"]["status"], "rolled_back");
     }
 
     #[tokio::test(flavor = "multi_thread")]

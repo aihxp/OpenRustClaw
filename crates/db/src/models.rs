@@ -305,3 +305,47 @@ pub struct LearningCandidateHistoryRow {
     pub note: Option<String>,
     pub created_at: String,
 }
+
+/// A row from the `skill_proposals` table.
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct SkillProposalRow {
+    pub id: String,
+    pub namespace: String,
+    pub skill_name: String,
+    pub summary: String,
+    pub body: String,
+    pub rationale: Option<String>,
+    pub status: String,
+    pub verification_status: String,
+    pub source_kind: String,
+    pub source_id: String,
+    pub source_detail: Option<String>,
+    pub artifact_path: String,
+    pub review_note: Option<String>,
+    pub reviewed_by: Option<String>,
+    pub verification_summary: Option<String>,
+    pub verification_compiled_skill_name: Option<String>,
+    pub verification_artifact_path: Option<String>,
+    pub verification_blocked: Option<i64>,
+    pub verified_by: Option<String>,
+    pub installed_skill_name: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub reviewed_at: Option<String>,
+    pub verified_at: Option<String>,
+    pub installed_at: Option<String>,
+    pub rolled_back_at: Option<String>,
+}
+
+/// A row from the `skill_proposal_history` table.
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct SkillProposalHistoryRow {
+    pub id: String,
+    pub proposal_id: String,
+    pub action: String,
+    pub actor: Option<String>,
+    pub note: Option<String>,
+    pub verification_status: Option<String>,
+    pub installed_skill_name: Option<String>,
+    pub created_at: String,
+}

@@ -2818,6 +2818,68 @@ enum ControlAction {
         #[arg(long)]
         reason: Option<String>,
     },
+    /// List durable skill proposals and their review and verification state
+    SkillProposals {
+        #[arg(long)]
+        namespace: Option<String>,
+        #[arg(long)]
+        status: Option<String>,
+        #[arg(short, long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// Queue a reusable skill proposal for later review
+    QueueSkillProposal {
+        #[arg(long)]
+        skill_name: String,
+        #[arg(long)]
+        summary: String,
+        #[arg(long)]
+        body: String,
+        #[arg(long)]
+        rationale: Option<String>,
+        #[arg(long, default_value = "manual")]
+        source_kind: String,
+        #[arg(long)]
+        source_id: String,
+        #[arg(long)]
+        source_detail: Option<String>,
+        #[arg(long)]
+        namespace: Option<String>,
+    },
+    /// Approve, reject, or supersede a skill proposal
+    ReviewSkillProposal {
+        id: String,
+        #[arg(long)]
+        action: String,
+        #[arg(long)]
+        reviewed_by: Option<String>,
+        #[arg(long)]
+        note: Option<String>,
+    },
+    /// Verify an approved skill proposal through the compile preview path
+    VerifySkillProposal {
+        id: String,
+        #[arg(long)]
+        verified_by: Option<String>,
+        #[arg(long)]
+        note: Option<String>,
+    },
+    /// Install an approved verified skill proposal into the active skill lane
+    InstallSkillProposal {
+        id: String,
+        #[arg(long)]
+        installed_by: Option<String>,
+        #[arg(long)]
+        note: Option<String>,
+    },
+    /// Roll back an installed skill proposal and linked skill
+    RollbackSkillProposal {
+        id: String,
+        #[arg(long)]
+        rolled_back_by: Option<String>,
+        #[arg(long)]
+        reason: Option<String>,
+    },
     /// Assign one task id to a Claw
     AssignTask {
         task_id: String,
@@ -4674,6 +4736,114 @@ async fn main() -> Result<()> {
                     &workspace_root,
                     &id,
                     &openrustclaw_core::types::LearningCandidateRollbackRequest {
+                        rolled_back_by,
+                        reason,
+                    },
+                )
+                .await
+            }
+            ControlAction::SkillProposals {
+                namespace,
+                status,
+                limit,
+            } => {
+                let workspace_root = std::env::current_dir()?;
+                let status = status
+                    .as_deref()
+                    .map(commands::control::parse_skill_proposal_status)
+                    .transpose()?;
+                commands::control::list_skill_proposals_cli(
+                    &workspace_root,
+                    namespace.as_deref(),
+                    status,
+                    limit,
+                )
+                .await
+            }
+            ControlAction::QueueSkillProposal {
+                skill_name,
+                summary,
+                body,
+                rationale,
+                source_kind,
+                source_id,
+                source_detail,
+                namespace,
+            } => {
+                let workspace_root = std::env::current_dir()?;
+                commands::control::queue_skill_proposal_cli(
+                    &workspace_root,
+                    &openrustclaw_core::types::SkillProposalCreateRequest {
+                        namespace: namespace.unwrap_or_else(|| "global".to_string()),
+                        skill_name,
+                        summary,
+                        body,
+                        rationale,
+                        source: openrustclaw_core::types::SkillProposalSourceRef {
+                            kind: commands::control::parse_skill_proposal_source_kind(
+                                &source_kind,
+                            )?,
+                            source_id,
+                            detail: source_detail,
+                        },
+                    },
+                )
+                .await
+            }
+            ControlAction::ReviewSkillProposal {
+                id,
+                action,
+                reviewed_by,
+                note,
+            } => {
+                let workspace_root = std::env::current_dir()?;
+                commands::control::review_skill_proposal_cli(
+                    &workspace_root,
+                    &id,
+                    &openrustclaw_core::types::SkillProposalReviewRequest {
+                        action: commands::control::parse_skill_proposal_review_action(&action)?,
+                        reviewed_by,
+                        review_note: note,
+                    },
+                )
+                .await
+            }
+            ControlAction::VerifySkillProposal {
+                id,
+                verified_by,
+                note,
+            } => {
+                let workspace_root = std::env::current_dir()?;
+                commands::control::verify_skill_proposal_cli(
+                    &workspace_root,
+                    &id,
+                    &openrustclaw_core::types::SkillProposalVerifyRequest { verified_by, note },
+                )
+                .await
+            }
+            ControlAction::InstallSkillProposal {
+                id,
+                installed_by,
+                note,
+            } => {
+                let workspace_root = std::env::current_dir()?;
+                commands::control::install_skill_proposal_cli(
+                    &workspace_root,
+                    &id,
+                    &openrustclaw_core::types::SkillProposalInstallRequest { installed_by, note },
+                )
+                .await
+            }
+            ControlAction::RollbackSkillProposal {
+                id,
+                rolled_back_by,
+                reason,
+            } => {
+                let workspace_root = std::env::current_dir()?;
+                commands::control::rollback_skill_proposal_cli(
+                    &workspace_root,
+                    &id,
+                    &openrustclaw_core::types::SkillProposalRollbackRequest {
                         rolled_back_by,
                         reason,
                     },

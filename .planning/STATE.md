@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.43
 milestone_name: Learning Loop, Memory Depth, and God Mode
-current_phase: 184
-current_phase_name: Skill Proposal Verification and Reuse
+current_phase: 185
+current_phase_name: God Mode Overlay, Audit, and Recovery
 current_plan: none
 status: phase complete
-stopped_at: Phase 183 completed with durable learning candidates, explicit review state, CLI and MCP review flows, and rollback-aware lesson promotion; Phase 184 is ready for discuss/planning.
-last_updated: "2026-04-08T06:04:07Z"
+stopped_at: Phase 184 completed with durable skill proposals, inactive diffable proposal artifacts, CLI and MCP proposal lifecycle flows, and a workspace-root-aware install and rollback bridge; Phase 185 is ready for discuss/planning.
+last_updated: "2026-04-08T09:15:00Z"
 last_activity: 2026-04-08
 progress:
   total_phases: 5
-  completed_phases: 3
-  total_plans: 6
-  completed_plans: 6
-  percent: 60
+  completed_phases: 4
+  total_plans: 8
+  completed_plans: 8
+  percent: 80
 ---
 
 # Project State
@@ -28,17 +28,17 @@ See: .planning/PROJECT.md (updated 2026-04-07)
 
 ## Current Position
 
-Current Phase: 184
-Current Phase Name: Skill Proposal Verification and Reuse
+Current Phase: 185
+Current Phase Name: God Mode Overlay, Audit, and Recovery
 Total Phases: 5
 Current Plan: none
 Total Plans in Phase: 2
 Status: phase complete
 Last activity: 2026-04-08
 
-Phase: 4 of 5
+Phase: 5 of 5
 Plan: 2 of 2
-Progress: [######----] 60%
+Progress: [########--] 80%
 
 ## Performance Metrics
 
@@ -64,6 +64,7 @@ Recent decisions affecting current work:
 - Local verification now includes `openrustclaw-cli` retrieval inspection tests after installing `protobuf` to provide `protoc` for `openrustclaw-langbridge`.
 - Phase 182 now stores structured user/operator/project/archive artifacts durably, projects only reserved typed slots into core memory, and exposes correction/deactivation/removal through CLI and MCP surfaces.
 - Phase 183 now routes reflections into a durable learning-candidate queue, requires explicit review for lesson promotion, and keeps rollback history linked to the active lesson lane.
+- Phase 184 now routes reusable skill improvement through a durable proposal queue, inactive proposal artifacts, compile-preview verification, and a workspace-root-aware install and rollback bridge.
 
 ### Pending Todos
 
@@ -72,10 +73,10 @@ Recent decisions affecting current work:
 ### Blockers/Concerns
 
 - v1.0 archive notes missing phase verification artifacts as lifecycle debt already captured in the archive.
-- Phase 184 should reuse approved candidates and promoted lessons as provenance anchors for reviewable skill proposals instead of inferring reusable skills directly from raw receipts.
+- Phase 185 must keep God Mode explicit, quarantinable, and baseline-restorable so the new learned-skill and learned-guidance lanes do not silently inherit full-power execution.
 
 ## Session Continuity
 
 Last session: 2026-04-08
-Stopped at: Phase 183 completed with durable learning candidates, explicit review state, CLI and MCP review flows, and rollback-aware lesson promotion; Phase 184 is ready for discuss/planning.
+Stopped at: Phase 184 completed with durable skill proposals, inactive diffable proposal artifacts, CLI and MCP proposal lifecycle flows, and a workspace-root-aware install and rollback bridge; Phase 185 is ready for discuss/planning.
 Resume file: None
