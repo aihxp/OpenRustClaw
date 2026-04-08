@@ -1,44 +1,44 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.43
-milestone_name: Learning Loop, Memory Depth, and God Mode
+milestone: v1.44
+milestone_name: Agent Discovery, Journey Cohesion, and Provider Access
 current_phase: none
-current_phase_name: milestone complete
+current_phase_name: requirements and roadmap definition
 current_plan: none
-status: milestone complete
-stopped_at: Phase 185 completed with explicit God Mode TTL and restore behavior, durable God Mode provenance on learned artifacts, and quarantine controls across CLI, HTTP control, and MCP surfaces. Milestone v1.43 is complete and ready for archive.
-last_updated: "2026-04-08T14:30:00Z"
+status: defining requirements
+stopped_at: Milestone v1.44 started to unify local agent discovery, compliance-safe delegated backend access, onboarding truthfulness, and end-to-end journey cohesion.
+last_updated: "2026-04-08T07:25:14Z"
 last_activity: 2026-04-08
 progress:
   total_phases: 5
-  completed_phases: 5
+  completed_phases: 0
   total_plans: 10
-  completed_plans: 10
-  percent: 100
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-07)
+See: .planning/PROJECT.md (updated 2026-04-08)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** v1.43 is shipped; the next planning action is milestone archive or a new milestone.
+**Current focus:** v1.44 is defining and then executing the agent-discovery, provider-access, onboarding, and journey-cohesion roadmap.
 
 ## Current Position
 
 Current Phase: none
-Current Phase Name: milestone complete
+Current Phase Name: requirements and roadmap definition
 Total Phases: 5
 Current Plan: none
 Total Plans in Phase: 2
-Status: milestone complete
+Status: defining requirements
 Last activity: 2026-04-08
 
-Phase: 5 of 5
-Plan: 2 of 2
-Progress: [##########] 100%
+Phase: 0 of 5
+Plan: 0 of 2
+Progress: [----------] 0%
 
 ## Performance Metrics
 
@@ -46,7 +46,7 @@ Progress: [##########] 100%
 
 - Total plans completed: historical total retained across shipped milestones
 - Average duration: historical average retained across shipped milestones
-- Total execution time: multiple shipped milestones completed across v1.0-v1.42 planning and shipped execution
+- Total execution time: historical multiple-milestone execution retained across v1.0-v1.43
 
 ## Accumulated Context
 
@@ -55,17 +55,11 @@ Progress: [##########] 100%
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- v1.40 completed the public-product convergence milestone by cleaning the repo safely, converging public docs and package metadata, repairing CI and release automation, publishing `openrustclaw-core 1.4.0`, and aligning the public repo tag line to `v1.4.0`.
-- v1.41 completed the markdown-surface audit milestone by inventorying the non-generated Markdown surface, defining canonical ownership rules, deleting or merging stale docs, and closing the roadmap truthfully at `1/1`.
-- v1.42 completed the onboarding primary-model selection milestone by adding truthful provider access selection, live verification evidence, explicit model discovery or fallback entry, and handoff or first-launch continuity for the selected provider-model lane.
-- v1.43 starts with retrieval and recall inspection, keeps learning candidate-before-promotion, routes skill improvement through explicit verification, and leaves God Mode as the final delivery phase.
-- Phase 181 now uses a shared bounded recall-pack contract across the agent, gateway, recall views, and durable `memory.searched` runtime events.
-- Retrieval inspection remains phase-scoped: recall stays tool-driven, bounded, and provenance-rich instead of widening prompt injection or introducing Phase 182 artifact stores.
-- Local verification now includes `openrustclaw-cli` retrieval inspection tests after installing `protobuf` to provide `protoc` for `openrustclaw-langbridge`.
-- Phase 182 now stores structured user/operator/project/archive artifacts durably, projects only reserved typed slots into core memory, and exposes correction/deactivation/removal through CLI and MCP surfaces.
-- Phase 183 now routes reflections into a durable learning-candidate queue, requires explicit review for lesson promotion, and keeps rollback history linked to the active lesson lane.
-- Phase 184 now routes reusable skill improvement through a durable proposal queue, inactive proposal artifacts, compile-preview verification, and a workspace-root-aware install and rollback bridge.
-- Phase 185 now treats God Mode as a named stronger lane with TTL-backed expiry, baseline restore, visible audit labeling, and quarantine-capable learned artifacts.
+- v1.42 made provider access mode and explicit primary-model selection truthful during onboarding, but it still left the product catalog split across onboarding, static model lists, and runtime policy surfaces.
+- v1.43 strengthened memory, learning, and God Mode, but it did not yet close the broader agent UX gap around local vendor agent discovery, delegated execution, or end-to-end journey cohesion.
+- Official vendor guidance now constrains this milestone: Claude Code explicitly supports subscription browser login for Claude Code itself but tells third-party products to use Anthropic APIs or cloud-provider integrations instead of rehosting `claude.ai` login, Gemini CLI documents Google sign-in versus API-key versus Vertex paths, and Codex CLI exposes direct login or API-key paths rather than a token-export contract.
+- The milestone will therefore treat installed local agent tools as delegated execution backends or documented provider lanes, not as token sources to be scraped into OpenRustClaw.
+- Existing repo seams already support this direction: onboarding has a `subscription_managed` concept, config has `external_backends`, browser policy already governs local CLI wrappers, and control or inspect surfaces already expose rich operator evidence patterns.
 
 ### Pending Todos
 
@@ -73,10 +67,10 @@ Recent decisions affecting current work:
 
 ### Blockers/Concerns
 
-- None.
+- Cursor documentation is partially shielded by a Vercel security checkpoint during automated fetches, so Cursor support must be scoped conservatively unless a documented programmable surface is confirmed during implementation.
 
 ## Session Continuity
 
 Last session: 2026-04-08
-Stopped at: Phase 185 completed with explicit God Mode TTL and restore behavior, durable God Mode provenance on learned artifacts, and quarantine controls across CLI, HTTP control, and MCP surfaces. Milestone v1.43 is complete and ready for archive.
+Stopped at: Milestone v1.44 started to unify local agent discovery, compliance-safe delegated backend access, onboarding truthfulness, and end-to-end journey cohesion.
 Resume file: None

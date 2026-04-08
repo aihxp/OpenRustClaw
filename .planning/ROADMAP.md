@@ -2,98 +2,95 @@
 
 ## Milestones
 
-- ✅ **v1.0 through v1.42** - shipped. Full milestone history and archives: `.planning/MILESTONES.md`
-- ✅ **v1.43 Learning Loop, Memory Depth, and God Mode** - shipped 2026-04-08
+- ✅ **v1.0 through v1.43** - shipped. Full milestone history and archives: `.planning/MILESTONES.md`
+- 🚧 **v1.44 Agent Discovery, Journey Cohesion, and Provider Access** - in progress
 
 ## Overview
 
-`v1.43` stays bounded to trustworthy memory depth, reviewable learning, reusable skill improvement, and a distinct God Mode overlay. It improves retrieval and consolidation first, keeps learning candidate-before-promotion, routes skill improvement through the existing approval and compile path, and leaves God Mode as the final phase so higher-power execution does not arrive before stronger audit and rollback controls.
+`v1.44` focuses on the part of the product that still feels disconnected even after truthful provider onboarding shipped in `v1.42` and bounded learning or God Mode shipped in `v1.43`: the actual agent experience. This milestone unifies discovery of installed local agent tools, defines a compliance-safe way to use account-backed vendor CLIs without scraping credentials, converges onboarding and model selection around one truthful provider or agent catalog, routes delegated agent runs through bounded audited backends, and closes the remaining user-journey and agent-journey seams across CLI, Control UI, inspect, and docs.
 
 ## Phases
 
 **Phase Numbering:**
 - Integer phases continue the live sequence from the prior milestone.
-- This milestone starts at Phase 181 because `v1.42` ended at Phase 180.
+- This milestone starts at Phase 186 because `v1.43` ended at Phase 185.
 
-- [x] **Phase 181: Hybrid Retrieval and Recall Inspection** - Make recall retrieval, assembly, and inspection reliable and explainable across sessions.
-- [x] **Phase 182: Structured Memory Artifacts and Model Control** - Promote durable user, operator, project, and archive artifacts through bounded policy-gated memory flows.
-- [x] **Phase 183: Learning Candidate Review and Lesson Promotion** - Turn successful work and reflections into reviewable candidates that can become bounded active lessons.
-- [x] **Phase 184: Skill Proposal Verification and Reuse** - Generate reviewable reusable-skill proposals and route approved ones through the existing compile and install path.
-- [x] **Phase 185: God Mode Overlay, Audit, and Recovery** - Add a distinct full-power operator lane that remains explicit, auditable, and reversible. (completed 2026-04-08)
+- [ ] **Phase 186: Local Agent Discovery and Compliance Inventory** - Detect installed local agent backends and expose truthful capability and policy metadata.
+- [ ] **Phase 187: OAuth-Safe Delegated Backend Contracts** - Add compliance-safe delegated backend rules for subscription-managed vendor surfaces.
+- [ ] **Phase 188: Onboarding and Model Selection Cohesion** - Converge onboarding, model menus, inspect, and control around one shared provider or agent catalog.
+- [ ] **Phase 189: Runtime Integration and Agent Journey Delivery** - Route eligible tasks through delegated local agents with audit, attribution, and bounded autonomy controls.
+- [ ] **Phase 190: Journey Audit, UX Repair, and Product Truthfulness** - Audit the end-to-end user and agent journeys, repair disconnected surfaces, and verify the shipped story across docs and runtime surfaces.
 
 ## Phase Details
 
-### Phase 181: Hybrid Retrieval and Recall Inspection
-**Goal**: Recall surfaces the most relevant prior context with explainable ranking and bounded assembled output instead of opaque or brittle memory retrieval.
+### Phase 186: Local Agent Discovery and Compliance Inventory
+**Goal**: OpenRustClaw can truthfully detect supported local agent tools and classify what they can safely do before onboarding or routing depends on them.
 **Depends on**: Nothing (first phase)
-**Requirements**: RETR-01, RETR-02, RETR-03, RETR-04
+**Requirements**: DISC-01, DISC-02, DISC-03, DISC-04
 **Success Criteria** (what must be TRUE):
-  1. Recall results are ranked using lexical, vector, recency, confidence, and importance signals instead of a flattened or opaque score.
-  2. Retrieved memory is assembled into concise, deduplicated output that includes provenance, freshness, and artifact-type metadata for each surfaced item.
-  3. Operators can inspect why a memory was surfaced, including the ranking factors and contributing source artifacts.
-  4. The runtime keeps the recall-only memory contract by using bounded recall summaries and never injecting raw memory files or raw archive blobs into the system prompt.
-**Plans**: 2/2 plans complete
-
-Plans:
-- [x] 185-01 Name and bound God Mode with TTL-backed restore and stronger reporting
-- [x] 185-02 Preserve God Mode provenance on learned artifacts and add quarantine controls
-
-### Phase 182: Structured Memory Artifacts and Model Control
-**Goal**: The runtime maintains distinct durable memory artifacts and projects only a bounded high-signal subset into active context.
-**Depends on**: Phase 181
-**Requirements**: MODL-01, MODL-02, MODL-03, MODL-04
-**Success Criteria** (what must be TRUE):
-  1. User model, operator model, project memory, and archive summaries exist as distinct durable artifact classes instead of one blended profile.
-  2. Memory consolidation creates summaries and model artifacts only through explicit policy-gated promotion with source lineage.
-  3. The runtime projects only a bounded high-signal subset of structured model artifacts into core memory or prompt context.
-  4. Operators can inspect, correct, deactivate, or remove stale, wrong, or unsafe model artifacts without editing raw memory files directly.
+  1. The runtime can detect local installations of supported agent tools such as `claude`, `codex`, `gemini`, and any documented Cursor agent surface without unsafe mutation or brittle heuristics.
+  2. Discovery results include durable evidence for path, version, invocation mode, auth status or auth capability, model-discovery support, and policy classification.
+  3. Unsupported or ambiguous tools remain visible as detected-but-unavailable with clear reasons instead of disappearing or being mislabeled as ready.
+  4. Discovery feeds one shared app-level catalog that later onboarding, model selection, and runtime routing can reuse.
 **Plans**: TBD
 
-### Phase 183: Learning Candidate Review and Lesson Promotion
-**Goal**: Successful work, reflections, and audit evidence become reviewable learning candidates that can promote into bounded runtime guidance only with explicit evidence and rollback discipline.
-**Depends on**: Phase 182
-**Requirements**: LEAR-01, LEAR-02, LEAR-03, LEAR-04
+### Phase 187: OAuth-Safe Delegated Backend Contracts
+**Goal**: OpenRustClaw can use supported local vendor agent surfaces without scraping credentials or pretending subscription logins are general API keys.
+**Depends on**: Phase 186
+**Requirements**: AUTH-01, AUTH-02, AUTH-03, AUTH-04
 **Success Criteria** (what must be TRUE):
-  1. Successful runs, reflections, and relevant audit evidence can create durable learning candidates with provenance, confidence, and review state.
-  2. Learning candidates can be approved, rejected, superseded, or rolled back before they become active lessons or memory artifacts.
-  3. Promoted lessons can guide routing, recall, tool choice, or other bounded runtime decisions without silently widening authority.
-  4. High-impact learned artifacts require replay, evaluation, or equivalent review evidence before promotion.
+  1. Delegated local agent backends are modeled separately from direct API providers, with explicit capability and policy differences.
+  2. The runtime can allow or deny delegated local agent execution per backend while preserving audit logs, environment allowlists, and runtime controls.
+  3. Model availability is either discovered from documented vendor surfaces or labeled vendor-managed or unknown instead of guessed.
+  4. No OpenRustClaw flow copies cached vendor tokens, imports browser sessions, or claims unsupported OAuth reuse.
 **Plans**: TBD
 
-### Phase 184: Skill Proposal Verification and Reuse
-**Goal**: Repeated successful workflows generate reviewable skill proposals that remain inactive until they are verified, approved, and installed through the existing skill pipeline.
-**Depends on**: Phase 183
-**Requirements**: SKIL-01, SKIL-02, SKIL-03
+### Phase 188: Onboarding and Model Selection Cohesion
+**Goal**: The first-run experience presents one truthful menu for API providers, local runtimes, and delegated local agents, and preserves that choice end to end.
+**Depends on**: Phase 187
+**Requirements**: ONBR-01, ONBR-02, ONBR-03, ONBR-04
 **Success Criteria** (what must be TRUE):
-  1. Repeated successful workflows can produce reviewable proposals for new reusable skills or improvements to existing skills.
-  2. Skill proposals remain human-readable, diffable, and inactive until they pass verification and explicit approval.
-  3. Approved skill proposals flow through the existing compile and install path with durable provenance back to the source candidate or lesson.
-**Plans**: 184-01, 184-02
+  1. Onboarding shows detected local agent backends in the model step with access-mode labels, compatibility notes, and truthful fallback guidance.
+  2. The selected provider or agent backend, access mode, and model lane survive handoff, repair, resume, inspect, and first launch.
+  3. `openrustclaw models`, inspect, control, and onboarding no longer disagree about which providers or agent backends exist.
+  4. Operators can understand why a detected backend is ready, blocked, partially supported, or vendor-managed without leaving the product flow.
+**Plans**: TBD
 
-### Phase 185: God Mode Overlay, Audit, and Recovery
-**Goal**: Operators can use a distinct God Mode lane with full autonomy, full access, and full power without weakening the default trust-first runtime path.
-**Depends on**: Phase 184
-**Requirements**: GOD-01, GOD-02, GOD-03, GOD-04
+### Phase 189: Runtime Integration and Agent Journey Delivery
+**Goal**: Delegated local agent execution becomes a first-class bounded runtime path with audit receipts, routing visibility, and consistent control behavior.
+**Depends on**: Phase 188
+**Requirements**: ROUT-01, ROUT-02, ROUT-03, ROUT-04
 **Success Criteria** (what must be TRUE):
-  1. Operators can explicitly enable a distinct `God Mode` lane instead of inheriting it from normal runtime behavior.
-  2. God Mode activation uses explicit scope, TTL or session boundaries, baseline-restore behavior, and a kill-switch control.
-  3. God Mode runs and any learned artifacts they produce are prominently labeled, auditable, and quarantine-capable.
-  4. Disabling or expiring God Mode returns the workspace to the default trust-first runtime without implicit retention of God Mode permissions, approval bypasses, or tool grants.
+  1. Eligible tasks can route through delegated local agent backends with durable audit evidence and backend attribution.
+  2. Control-registry and model-profile flows can reference delegated local agent backends without breaking existing provider routing or fallback behavior.
+  3. Approval, autonomy, memory, and artifact boundaries remain enforced when work is delegated externally.
+  4. Operators can inspect backend selection, route decisions, failures, and recovery hints through shipped CLI, inspect, and control surfaces.
+**Plans**: TBD
+
+### Phase 190: Journey Audit, UX Repair, and Product Truthfulness
+**Goal**: The user journey and agent journey feel coherent from install through ongoing operation, with disconnected pieces repaired instead of papered over.
+**Depends on**: Phase 189
+**Requirements**: JOUR-01, JOUR-02, JOUR-03, JOUR-04
+**Success Criteria** (what must be TRUE):
+  1. The install to onboarding to first-task to inspect or repair path contains no contradictory terminology or dead-end steps around agents, providers, or access modes.
+  2. The discovery to selection to routing to result to inspection journey is explicit and testable across CLI, Control UI, and MCP surfaces.
+  3. Previously disconnected provider catalogs, model menus, and backend policy surfaces are converged behind shared typed services or contracts.
+  4. Docs and shipped operator surfaces describe the same truthful support boundary for local agents and delegated execution.
 **Plans**: TBD
 
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 181. Hybrid Retrieval and Recall Inspection | 2/2 | Complete | 2026-04-08 |
-| 182. Structured Memory Artifacts and Model Control | 2/2 | Complete | 2026-04-08 |
-| 183. Learning Candidate Review and Lesson Promotion | 2/2 | Complete | 2026-04-08 |
-| 184. Skill Proposal Verification and Reuse | 2/2 | Complete | 2026-04-08 |
-| 185. God Mode Overlay, Audit, and Recovery | 2/2 | Complete | 2026-04-08 |
+| 186. Local Agent Discovery and Compliance Inventory | 0/2 | Not Started | — |
+| 187. OAuth-Safe Delegated Backend Contracts | 0/2 | Not Started | — |
+| 188. Onboarding and Model Selection Cohesion | 0/2 | Not Started | — |
+| 189. Runtime Integration and Agent Journey Delivery | 0/2 | Not Started | — |
+| 190. Journey Audit, UX Repair, and Product Truthfulness | 0/2 | Not Started | — |
 
 ## Current Status
 
-- Active milestone: v1.43 Learning Loop, Memory Depth, and God Mode
-- Roadmap progress: 5/5 phases complete
-- Current work: Milestone complete across retrieval, structured memory, reviewable learning, proposal-first skill reuse, and God Mode overlay plus quarantine controls
-- Next step: milestone archive lifecycle or `$gsd-new-milestone`
+- Active milestone: v1.44 Agent Discovery, Journey Cohesion, and Provider Access
+- Roadmap progress: 0/5 phases complete
+- Current work: defining the discovery, onboarding, routing, and UX denominator for local agent backends and provider cohesion
+- Next step: `$gsd-autonomous` starting at Phase 186

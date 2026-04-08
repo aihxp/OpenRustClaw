@@ -1,100 +1,102 @@
-# Requirements: OpenRustClaw v1.43 Learning Loop, Memory Depth, and God Mode
+# Requirements: OpenRustClaw v1.44 Agent Discovery, Journey Cohesion, and Provider Access
 
-**Defined:** 2026-04-07
+**Defined:** 2026-04-08
 **Core Value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
 
 ## v1 Requirements
 
-### Retrieval and Recall
+### Local Agent Discovery and Compliance
 
-- [ ] **RETR-01**: Recall retrieval combines lexical, vector, recency, confidence, and importance signals instead of relying on a flattened or opaque rank.
-- [ ] **RETR-02**: Retrieved memory results are assembled into concise, deduplicated recall output with provenance, freshness, and artifact-type metadata.
-- [ ] **RETR-03**: Operators can inspect why a memory was surfaced, including the ranking factors and source artifacts that contributed to the result.
-- [ ] **RETR-04**: The runtime keeps the recall-only memory contract by using bounded recall summaries and never injecting raw memory files or raw archive blobs into the system prompt.
+- [ ] **DISC-01**: OpenRustClaw detects supported local agent tools such as `claude`, `codex`, `gemini`, and any documented Cursor agent surface without unsafe probing or hidden side effects.
+- [ ] **DISC-02**: Discovery records durable evidence for each detected backend, including binary path, version, invocation style, auth status or auth capability, model-discovery capability, and policy classification.
+- [ ] **DISC-03**: Detected-but-unusable agent tools stay visible with truthful reasons such as unsupported auth reuse, missing model discovery, blocked policy, or missing vendor support.
+- [ ] **DISC-04**: Local agent discovery and refresh actions are policy-gated, auditable, and available through shared app services instead of disconnected CLI-only checks.
 
-### Model Artifacts
+### OAuth-Safe Account-Backed Access
 
-- [ ] **MODL-01**: The runtime stores user model, operator model, project memory, and archive summaries as distinct durable artifact classes instead of one blended profile.
-- [ ] **MODL-02**: Memory consolidation creates durable summaries and model artifacts only through explicit policy-gated promotion with source lineage.
-- [ ] **MODL-03**: The runtime projects only a bounded high-signal subset of structured model artifacts into core memory or prompt context.
-- [ ] **MODL-04**: Operators can inspect, correct, deactivate, or remove learned model artifacts when they become stale, wrong, or unsafe.
+- [ ] **AUTH-01**: Subscription-managed or account-managed access is only used through supported vendor execution surfaces or documented APIs; OpenRustClaw must not import cached browser sessions, copy tokens from vendor stores, or impersonate vendor logins.
+- [ ] **AUTH-02**: OpenRustClaw distinguishes direct API providers from delegated local agent backends and preserves truthful capability metadata for each lane.
+- [ ] **AUTH-03**: Backend policy can allow or deny delegated local agent execution per backend while preserving environment allowlists, audit logging, and runtime controls.
+- [ ] **AUTH-04**: Model availability for delegated agent backends is discovered truthfully when supported and otherwise labeled as vendor-managed or unknown instead of guessed.
 
-### Learning Candidates and Lessons
+### Onboarding and Model Selection Cohesion
 
-- [ ] **LEAR-01**: Successful runs, reflections, and relevant audit evidence can create durable learning candidates with provenance, confidence, and review state.
-- [ ] **LEAR-02**: Learning candidates can be approved, rejected, superseded, or rolled back before they become active lessons or memory artifacts.
-- [ ] **LEAR-03**: Promoted lessons can scope guidance for routing, recall, tool choice, or other bounded runtime decisions without silently widening authority.
-- [ ] **LEAR-04**: High-impact learned artifacts require replay, evaluation, or equivalent review evidence before promotion.
+- [ ] **ONBR-01**: Onboarding surfaces detected local agent backends alongside API-key and local-runtime providers with clear access-mode labels and compatibility notes.
+- [ ] **ONBR-02**: Provider, access-mode, and model selection persist delegated-agent choices and restore them through handoff, repair, resume, and first launch.
+- [ ] **ONBR-03**: Onboarding explains vendor constraints and fallback options whenever a detected local agent backend cannot safely serve as a general-purpose provider lane.
+- [ ] **ONBR-04**: `openrustclaw models`, onboarding menus, inspect surfaces, and control surfaces share one canonical provider or agent catalog instead of diverging static lists.
 
-### Skill Improvement
+### Runtime Integration and Agent Journey
 
-- [ ] **SKIL-01**: Repeated successful workflows can produce reviewable proposals for new reusable skills or improvements to existing skills.
-- [ ] **SKIL-02**: Skill proposals remain human-readable, diffable, and inactive until they pass verification and explicit approval.
-- [ ] **SKIL-03**: Approved skill proposals flow through the existing compile and install path with durable provenance back to the source candidate or lesson.
+- [ ] **ROUT-01**: Eligible tasks can route through installed local agent backends as bounded external backends with durable audit evidence and consistent session attribution.
+- [ ] **ROUT-02**: Model profiles and control-registry flows can reference delegated agent backends without breaking existing provider traits, fallback chains, or runtime mode controls.
+- [ ] **ROUT-03**: Delegated agent execution preserves approval, autonomy, memory, and artifact boundaries instead of widening authority implicitly.
+- [ ] **ROUT-04**: Operators can inspect backend selection, execution receipts, failures, and recovery hints for delegated local-agent runs.
 
-### God Mode
+### Journey Audit and UX Repair
 
-- [ ] **GOD-01**: Operators can explicitly enable a distinct `God Mode` lane that grants full autonomy, full access, and full power.
-- [ ] **GOD-02**: God Mode uses explicit scope, TTL or session boundaries, kill-switch controls, and baseline-restore behavior.
-- [ ] **GOD-03**: God Mode runs and any learned artifacts they produce are prominently labeled, auditable, and quarantine-capable.
-- [ ] **GOD-04**: The default trust-first runtime cannot inherit God Mode permissions, approval bypasses, or tool grants implicitly.
+- [ ] **JOUR-01**: The user journey from install to onboarding to first task to inspect or repair contains no dead-end steps or contradictory terminology around providers, agents, or access modes.
+- [ ] **JOUR-02**: The agent journey from discovery to selection to routing to result to inspection is explicit and testable across CLI, Control UI, and MCP surfaces.
+- [ ] **JOUR-03**: Disconnected provider catalogs, model menus, policy surfaces, and inspection reports are converged behind shared app services or typed contracts.
+- [ ] **JOUR-04**: Docs, onboarding text, inspect output, and control UI tell the same truthful story about supported local agents, provider access, and delegated execution.
 
 ## v2 Requirements
 
-### Advanced Learning
+### Multi-Host Agent Fabric
 
-- **ALRN-01**: The runtime can run automatic replay suites continuously to tune lesson usefulness and retrieval quality over time.
-- **ALRN-02**: The runtime can compare multiple learning candidates automatically and recommend the highest-yield promotion path.
+- **FABR-01**: OpenRustClaw can discover and manage trusted agent backends across multiple hosts instead of one local machine.
+- **FABR-02**: Delegated agent pools can advertise quotas, concurrency, and priority routing to the orchestrator.
 
-### Deeper Memory UX
+### Billing and Usage Awareness
 
-- **MEMX-01**: Operators can browse graph-like relationships between memories, model artifacts, lessons, and skill proposals through a dedicated UI.
-- **MEMX-02**: The runtime can support cross-workspace identity stitching for users or operators with explicit governance controls.
+- **BILL-01**: Delegated agent execution can surface vendor-specific quota or billing hints where the vendor exposes them safely.
+- **BILL-02**: Operators can enforce per-backend spend or usage ceilings before launching delegated work.
 
-### Expanded God Mode Governance
+### Deeper UX Surfaces
 
-- **GOVR-01**: God Mode can require multiple operators or stronger enterprise approval chains before activation.
-- **GOVR-02**: God Mode can run bounded unattended campaigns with explicit objective windows and richer governance policies.
+- **UX-01**: Control UI can visualize the full backend discovery graph, policy state, and route decisions in one operator-facing panel.
+- **UX-02**: Onboarding can run a guided compatibility audit for all detected agent tools before the first model selection decision.
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Silent self-editing of installed skills or prompt files | Breaks the trust-first product posture and makes learning behavior too hard to review |
-| Raw memory-file injection into every prompt | Violates the existing recall-only memory contract and increases privacy and precision risk |
-| A second parallel God Mode runtime stack | Duplicates the existing autonomy lane and increases policy drift risk |
-| Broad graph-memory UI or dashboard redesign | Valuable later, but not required to close the core memory and learning gap in this milestone |
-| Cross-workspace automatic identity stitching | Too risky for a milestone that first needs trustworthy per-workspace memory and review controls |
+| Importing vendor session cookies, OAuth tokens, or credential-store secrets into OpenRustClaw | Breaks the trust-first posture and is not a documented vendor integration path |
+| Treating an installed desktop launcher as a full model backend without a documented execution surface | Detection is useful, but pretending capability would make onboarding dishonest |
+| Using consumer subscriptions as raw API replacements when vendor docs require direct API or cloud credentials | Risks violating vendor boundaries and produces fragile integrations |
+| Silent background delegation to external agent CLIs without audit evidence or operator inspection | Conflicts with the existing bounded-autonomy contract |
+| Broad visual redesign work unrelated to journey coherence or agent usability | Valuable later, but not required to close the current product truthfulness and UX gaps |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| RETR-01 | Phase 181 | Complete |
-| RETR-02 | Phase 181 | Complete |
-| RETR-03 | Phase 181 | Complete |
-| RETR-04 | Phase 181 | Complete |
-| MODL-01 | Phase 182 | Complete |
-| MODL-02 | Phase 182 | Complete |
-| MODL-03 | Phase 182 | Complete |
-| MODL-04 | Phase 182 | Complete |
-| LEAR-01 | Phase 183 | Complete |
-| LEAR-02 | Phase 183 | Complete |
-| LEAR-03 | Phase 183 | Complete |
-| LEAR-04 | Phase 183 | Complete |
-| SKIL-01 | Phase 184 | Complete |
-| SKIL-02 | Phase 184 | Complete |
-| SKIL-03 | Phase 184 | Complete |
-| GOD-01 | Phase 185 | Complete |
-| GOD-02 | Phase 185 | Complete |
-| GOD-03 | Phase 185 | Complete |
-| GOD-04 | Phase 185 | Complete |
+| DISC-01 | Phase 186 | Planned |
+| DISC-02 | Phase 186 | Planned |
+| DISC-03 | Phase 186 | Planned |
+| DISC-04 | Phase 186 | Planned |
+| AUTH-01 | Phase 187 | Planned |
+| AUTH-02 | Phase 187 | Planned |
+| AUTH-03 | Phase 187 | Planned |
+| AUTH-04 | Phase 187 | Planned |
+| ONBR-01 | Phase 188 | Planned |
+| ONBR-02 | Phase 188 | Planned |
+| ONBR-03 | Phase 188 | Planned |
+| ONBR-04 | Phase 188 | Planned |
+| ROUT-01 | Phase 189 | Planned |
+| ROUT-02 | Phase 189 | Planned |
+| ROUT-03 | Phase 189 | Planned |
+| ROUT-04 | Phase 189 | Planned |
+| JOUR-01 | Phase 190 | Planned |
+| JOUR-02 | Phase 190 | Planned |
+| JOUR-03 | Phase 190 | Planned |
+| JOUR-04 | Phase 190 | Planned |
 
 **Coverage:**
-- v1 requirements: 19 total
-- Mapped to phases: 19
+- v1 requirements: 20 total
+- Mapped to phases: 20
 - Unmapped: 0
 
 ---
-*Requirements defined: 2026-04-07*
-*Last updated: 2026-04-08 after v1.43 completion*
+*Requirements defined: 2026-04-08*
+*Last updated: 2026-04-08 after starting v1.44 milestone*
