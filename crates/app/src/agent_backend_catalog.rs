@@ -49,6 +49,8 @@ pub struct AgentBackendCatalogEntry {
     pub readiness_reason: Option<String>,
     pub detected_subcommands: Vec<String>,
     pub detected_flags: Vec<String>,
+    #[serde(default)]
+    pub discovered_models: Vec<String>,
     pub inspected_at: String,
     pub notes: Vec<String>,
 }
@@ -111,6 +113,7 @@ impl AgentBackendCatalogService {
                 readiness_reason: Some(format!("`{}` was not found on PATH", probe.binary_name)),
                 detected_subcommands: Vec::new(),
                 detected_flags: Vec::new(),
+                discovered_models: Vec::new(),
                 inspected_at,
                 notes: probe.notes.iter().map(|value| value.to_string()).collect(),
             };
@@ -134,6 +137,10 @@ impl AgentBackendCatalogService {
             .auth_probe
             .map(|args| infer_auth(&probe.host, run_command(&executable_path, args).ok()))
             .unwrap_or((AgentBackendAuthStatus::NotSupported, None));
+        let discovered_models = probe
+            .model_probe
+            .map(|args| infer_models(&probe.host, run_command(&executable_path, args).ok()))
+            .unwrap_or_default();
 
         let (readiness, readiness_reason) =
             classify_readiness(&probe, &auth_status, help_output.as_deref());
@@ -156,6 +163,7 @@ impl AgentBackendCatalogService {
             readiness_reason,
             detected_subcommands,
             detected_flags,
+            discovered_models,
             inspected_at,
             notes: probe.notes.iter().map(|value| value.to_string()).collect(),
         }
@@ -176,6 +184,7 @@ struct BackendProbe {
     host: AiHost,
     binary_name: &'static str,
     auth_probe: Option<&'static [&'static str]>,
+    model_probe: Option<&'static [&'static str]>,
     model_discovery: AgentBackendCapability,
     delegated_execution: AgentBackendCapability,
     policy_classification: &'static str,
@@ -188,6 +197,7 @@ impl BackendProbe {
             host: AiHost::ClaudeCode,
             binary_name: "claude",
             auth_probe: Some(&["auth", "status"]),
+            model_probe: None,
             model_discovery: AgentBackendCapability::Unsupported,
             delegated_execution: AgentBackendCapability::Candidate,
             policy_classification: "delegated_cli_candidate",
@@ -202,6 +212,7 @@ impl BackendProbe {
             host: AiHost::Codex,
             binary_name: "codex",
             auth_probe: Some(&["login", "status"]),
+            model_probe: None,
             model_discovery: AgentBackendCapability::Unsupported,
             delegated_execution: AgentBackendCapability::Candidate,
             policy_classification: "delegated_cli_candidate",
@@ -216,6 +227,7 @@ impl BackendProbe {
             host: AiHost::GeminiCli,
             binary_name: "gemini",
             auth_probe: None,
+            model_probe: None,
             model_discovery: AgentBackendCapability::Unsupported,
             delegated_execution: AgentBackendCapability::Candidate,
             policy_classification: "delegated_cli_candidate",
@@ -229,12 +241,13 @@ impl BackendProbe {
         Self {
             host: AiHost::Cursor,
             binary_name: "cursor",
-            auth_probe: None,
-            model_discovery: AgentBackendCapability::Unknown,
-            delegated_execution: AgentBackendCapability::Unsupported,
-            policy_classification: "integration_only",
+            auth_probe: Some(&["agent", "status"]),
+            model_probe: Some(&["agent", "models"]),
+            model_discovery: AgentBackendCapability::Supported,
+            delegated_execution: AgentBackendCapability::Supported,
+            policy_classification: "delegated_cli_candidate",
             notes: &[
-                "Treat Cursor conservatively until a documented programmable execution surface is confirmed.",
+                "Use documented `cursor agent` auth, model, and headless print surfaces instead of scraping browser sessions or editor state.",
             ],
         }
     }
@@ -276,12 +289,14 @@ fn infer_auth(host: &AiHost, output: Option<String>) -> (AgentBackendAuthStatus,
     match host {
         AiHost::ClaudeCode => parse_claude_auth(&output),
         AiHost::Codex => parse_codex_auth(&output),
+        AiHost::Cursor => parse_cursor_auth(&output),
         _ => (AgentBackendAuthStatus::Unknown, None),
     }
 }
 
 fn parse_claude_auth(output: &str) -> (AgentBackendAuthStatus, Option<String>) {
-    let Ok(payload) = serde_json::from_str::<Value>(output) else {
+    let sanitized = strip_ansi_sequences(output);
+    let Ok(payload) = serde_json::from_str::<Value>(&sanitized) else {
         return (AgentBackendAuthStatus::Unknown, None);
     };
     let logged_in = payload
@@ -303,7 +318,8 @@ fn parse_claude_auth(output: &str) -> (AgentBackendAuthStatus, Option<String>) {
 }
 
 fn parse_codex_auth(output: &str) -> (AgentBackendAuthStatus, Option<String>) {
-    let trimmed = output.trim();
+    let sanitized = strip_ansi_sequences(output);
+    let trimmed = sanitized.trim();
     if let Some(method) = trimmed.strip_prefix("Logged in using ") {
         return (
             AgentBackendAuthStatus::LoggedIn,
@@ -314,6 +330,72 @@ fn parse_codex_auth(output: &str) -> (AgentBackendAuthStatus, Option<String>) {
         return (AgentBackendAuthStatus::LoggedOut, None);
     }
     (AgentBackendAuthStatus::Unknown, None)
+}
+
+fn parse_cursor_auth(output: &str) -> (AgentBackendAuthStatus, Option<String>) {
+    let sanitized = strip_ansi_sequences(output);
+    let trimmed = sanitized.trim();
+    if trimmed.contains("Logged in as ") {
+        return (
+            AgentBackendAuthStatus::LoggedIn,
+            Some("cursor_account".to_string()),
+        );
+    }
+    if trimmed.to_ascii_lowercase().contains("not logged in") {
+        return (AgentBackendAuthStatus::LoggedOut, None);
+    }
+    (AgentBackendAuthStatus::Unknown, None)
+}
+
+fn infer_models(host: &AiHost, output: Option<String>) -> Vec<String> {
+    let Some(output) = output else {
+        return Vec::new();
+    };
+    match host {
+        AiHost::Cursor => parse_cursor_models(&output),
+        _ => Vec::new(),
+    }
+}
+
+fn parse_cursor_models(output: &str) -> Vec<String> {
+    let sanitized = strip_ansi_sequences(output);
+    let mut models = sanitized
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            if trimmed.is_empty()
+                || trimmed.eq_ignore_ascii_case("Available models")
+                || trimmed.starts_with("Tip:")
+            {
+                return None;
+            }
+            let model = trimmed.split_whitespace().next().unwrap_or_default().trim();
+            (!model.is_empty() && model != "-").then(|| model.to_string())
+        })
+        .collect::<Vec<_>>();
+    models.sort();
+    models.dedup();
+    models
+}
+
+fn strip_ansi_sequences(text: &str) -> String {
+    let mut result = String::new();
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '\u{1b}' {
+            if chars.peek() == Some(&'[') {
+                let _ = chars.next();
+                while let Some(next) = chars.next() {
+                    if ('@'..='~').contains(&next) {
+                        break;
+                    }
+                }
+            }
+            continue;
+        }
+        result.push(ch);
+    }
+    result
 }
 
 fn classify_readiness(
@@ -373,22 +455,22 @@ mod tests {
         write_fake_executable(
             temp_dir.path(),
             "claude",
-            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'claude 1.0.0'; exit 0; fi\nif [ \"$1\" = \"--help\" ]; then cat <<'EOF'\nClaude Code - starts an interactive session by default\nCommands:\n  auth\nEOF\nexit 0; fi\nif [ \"$1\" = \"auth\" ] && [ \"$2\" = \"status\" ]; then echo '{\"loggedIn\":true,\"authMethod\":\"claude.ai\"}'; exit 0; fi\nexit 1\n",
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'claude 1.0.0'; exit 0; fi\nif [ \"$1\" = \"--help\" ]; then printf '%s\n' 'Claude Code - starts an interactive session by default' 'Commands:' '  auth'; exit 0; fi\nif [ \"$1\" = \"auth\" ] && [ \"$2\" = \"status\" ]; then echo '{\"loggedIn\":true,\"authMethod\":\"claude.ai\"}'; exit 0; fi\nexit 1\n",
         );
         write_fake_executable(
             temp_dir.path(),
             "codex",
-            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex 0.1.0'; exit 0; fi\nif [ \"$1\" = \"--help\" ]; then cat <<'EOF'\nCodex CLI\nCommands:\n  login\nEOF\nexit 0; fi\nif [ \"$1\" = \"login\" ] && [ \"$2\" = \"status\" ]; then echo 'Logged in using ChatGPT'; exit 0; fi\nexit 1\n",
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex 0.1.0'; exit 0; fi\nif [ \"$1\" = \"--help\" ]; then printf '%s\n' 'Codex CLI' 'Commands:' '  login'; exit 0; fi\nif [ \"$1\" = \"login\" ] && [ \"$2\" = \"status\" ]; then echo 'Logged in using ChatGPT'; exit 0; fi\nexit 1\n",
         );
         write_fake_executable(
             temp_dir.path(),
             "gemini",
-            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'gemini 0.1.0'; exit 0; fi\nif [ \"$1\" = \"--help\" ]; then cat <<'EOF'\nGemini CLI\nOptions:\n  --model\nEOF\nexit 0; fi\nexit 1\n",
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'gemini 0.1.0'; exit 0; fi\nif [ \"$1\" = \"--help\" ]; then printf '%s\n' 'Gemini CLI' 'Options:' '  --model'; exit 0; fi\nexit 1\n",
         );
         write_fake_executable(
             temp_dir.path(),
             "cursor",
-            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'Cursor 3.0.9'; exit 0; fi\nif [ \"$1\" = \"--help\" ]; then cat <<'EOF'\nCursor\nOptions:\n  --chat\nEOF\nexit 0; fi\nexit 1\n",
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'Cursor 3.0.9'; exit 0; fi\nif [ \"$1\" = \"--help\" ]; then printf '%s\n' 'Cursor' 'Subcommands:' '  agent  Start the Cursor agent in your terminal.'; exit 0; fi\nif [ \"$1\" = \"agent\" ] && [ \"$2\" = \"status\" ]; then echo 'Logged in as operator@example.com'; exit 0; fi\nif [ \"$1\" = \"agent\" ] && [ \"$2\" = \"models\" ]; then printf '%s\n' 'Available models' '' 'auto - Auto' 'claude-4.5-sonnet - Sonnet 4.5'; exit 0; fi\nexit 1\n",
         );
 
         let original_path = env::var_os("PATH");
@@ -426,8 +508,16 @@ mod tests {
             .iter()
             .find(|entry| entry.host == AiHost::Cursor)
             .unwrap();
-        assert_eq!(cursor.readiness, AgentBackendReadiness::DetectionOnly);
-        assert_eq!(cursor.policy_classification, "integration_only");
+        assert_eq!(cursor.auth_status, AgentBackendAuthStatus::LoggedIn);
+        assert_eq!(cursor.readiness, AgentBackendReadiness::Ready);
+        assert_eq!(cursor.policy_classification, "delegated_cli_candidate");
+        assert_eq!(cursor.model_discovery, AgentBackendCapability::Supported);
+        assert!(
+            cursor
+                .discovered_models
+                .iter()
+                .any(|model| model == "claude-4.5-sonnet")
+        );
 
         let mapped = backend_for_provider(&catalog, "anthropic").unwrap();
         assert_eq!(mapped.host, AiHost::ClaudeCode);

@@ -15,7 +15,7 @@
 - Integer phases continue the live sequence from the prior milestone.
 - This milestone starts at Phase 191 because `v1.44` ended at Phase 190.
 
-- [ ] **Phase 191: Cursor Surface Verification and Backend Expansion** - Confirm Cursor’s programmable surface truthfully and either add a supported backend lane or preserve detection-only behavior with explicit reasons.
+- [x] **Phase 191: Cursor Surface Verification and Backend Expansion** - Confirm Cursor’s programmable surface truthfully and either add a supported backend lane or preserve detection-only behavior with explicit reasons.
 - [ ] **Phase 192: Trusted Remote Backend Registry and Fabric Signals** - Add trusted remote hosts and routeable delegated backend inventory beyond one machine.
 - [ ] **Phase 193: Delegated Route Policy, Audit, and Recovery** - Extend delegated execution controls so multi-host routes stay bounded, attributable, and recoverable.
 - [ ] **Phase 194: Agent Routing Console and Operator Policy UX** - Build a dedicated routing console across Control UI, CLI, and inspect surfaces.
@@ -31,7 +31,12 @@
   1. Cursor support is explicitly classified as executable or detection-only using documented evidence instead of guesswork.
   2. If Cursor is execution-capable, it routes through the same bounded audit and policy path as existing delegated backends.
   3. If Cursor is not execution-capable, every operator surface says so clearly and consistently.
-**Plans**: TBD
+**Plans**:
+- [191-CONTEXT.md](./phases/191-cursor-surface-verification-and-backend-expansion/191-CONTEXT.md)
+- [191-01-PLAN.md](./phases/191-cursor-surface-verification-and-backend-expansion/191-01-PLAN.md)
+- [191-02-PLAN.md](./phases/191-cursor-surface-verification-and-backend-expansion/191-02-PLAN.md)
+- [191-01-SUMMARY.md](./phases/191-cursor-surface-verification-and-backend-expansion/191-01-SUMMARY.md)
+- [191-02-SUMMARY.md](./phases/191-cursor-surface-verification-and-backend-expansion/191-02-SUMMARY.md)
 
 ### Phase 192: Trusted Remote Backend Registry and Fabric Signals
 **Goal**: Delegated routing can reason about trusted remote agent backends instead of only local CLIs on one machine.
@@ -77,7 +82,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 191. Cursor Surface Verification and Backend Expansion | 0/2 | Not Started | — |
+| 191. Cursor Surface Verification and Backend Expansion | 2/2 | Complete | 2026-04-08 |
 | 192. Trusted Remote Backend Registry and Fabric Signals | 0/2 | Not Started | — |
 | 193. Delegated Route Policy, Audit, and Recovery | 0/2 | Not Started | — |
 | 194. Agent Routing Console and Operator Policy UX | 0/2 | Not Started | — |
@@ -86,6 +91,6 @@
 ## Current Status
 
 - Active milestone: v1.45 Agent Fabric, Routing Console, and Guided Delegation
-- Roadmap progress: 0/5 phases complete
-- Current work: milestone initialized; Phase 191 is next
-- Next step: `$gsd-plan-phase 191`
+- Roadmap progress: 1/5 phases complete
+- Current work: Phase 191 is complete; Phase 192 is next
+- Next step: `$gsd-autonomous` or `$gsd-plan-phase 192`

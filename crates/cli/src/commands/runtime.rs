@@ -1380,6 +1380,7 @@ async fn scan_provider_health(provider: &str, config: &AppConfig) -> RuntimeHeal
         "openrouter" => config.providers.openrouter.model.clone(),
         "gemini" => config.providers.gemini.model.clone(),
         "ollama" => config.providers.ollama.model.clone(),
+        "cursor" => "vendor-managed".to_string(),
         _ => String::new(),
     };
 
@@ -1946,6 +1947,7 @@ fn default_model_for_provider(config: &AppConfig) -> &str {
         "openrouter" => &config.providers.openrouter.model,
         "gemini" => &config.providers.gemini.model,
         "ollama" => &config.providers.ollama.model,
+        "cursor" => "vendor-managed",
         _ => &config.providers.anthropic.model,
     }
 }
@@ -2160,6 +2162,7 @@ fn provider_model_for<'a>(config: &'a AppConfig, provider: &str) -> &'a str {
         "openrouter" => &config.providers.openrouter.model,
         "ollama" => &config.providers.ollama.model,
         "gemini" => &config.providers.gemini.model,
+        "cursor" => "vendor-managed",
         _ => &config.providers.anthropic.model,
     }
 }
@@ -2242,6 +2245,34 @@ struct DelegatedCliProvider {
     contract: DelegatedAgentBackendContract,
 }
 
+fn delegated_model_from_setup_state(workspace_root: &Path, backend_id: &str) -> Option<String> {
+    let path = workspace_root.join(".claw/control/setup-state.json");
+    let raw = fs::read_to_string(path).ok()?;
+    let payload = serde_json::from_str::<serde_json::Value>(&raw).ok()?;
+    let setup = payload.get("setup")?;
+    let selected_backend_id = setup.get("selected_backend_id")?.as_str()?;
+    if selected_backend_id != backend_id {
+        return None;
+    }
+    setup
+        .get("selected_primary_model")
+        .and_then(|value| value.as_str())
+        .map(ToString::to_string)
+}
+
+fn resolve_delegated_model(backend_id: &str, model: String, workspace_root: &Path) -> String {
+    if !model.trim().is_empty() && !model.eq_ignore_ascii_case("vendor-managed") {
+        return model;
+    }
+    delegated_model_from_setup_state(workspace_root, backend_id).unwrap_or_else(|| {
+        if backend_id == "cursor" {
+            "auto".to_string()
+        } else {
+            "vendor-managed".to_string()
+        }
+    })
+}
+
 impl DelegatedCliProvider {
     fn new(
         backend_id: &str,
@@ -2286,7 +2317,7 @@ impl DelegatedCliProvider {
 
         Ok(Self {
             backend_id: backend_id.to_string(),
-            model,
+            model: resolve_delegated_model(backend_id, model, &workspace_root),
             workspace_root,
             policy,
             contract,
@@ -2298,6 +2329,7 @@ impl DelegatedCliProvider {
             "claude_code" => "claude",
             "codex" => "codex",
             "gemini_cli" => "gemini",
+            "cursor" => "cursor",
             _ => unreachable!("unsupported delegated backend"),
         }
     }
@@ -2406,6 +2438,23 @@ impl DelegatedCliProvider {
                     "--output-format",
                     "text",
                     "--include-directories",
+                ]);
+                command.arg(&self.workspace_root);
+                if use_explicit_model {
+                    command.args(["--model", &self.model]);
+                }
+            }
+            "cursor" => {
+                command.arg("agent");
+                command.arg(prompt);
+                command.args([
+                    "--print",
+                    "--output-format",
+                    "text",
+                    "--mode",
+                    "plan",
+                    "--trust",
+                    "--workspace",
                 ]);
                 command.arg(&self.workspace_root);
                 if use_explicit_model {
@@ -2684,8 +2733,14 @@ pub fn create_provider_from_config(
             std::env::current_dir().context("Failed to determine current workspace")?,
             config,
         )?)),
+        "cursor" => Ok(Arc::new(DelegatedCliProvider::new(
+            "cursor",
+            "vendor-managed".to_string(),
+            std::env::current_dir().context("Failed to determine current workspace")?,
+            config,
+        )?)),
         _ => anyhow::bail!(
-            "Unknown provider '{}'. Available: anthropic, openai, openrouter, gemini, ollama, claude_code, codex, gemini_cli",
+            "Unknown provider '{}'. Available: anthropic, openai, openrouter, gemini, ollama, claude_code, codex, gemini_cli, cursor",
             provider_name
         ),
     }

@@ -114,7 +114,7 @@ impl OnboardingLaneCatalogService {
                         .map(|_| supported_access_modes_for_provider(provider_id))
                         .unwrap_or_default()
                 } else {
-                    Vec::new()
+                    vec!["subscription_managed".to_string()]
                 },
                 api_key_prompt: contract
                     .provider_id

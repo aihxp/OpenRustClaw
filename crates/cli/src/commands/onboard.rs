@@ -1416,20 +1416,33 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
             )?;
         }
         OnboardingProviderAccessMode::SubscriptionManaged => {
-            return Err(anyhow!(
-                "{} does not yet expose a subscription-managed onboarding path",
-                descriptor.label
-            ));
+            if descriptor.backend_id.is_none() {
+                return Err(anyhow!(
+                    "{} does not yet expose a subscription-managed onboarding path",
+                    descriptor.label
+                ));
+            }
+            println!("Using {} via {}.", descriptor.label, access_mode.label());
+            println!("  {}", access_mode.detail());
         }
     }
 
-    let provider_assessment = validate_provider_bootstrap(
-        &workspace_root,
-        &descriptor.provider_id,
-        Some(access_mode.id()),
-        true,
-    )
-    .await?;
+    let provider_assessment = if access_mode == OnboardingProviderAccessMode::SubscriptionManaged {
+        validate_delegated_backend_bootstrap(
+            descriptor
+                .backend_id
+                .as_deref()
+                .unwrap_or(descriptor.provider_id.as_str()),
+        )?
+    } else {
+        validate_provider_bootstrap(
+            &workspace_root,
+            &descriptor.provider_id,
+            Some(access_mode.id()),
+            true,
+        )
+        .await?
+    };
     record_bootstrap_outcome_with_metadata(
         &workspace_root,
         "provider",
@@ -1445,25 +1458,36 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
 
     let primary_model =
         select_primary_model(wizard, &workspace_root, &descriptor.provider_id).await?;
-    runtime::switch_provider(
-        "config/default.toml",
-        &workspace_root,
-        &descriptor.provider_id,
-        Some(primary_model.model.as_str()),
-        None,
-        None,
-    )?;
+    if access_mode != OnboardingProviderAccessMode::SubscriptionManaged {
+        runtime::switch_provider(
+            "config/default.toml",
+            &workspace_root,
+            &descriptor.provider_id,
+            Some(primary_model.model.as_str()),
+            None,
+            None,
+        )?;
+    }
     wizard.state.selected_primary_model = Some(primary_model.model.clone());
     wizard.state.selected_primary_model_source = Some(primary_model.source.clone());
     persist_primary_model_selection(&workspace_root, &primary_model.model, &primary_model.source)?;
 
-    let provider_assessment = validate_provider_bootstrap(
-        &workspace_root,
-        &descriptor.provider_id,
-        Some(access_mode.id()),
-        false,
-    )
-    .await?;
+    let provider_assessment = if access_mode == OnboardingProviderAccessMode::SubscriptionManaged {
+        validate_delegated_backend_bootstrap(
+            descriptor
+                .backend_id
+                .as_deref()
+                .unwrap_or(descriptor.provider_id.as_str()),
+        )?
+    } else {
+        validate_provider_bootstrap(
+            &workspace_root,
+            &descriptor.provider_id,
+            Some(access_mode.id()),
+            false,
+        )
+        .await?
+    };
     record_bootstrap_outcome_with_metadata(
         &workspace_root,
         "provider",
@@ -2141,6 +2165,54 @@ async fn validate_provider_bootstrap(
     }
 }
 
+fn validate_delegated_backend_bootstrap(backend_id: &str) -> Result<BootstrapAssessment> {
+    let catalog = AgentBackendCatalogService::new().discover();
+    let contract = AgentBackendControlService::new()
+        .contracts_from_catalog(&catalog)
+        .into_iter()
+        .find(|candidate| candidate.backend_id == backend_id)
+        .ok_or_else(|| anyhow!("delegated backend `{backend_id}` is not discoverable"))?;
+
+    let discovered_models = catalog
+        .iter()
+        .find(|entry| entry.host.as_id().replace('-', "_") == backend_id)
+        .map(|entry| entry.discovered_models.len())
+        .unwrap_or(0);
+
+    if contract.execution_eligible {
+        return Ok(BootstrapAssessment {
+            status: "ready",
+            detail: if discovered_models > 0 {
+                format!(
+                    "Delegated backend `{backend_id}` is installed, signed in, and currently exposes {discovered_models} discoverable model option(s)."
+                )
+            } else {
+                format!(
+                    "Delegated backend `{backend_id}` is installed, signed in, and ready for bounded routed execution once operator policy allows it."
+                )
+            },
+            blocking: false,
+            issue_kind: None,
+            verification_stage: Some("delegated_backend_contract".to_string()),
+            suggested_action: None,
+        });
+    }
+
+    let detail = contract.readiness_reason.clone().unwrap_or_else(|| {
+        format!("Delegated backend `{backend_id}` is visible, but not ready yet.")
+    });
+    Ok(BootstrapAssessment {
+        status: "blocked",
+        detail,
+        blocking: true,
+        issue_kind: Some("delegated_backend_unavailable".to_string()),
+        verification_stage: Some("delegated_backend_contract".to_string()),
+        suggested_action: Some(format!(
+            "Sign in to `{backend_id}` locally or review its documented CLI surface, then rerun onboarding."
+        )),
+    })
+}
+
 async fn runtime_lane_assessment(
     workspace_root: &Path,
     deployment_mode: Option<&str>,
@@ -2342,6 +2414,7 @@ fn configured_model_for_provider(config: &AppConfig, provider: &str) -> String {
         "openrouter" => config.providers.openrouter.model.clone(),
         "gemini" => config.providers.gemini.model.clone(),
         "ollama" => config.providers.ollama.model.clone(),
+        "cursor" => "auto".to_string(),
         _ => String::new(),
     }
 }
@@ -2519,6 +2592,12 @@ async fn discover_live_provider_models(
                 .map(str::to_string)
                 .collect::<Vec<_>>()
         }
+        "cursor" => AgentBackendCatalogService::new()
+            .discover()
+            .into_iter()
+            .find(|entry| entry.host == openrustclaw_app::tool_host_service::AiHost::Cursor)
+            .map(|entry| entry.discovered_models)
+            .unwrap_or_default(),
         _ => Vec::new(),
     };
 

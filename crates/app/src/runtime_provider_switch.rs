@@ -95,6 +95,7 @@ fn apply_provider_switch(
                 config.providers.ollama.model = model;
             }
         }
+        "cursor" => {}
         _ => {
             return Err(Error::Internal(format!(
                 "Unknown provider '{}'",
@@ -256,6 +257,23 @@ mod tests {
             config.providers.gemini.api_key_env.as_deref(),
             Some("GEMINI_API_KEY")
         );
+        assert!(config.providers.control_plane_provider.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn runtime_provider_switch_supports_cursor() -> Result<()> {
+        let service = RuntimeProviderSwitchService::new(TestSource {
+            config: AppConfig::default(),
+        });
+        let config = service.switch_provider(RuntimeProviderSwitchRequest {
+            provider: "cursor".to_string(),
+            model: Some("auto".to_string()),
+            api_key_env: None,
+            fallback_chain: None,
+        })?;
+
+        assert_eq!(config.providers.default_provider, "cursor");
         assert!(config.providers.control_plane_provider.is_some());
         Ok(())
     }

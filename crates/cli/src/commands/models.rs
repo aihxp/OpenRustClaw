@@ -554,6 +554,16 @@ fn print_local_agent_backends(
             "  Model discovery: {}",
             lane.model_catalog_label.as_deref().unwrap_or("unknown")
         );
+        if !entry.discovered_models.is_empty() {
+            let preview = entry
+                .discovered_models
+                .iter()
+                .take(4)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ");
+            println!("  Models: {preview}");
+        }
         println!("  Policy class: {}", entry.policy_classification);
         if let Some(note) = lane.compatibility_note.as_deref() {
             println!("  Note: {note}");

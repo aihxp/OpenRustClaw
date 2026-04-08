@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.45
 milestone_name: Agent Fabric, Routing Console, and Guided Delegation
-current_phase: 191
-current_phase_name: cursor surface verification and backend expansion
+current_phase: 192
+current_phase_name: trusted remote backend registry and fabric signals
 current_plan: none
-status: roadmap defined
-stopped_at: Milestone v1.45 was initialized with a five-phase roadmap covering Cursor truthfulness, multi-host delegation, routing UX, and first-task orchestration.
-last_updated: "2026-04-08T23:59:00Z"
+status: phase 191 complete
+stopped_at: Phase 191 is complete; Cursor now routes as a truthful delegated local-agent backend and onboarding can show its signed-in model surface without conflating readiness with policy allowlists.
+last_updated: "2026-04-08T23:59:59Z"
 last_activity: 2026-04-08
 progress:
   total_phases: 5
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 10
+  completed_plans: 2
+  percent: 20
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-08)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** `v1.45` is ready to begin at Phase 191, starting with Cursor truthfulness and delegated backend expansion before the wider fabric and routing UX work.
+**Current focus:** `v1.45` has completed Phase 191 and now moves into Phase 192, where local delegated backends become a trusted multi-host fabric.
 
 ## Current Position
 
-Current Phase: 191
-Current Phase Name: cursor surface verification and backend expansion
+Current Phase: 192
+Current Phase Name: trusted remote backend registry and fabric signals
 Total Phases: 5
 Current Plan: none
 Total Plans in Phase: 0
-Status: roadmap defined
+Status: phase 191 complete
 Last activity: 2026-04-08
 
-Phase: 1 of 5
+Phase: 2 of 5
 Plan: 0 of 2
-Progress: [----------] 0%
+Progress: [##--------] 20%
 
 ## Performance Metrics
 
@@ -67,7 +67,9 @@ Recent decisions affecting current work:
 - Phase 189 is complete: delegated local-agent backends now resolve through the runtime provider factory as bounded audited runtime lanes, and control init can seed vendor-managed model-profile templates for eligible backends.
 - `v1.44` closed the basic delegated-agent journey, but Cursor remains detection-only, multi-host delegation does not exist yet, the Control UI is still a broad dashboard instead of a focused routing console, and first-task orchestration can still feel generic after onboarding.
 - `v1.45` will treat those as one connected execution-fabric problem rather than four unrelated cleanup items.
-- Phase 191 is next: verify Cursor’s programmable surface honestly and either expand backend support or preserve a consistent detection-only boundary.
+- Phase 191 proved the stale Cursor assumption wrong on this machine: `cursor agent` exposes documented auth, model listing, and headless print surfaces, so Cursor now lives inside the delegated backend contract instead of the old detection-only bucket.
+- Subscription-managed delegated backends now validate signed-in local readiness separately from enterprise allowlist policy, which keeps onboarding truthful without weakening the later execution boundary.
+- Phase 192 is next: extend the same explicit backend inventory story across trusted remote hosts and routeable fabric signals.
 
 ### Pending Todos
 
@@ -75,10 +77,10 @@ Recent decisions affecting current work:
 
 ### Blockers/Concerns
 
-- Cursor documentation is partially shielded by a Vercel security checkpoint during automated fetches, so Cursor support remains detection-only until a documented programmable surface is confirmed during implementation.
+- No active blockers.
 
 ## Session Continuity
 
 Last session: 2026-04-08
-Stopped at: Milestone v1.45 was initialized with a five-phase roadmap covering Cursor truthfulness, multi-host delegation, routing UX, and first-task orchestration.
+Stopped at: Phase 191 is complete; Cursor now routes as a truthful delegated local-agent backend and onboarding can show its signed-in model surface without conflating readiness with policy allowlists.
 Resume file: None

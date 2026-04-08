@@ -59,9 +59,9 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CURS-01 | Phase 191 | Pending |
-| CURS-02 | Phase 191 | Pending |
-| CURS-03 | Phase 191 | Pending |
+| CURS-01 | Phase 191 | Complete |
+| CURS-02 | Phase 191 | Complete |
+| CURS-03 | Phase 191 | Complete |
 | FABR-01 | Phase 192 | Pending |
 | FABR-02 | Phase 192 | Pending |
 | FABR-03 | Phase 193 | Pending |

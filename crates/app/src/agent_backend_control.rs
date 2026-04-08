@@ -289,6 +289,7 @@ mod tests {
             readiness_reason: readiness_reason.map(ToString::to_string),
             detected_subcommands: vec!["run".to_string()],
             detected_flags: vec!["--model".to_string()],
+            discovered_models: Vec::new(),
             inspected_at: "2026-04-08T00:00:00Z".to_string(),
             notes: vec!["note".to_string()],
         }
