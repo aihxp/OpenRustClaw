@@ -1533,4 +1533,60 @@ mod tests {
             results.len()
         );
     }
+
+    #[tokio::test]
+    async fn integration_search_with_embedding_reports_rust_rescored_vector_lane() {
+        let store = setup_in_memory_store().await;
+        let mut entry = make_entry("Rust ownership model enables fearless refactoring");
+        entry.source_type = Some(SourceType::Document);
+        let entry_id = entry.id.to_string();
+
+        store.store(entry).await.expect("store failed");
+        store
+            .store_vector(&entry_id, vec![1.0, 0.0, 0.0], "test-model")
+            .await
+            .expect("store_vector failed");
+
+        let query = MemoryQuery {
+            text: "ownership".to_string(),
+            limit: 5,
+            ..Default::default()
+        };
+
+        let results = store
+            .search_with_embedding(&query, &[1.0, 0.0, 0.0])
+            .await
+            .expect("search_with_embedding failed");
+
+        let explanation = &results[0].explanation;
+        assert_eq!(
+            explanation.factors.vector_lane,
+            openrustclaw_core::types::RetrievalVectorLane::RustRescored
+        );
+        assert_eq!(
+            explanation.primary_artifact.artifact_kind,
+            openrustclaw_core::types::RetrievalArtifactKind::DocumentChunk
+        );
+        assert!(!explanation.contributing_artifacts.is_empty());
+    }
+
+    #[tokio::test]
+    async fn integration_search_without_embedding_reports_unavailable_vector_lane() {
+        let store = setup_in_memory_store().await;
+        let entry = make_entry("Fallback lexical retrieval remains bounded");
+        store.store(entry).await.expect("store failed");
+
+        let query = MemoryQuery {
+            text: "fallback".to_string(),
+            limit: 5,
+            ..Default::default()
+        };
+
+        let results = store.search(&query).await.expect("search failed");
+        assert_eq!(
+            results[0].explanation.factors.vector_lane,
+            openrustclaw_core::types::RetrievalVectorLane::Unavailable
+        );
+        assert!(results[0].explanation.degraded_state.is_some());
+    }
 }

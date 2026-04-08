@@ -947,4 +947,38 @@ mod tests {
         assert_eq!(Platform::Twilio.to_string(), "twilio");
         assert_eq!(Platform::IMessage.to_string(), "imessage");
     }
+
+    #[test]
+    fn retrieval_artifact_kind_derives_from_existing_memory_metadata() {
+        assert_eq!(
+            RetrievalArtifactKind::from_memory_parts(
+                MemoryType::Semantic,
+                Some(SourceType::Document)
+            ),
+            RetrievalArtifactKind::DocumentChunk
+        );
+        assert_eq!(
+            RetrievalArtifactKind::from_memory_parts(MemoryType::Episodic, None),
+            RetrievalArtifactKind::ConversationMemory
+        );
+        assert_eq!(
+            RetrievalArtifactKind::from_memory_parts(MemoryType::Procedural, None),
+            RetrievalArtifactKind::RecallMemory
+        );
+    }
+
+    #[test]
+    fn retrieval_explanation_defaults_to_truthful_unavailable_vector_lane() {
+        let explanation = RetrievalExplanation::empty(
+            RetrievalArtifactKind::RecallMemory,
+            "memory-1".to_string(),
+            "global".to_string(),
+        );
+        assert_eq!(
+            explanation.factors.vector_lane,
+            RetrievalVectorLane::Unavailable
+        );
+        assert_eq!(explanation.factors.vector_score, None);
+        assert!(explanation.degraded_state.is_some());
+    }
 }
