@@ -11497,7 +11497,8 @@ fn build_mcp_server(
                     request.namespace.as_deref(),
                     request.limit.unwrap_or(20).max(1),
                 )
-                .await?;
+                .await
+                .map_err(|error| mcp_tool_error(error.to_string()))?;
                 Ok(serde_json::json!(report))
             })
         }),
@@ -15185,7 +15186,13 @@ background_services:
             .as_str()
             .unwrap();
         let search_payload: serde_json::Value = serde_json::from_str(search_text).unwrap();
+        assert!(search_payload["retrieval"].is_object());
+        assert_eq!(search_payload["retrieval"]["result_count"], 1);
         assert_eq!(search_payload["memories"].as_array().unwrap().len(), 1);
+        assert!(
+            search_payload["memories"][0]["explanation"]["primary_artifact"]["artifact_kind"]
+                .is_string()
+        );
 
         let set_core_req = serde_json::json!({
             "jsonrpc": "2.0",
@@ -15238,6 +15245,17 @@ background_services:
                 .unwrap();
         assert!(event_names.contains(&"memory.stored".to_string()));
         assert!(event_names.contains(&"memory.searched".to_string()));
+        let search_event_payload: String = sqlx::query_scalar(
+            "SELECT payload FROM runtime_events WHERE event_name = 'memory.searched' ORDER BY created_at DESC LIMIT 1",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let search_event_payload: serde_json::Value =
+            serde_json::from_str(&search_event_payload).unwrap();
+        assert_eq!(search_event_payload["query"], "Rust");
+        assert_eq!(search_event_payload["namespace"], "user-1");
+        assert!(search_event_payload["recall_pack"]["items"].is_array());
     }
 
     #[tokio::test(flavor = "multi_thread")]

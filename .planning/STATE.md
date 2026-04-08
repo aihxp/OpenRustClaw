@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.43
 milestone_name: Learning Loop, Memory Depth, and God Mode
-current_phase: 181
-current_phase_name: Hybrid Retrieval and Recall Inspection
-current_plan: 181-02
-status: verification blocked
-stopped_at: Phase 181 implementation is in progress; full CLI verification is blocked until `protoc` is available for the `openrustclaw-langbridge` build script.
-last_updated: "2026-04-08T05:07:22Z"
+current_phase: 182
+current_phase_name: Structured Memory Artifacts and Model Control
+current_plan: none
+status: phase complete
+stopped_at: Phase 181 completed with bounded recall packs, durable retrieval telemetry, and green retrieval inspection tests; Phase 182 is ready for discuss/planning.
+last_updated: "2026-04-08T05:24:04Z"
 last_activity: 2026-04-08
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
-  percent: 0
+  completed_plans: 2
+  percent: 20
 ---
 
 # Project State
@@ -28,17 +28,17 @@ See: .planning/PROJECT.md (updated 2026-04-07)
 
 ## Current Position
 
-Current Phase: 181
-Current Phase Name: Hybrid Retrieval and Recall Inspection
+Current Phase: 182
+Current Phase Name: Structured Memory Artifacts and Model Control
 Total Phases: 5
-Current Plan: 181-02
+Current Plan: none
 Total Plans in Phase: 2
-Status: verification blocked
+Status: phase complete
 Last activity: 2026-04-08
 
-Phase: 1 of 5
+Phase: 2 of 5
 Plan: 2 of 2
-Progress: [####------] 40%
+Progress: [##--------] 20%
 
 ## Performance Metrics
 
@@ -61,6 +61,7 @@ Recent decisions affecting current work:
 - v1.43 starts with retrieval and recall inspection, keeps learning candidate-before-promotion, routes skill improvement through explicit verification, and leaves God Mode as the final delivery phase.
 - Phase 181 now uses a shared bounded recall-pack contract across the agent, gateway, recall views, and durable `memory.searched` runtime events.
 - Retrieval inspection remains phase-scoped: recall stays tool-driven, bounded, and provenance-rich instead of widening prompt injection or introducing Phase 182 artifact stores.
+- Local verification now includes `openrustclaw-cli` retrieval inspection tests after installing `protobuf` to provide `protoc` for `openrustclaw-langbridge`.
 
 ### Pending Todos
 
@@ -69,10 +70,10 @@ Recent decisions affecting current work:
 ### Blockers/Concerns
 
 - v1.0 archive notes missing phase verification artifacts as lifecycle debt already captured in the archive.
-- Full CLI verification for the Phase 181 inspection surfaces is currently blocked because `protoc` is not installed for the `openrustclaw-langbridge` build script.
+- Phase 182 should preserve the bounded recall-pack and runtime-event inspection contracts rather than fork new artifact-specific explainability payloads.
 
 ## Session Continuity
 
 Last session: 2026-04-08
-Stopped at: Phase 181 implementation is in progress; full CLI verification is blocked until `protoc` is available for the `openrustclaw-langbridge` build script.
+Stopped at: Phase 181 completed with bounded recall packs, durable retrieval telemetry, and green retrieval inspection tests; Phase 182 is ready for discuss/planning.
 Resume file: None

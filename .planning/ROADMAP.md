@@ -15,7 +15,7 @@
 - Integer phases continue the live sequence from the prior milestone.
 - This milestone starts at Phase 181 because `v1.42` ended at Phase 180.
 
-- [ ] **Phase 181: Hybrid Retrieval and Recall Inspection** - Make recall retrieval, assembly, and inspection reliable and explainable across sessions.
+- [x] **Phase 181: Hybrid Retrieval and Recall Inspection** - Make recall retrieval, assembly, and inspection reliable and explainable across sessions.
 - [ ] **Phase 182: Structured Memory Artifacts and Model Control** - Promote durable user, operator, project, and archive artifacts through bounded policy-gated memory flows.
 - [ ] **Phase 183: Learning Candidate Review and Lesson Promotion** - Turn successful work and reflections into reviewable candidates that can become bounded active lessons.
 - [ ] **Phase 184: Skill Proposal Verification and Reuse** - Generate reviewable reusable-skill proposals and route approved ones through the existing compile and install path.
@@ -81,7 +81,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 181. Hybrid Retrieval and Recall Inspection | 2/2 | In progress (verification blocked on `protoc`) | - |
+| 181. Hybrid Retrieval and Recall Inspection | 2/2 | Complete | 2026-04-08 |
 | 182. Structured Memory Artifacts and Model Control | 0/0 | Not started | - |
 | 183. Learning Candidate Review and Lesson Promotion | 0/0 | Not started | - |
 | 184. Skill Proposal Verification and Reuse | 0/0 | Not started | - |
@@ -90,7 +90,6 @@
 ## Current Status
 
 - Active milestone: v1.43 Learning Loop, Memory Depth, and God Mode
-- Roadmap progress: 0/5 phases complete
-- Current work: Phase 181 implementation is in place across the retrieval seam, bounded recall-pack assembly, recall views, and durable `memory.searched` telemetry
-- Verification blocker: the local machine does not have `protoc`, so `openrustclaw-langbridge` blocks full `openrustclaw-cli` verification
-- Next step: install `protoc` or set `PROTOC`, then run the Phase 181 CLI verification pass and write `181-01-SUMMARY.md` plus `181-02-SUMMARY.md`
+- Roadmap progress: 1/5 phases complete
+- Current work: Phase 181 is complete across retrieval scoring, bounded recall packs, recall views, and durable `memory.searched` telemetry
+- Next step: `$gsd-discuss-phase 182 --auto`

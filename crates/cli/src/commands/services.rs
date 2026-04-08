@@ -970,10 +970,12 @@ fn enabled_channels(config: &AppConfig) -> Vec<String> {
 mod tests {
     use super::{
         ChannelHealthMonitorStatus, ChannelProbeEntry, ChannelProbeStatus,
-        compose_channel_health_monitor_status, enabled_channels,
+        compose_channel_health_monitor_status, enabled_channels, runtime_events_with_pool,
     };
     use chrono::Utc;
     use openrustclaw_core::config::AppConfig;
+    use tempfile::tempdir;
+    use uuid::Uuid;
 
     #[test]
     fn enabled_channels_only_returns_enabled_entries() {
@@ -1054,5 +1056,82 @@ mod tests {
         assert_eq!(monitor.current_consecutive_failures, 0);
         assert!(!monitor.restart_requested);
         assert!(monitor.last_healthy_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn runtime_events_with_pool_returns_payload_for_memory_searches() {
+        let workspace = tempdir().expect("tempdir");
+        let db_path = workspace.path().join("runtime-events.db");
+        let db_url = format!("sqlite://{}", db_path.display());
+        let pool = openrustclaw_db::init_pool(&db_url, 1).await.unwrap();
+        openrustclaw_db::run_migrations(&pool).await.unwrap();
+
+        let payload = serde_json::json!({
+            "query": "ownership",
+            "namespace": "user-1",
+            "result_count": 1,
+            "recall_pack": {
+                "degraded": true,
+                "items": [{
+                    "id": Uuid::new_v4().to_string(),
+                    "memory_type": "semantic",
+                    "namespace": "user-1",
+                    "content": "Rust ownership memory",
+                    "score": 0.91,
+                    "importance": 0.8,
+                    "confidence": 0.9,
+                    "explanation": {
+                        "primary_artifact": {
+                            "artifact_id": "artifact-1",
+                            "artifact_kind": "conversation_memory",
+                            "namespace": "user-1"
+                        },
+                        "contributing_artifacts": [{
+                            "artifact_id": "artifact-1",
+                            "artifact_kind": "conversation_memory",
+                            "namespace": "user-1"
+                        }],
+                        "factors": {
+                            "lexical_score": 0.8,
+                            "vector_score": null,
+                            "recency_score": 0.7,
+                            "confidence_score": 0.9,
+                            "importance_score": 0.8,
+                            "fused_score": 0.91,
+                            "vector_lane": "unavailable"
+                        },
+                        "freshness": null,
+                        "degraded_state": {
+                            "code": "vector_unavailable",
+                            "message": "query embeddings unavailable"
+                        }
+                    }
+                }]
+            }
+        });
+
+        sqlx::query(
+            r#"
+            INSERT INTO runtime_events (id, event_name, event_type, session_id, payload, status, created_at)
+            VALUES (?, 'memory.searched', 'memory_searched', NULL, ?, 'processed', datetime('now'))
+            "#,
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(payload.to_string())
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let events = runtime_events_with_pool(&pool, Some("memory.searched"), 10)
+            .await
+            .unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_name, "memory.searched");
+        assert_eq!(events[0].payload["query"], "ownership");
+        assert_eq!(events[0].payload["recall_pack"]["degraded"], true);
+        assert_eq!(
+            events[0].payload["recall_pack"]["items"][0]["namespace"],
+            "user-1"
+        );
     }
 }

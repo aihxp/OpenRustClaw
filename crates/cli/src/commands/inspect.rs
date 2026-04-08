@@ -1862,15 +1862,22 @@ fn build_voice_operator_recent_activity(
 mod tests {
     use super::{
         enterprise_access_summary, enterprise_admin_summary, enterprise_foundations_summary,
-        greenfield_progress_summary, new_tool_execution_record, self_hosted_product_mode_summary,
-        setup_handoff_summary, tool_execution_log_path,
+        greenfield_progress_summary, memory_timeline, new_tool_execution_record,
+        self_hosted_product_mode_summary, setup_handoff_summary, tool_execution_log_path,
         transition_self_hosted_product_mode_summary,
     };
     use anyhow::Result;
     use chrono::{DateTime, Utc};
+    use openrustclaw_core::traits::MemoryStore;
+    use openrustclaw_core::types::{
+        MemoryEntry, MemoryType, RetrievalArtifactKind, RetrievalExplanation, SourceType,
+    };
+    use openrustclaw_db::{SqliteMemoryStore, init_pool, run_migrations};
     use openrustclaw_mobile::protocol::{DeviceCommandKind, MobileCommandRecord};
+    use sqlx::query;
     use std::fs;
     use tempfile::tempdir;
+    use uuid::Uuid;
 
     use crate::commands::browser::{ExternalBackendAuditEntry, backend_policy};
     use crate::commands::enterprise_access::{
@@ -2247,6 +2254,85 @@ mod tests {
         assert_eq!(
             report.autonomy.governance_scope,
             "enterprise.full_autonomy.manage"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn memory_timeline_reports_recent_search_explanations() -> Result<()> {
+        let workspace = tempdir().expect("tempdir");
+        let db_path = workspace.path().join("inspect-memory.db");
+        let db_url = format!("sqlite://{}", db_path.display());
+        let pool = init_pool(&db_url, 1).await?;
+        run_migrations(&pool).await?;
+
+        let store = SqliteMemoryStore::new(pool.clone());
+        let entry = MemoryEntry {
+            id: Uuid::new_v4(),
+            memory_type: MemoryType::Semantic,
+            content: "Rust ownership preference".to_string(),
+            content_hash: "inspect-hash".to_string(),
+            source: Some("test".to_string()),
+            source_type: Some(SourceType::Conversation),
+            session_id: None,
+            user_id: Some("user-1".to_string()),
+            namespace: "user-1".to_string(),
+            importance: 0.8,
+            confidence: 0.9,
+            access_count: 0,
+            last_accessed: None,
+            created_at: Utc::now(),
+            expires_at: None,
+            metadata: serde_json::json!({}),
+        };
+        store.store(entry.clone()).await?;
+
+        let explanation = RetrievalExplanation::empty(
+            RetrievalArtifactKind::ConversationMemory,
+            entry.id.to_string(),
+            "user-1".to_string(),
+        );
+        let payload = serde_json::json!({
+            "query": "ownership",
+            "namespace": "user-1",
+            "result_count": 1,
+            "recall_pack": {
+                "degraded": true,
+                "items": [{
+                    "id": entry.id.to_string(),
+                    "memory_type": "semantic",
+                    "namespace": "user-1",
+                    "content": "Rust ownership preference",
+                    "score": 0.93,
+                    "importance": 0.8,
+                    "confidence": 0.9,
+                    "explanation": explanation
+                }]
+            }
+        });
+        query(
+            r#"
+            INSERT INTO runtime_events (id, event_name, event_type, session_id, payload, status, created_at)
+            VALUES (?, 'memory.searched', 'memory_searched', NULL, ?, 'processed', datetime('now'))
+            "#,
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(payload.to_string())
+        .execute(&pool)
+        .await?;
+
+        let report = memory_timeline(&store, &pool, Some("user-1"), 10).await?;
+        assert_eq!(report.entries.len(), 1);
+        assert_eq!(report.recent_searches.len(), 1);
+        assert_eq!(report.recent_searches[0].query, "ownership");
+        assert!(report.recent_searches[0].degraded);
+        assert_eq!(report.recent_searches[0].recall_pack.items.len(), 1);
+        assert_eq!(
+            report.recent_searches[0].recall_pack.items[0]
+                .explanation
+                .primary_artifact
+                .artifact_kind,
+            RetrievalArtifactKind::ConversationMemory
         );
         Ok(())
     }
