@@ -7,17 +7,29 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use sqlx::{Row, SqlitePool};
+use sqlx::{FromRow, Row, SqlitePool};
 use std::collections::HashMap;
 use tracing::{debug, instrument};
 use uuid::Uuid;
 
 use openrustclaw_core::error::{DatabaseError, Error, MemoryError, Result};
 use openrustclaw_core::traits::MemoryStore as MemoryStoreTrait;
-use openrustclaw_core::types::{MemoryEntry, MemoryQuery, MemoryType, ScoredMemory, SourceType};
+use openrustclaw_core::types::{
+    MemoryEntry, MemoryQuery, MemoryType, RetrievalArtifactKind, RetrievalArtifactRef,
+    RetrievalDegradedCode, RetrievalDegradedState, RetrievalExplanation, RetrievalFreshness,
+    RetrievalScoreFactors, RetrievalVectorLane, ScoredMemory, SourceType,
+};
 
 use crate::models::MemoryArchiveRow;
 use crate::models::MemoryEntryRow;
+
+#[derive(Debug, FromRow)]
+struct MemorySearchRow {
+    #[sqlx(flatten)]
+    entry: MemoryEntryRow,
+    #[sqlx(rename = "rank")]
+    _rank: f64,
+}
 
 /// Trait for embedding providers to generate vector representations.
 ///
@@ -508,6 +520,39 @@ impl SqliteMemoryStore {
         Ok(vectors)
     }
 
+    fn retrieval_artifact(entry: &MemoryEntry) -> RetrievalArtifactRef {
+        RetrievalArtifactRef {
+            artifact_id: entry.id.to_string(),
+            artifact_kind: RetrievalArtifactKind::from_memory_parts(
+                entry.memory_type,
+                entry.source_type,
+            ),
+            namespace: entry.namespace.clone(),
+            source_type: entry.source_type,
+            source_label: entry.source.clone(),
+        }
+    }
+
+    fn retrieval_explanation(
+        entry: &MemoryEntry,
+        now: DateTime<Utc>,
+        factors: RetrievalScoreFactors,
+        degraded_state: Option<RetrievalDegradedState>,
+    ) -> RetrievalExplanation {
+        let primary_artifact = Self::retrieval_artifact(entry);
+        RetrievalExplanation {
+            contributing_artifacts: vec![primary_artifact.clone()],
+            primary_artifact,
+            factors,
+            freshness: Some(RetrievalFreshness {
+                created_at: entry.created_at,
+                last_accessed: entry.last_accessed,
+                age_seconds: (now - entry.created_at).num_seconds().max(0),
+            }),
+            degraded_state,
+        }
+    }
+
     /// Store a vector embedding for a memory entry.
     pub async fn store_vector(
         &self,
@@ -613,7 +658,7 @@ impl SqliteMemoryStore {
             filter_clause
         );
 
-        let mut sql_query = sqlx::query_as::<_, MemoryEntryRow>(&sql);
+        let mut sql_query = sqlx::query_as::<_, MemorySearchRow>(&sql);
         sql_query = sql_query.bind(&fts_query);
 
         for param in &params {
@@ -622,23 +667,26 @@ impl SqliteMemoryStore {
 
         sql_query = sql_query.bind(fetch_limit as i64);
 
-        let rows: Vec<MemoryEntryRow> = sql_query
+        let rows: Vec<MemorySearchRow> = sql_query
             .fetch_all(&self.pool)
             .await
             .map_err(|e| Error::Database(DatabaseError::Query(format!("Search failed: {}", e))))?;
 
         // Convert to MemoryEntry and apply scoring
-        let mut candidates: Vec<(MemoryEntry, f32)> = Vec::new();
+        let mut candidates: Vec<(MemoryEntry, RetrievalScoreFactors)> = Vec::new();
 
         for row in rows {
-            let entry = Self::row_to_entry(&row)?;
+            let entry = Self::row_to_entry(&row.entry)?;
+            let recency_score = Self::temporal_decay(entry.created_at, now);
+            let confidence_score = entry.confidence.clamp(0.0, 1.0);
+            let importance_score = entry.importance.clamp(0.0, 1.0);
 
             // Calculate base score from BM25 rank (inverted and normalized)
             let bm25_score = 1.0; // We could extract actual rank and normalize
 
             // Apply temporal decay if recency weight is set
             let temporal_score = if query.recency_weight > 0.0 {
-                let decay = Self::temporal_decay(entry.created_at, now);
+                let decay = recency_score;
                 bm25_score * (1.0 - query.recency_weight) + decay * query.recency_weight
             } else {
                 bm25_score
@@ -647,7 +695,18 @@ impl SqliteMemoryStore {
             // Factor in importance
             let final_score = temporal_score * (0.5 + entry.importance * 0.5);
 
-            candidates.push((entry, final_score));
+            candidates.push((
+                entry,
+                RetrievalScoreFactors {
+                    lexical_score: bm25_score,
+                    vector_score: None,
+                    recency_score,
+                    confidence_score,
+                    importance_score,
+                    fused_score: final_score,
+                    vector_lane: RetrievalVectorLane::RustRescored,
+                },
+            ));
         }
 
         // Do vector similarity scoring
@@ -656,22 +715,36 @@ impl SqliteMemoryStore {
         let vectors = self.fetch_vectors(&memory_ids).await?;
 
         // Re-score with vector similarity
-        for (entry, score) in &mut candidates {
+        for (entry, factors) in &mut candidates {
             if let Some(vector) = vectors.get(&entry.id.to_string()) {
                 let vector_sim = Self::cosine_similarity(query_embedding, vector);
+                let vector_score = ((vector_sim + 1.0) / 2.0).clamp(0.0, 1.0);
                 // Combine BM25 and vector scores
-                *score = (*score * 0.5) + (vector_sim * 0.5);
+                factors.vector_score = Some(vector_score);
+                factors.fused_score = (factors.fused_score * 0.5) + (vector_score * 0.5);
             }
         }
 
         // Sort by score descending
-        candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        candidates.sort_by(|a, b| {
+            b.1.fused_score
+                .partial_cmp(&a.1.fused_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Take top N
         candidates.truncate(query.limit);
         let results: Vec<ScoredMemory> = candidates
             .into_iter()
-            .map(|(entry, score)| ScoredMemory { entry, score })
+            .map(|(entry, factors)| {
+                let score = factors.fused_score;
+                let explanation = Self::retrieval_explanation(&entry, now, factors, None);
+                ScoredMemory {
+                    entry,
+                    score,
+                    explanation,
+                }
+            })
             .collect();
 
         // Update access counts for retrieved memories
@@ -866,7 +939,7 @@ impl MemoryStoreTrait for SqliteMemoryStore {
             filter_clause
         );
 
-        let mut sql_query = sqlx::query_as::<_, MemoryEntryRow>(&sql);
+        let mut sql_query = sqlx::query_as::<_, MemorySearchRow>(&sql);
         sql_query = sql_query.bind(&fts_query);
 
         for param in &params {
@@ -875,23 +948,26 @@ impl MemoryStoreTrait for SqliteMemoryStore {
 
         sql_query = sql_query.bind(fetch_limit as i64);
 
-        let rows: Vec<MemoryEntryRow> = sql_query
+        let rows: Vec<MemorySearchRow> = sql_query
             .fetch_all(&self.pool)
             .await
             .map_err(|e| Error::Database(DatabaseError::Query(format!("Search failed: {}", e))))?;
 
         // Convert to MemoryEntry and apply scoring
-        let mut candidates: Vec<(MemoryEntry, f32)> = Vec::new();
+        let mut candidates: Vec<(MemoryEntry, RetrievalScoreFactors)> = Vec::new();
 
         for row in rows {
-            let entry = Self::row_to_entry(&row)?;
+            let entry = Self::row_to_entry(&row.entry)?;
+            let recency_score = Self::temporal_decay(entry.created_at, now);
+            let confidence_score = entry.confidence.clamp(0.0, 1.0);
+            let importance_score = entry.importance.clamp(0.0, 1.0);
 
             // Calculate base score from BM25 rank (inverted and normalized)
             let bm25_score = 1.0; // We could extract actual rank and normalize
 
             // Apply temporal decay if recency weight is set
             let temporal_score = if query.recency_weight > 0.0 {
-                let decay = Self::temporal_decay(entry.created_at, now);
+                let decay = recency_score;
                 bm25_score * (1.0 - query.recency_weight) + decay * query.recency_weight
             } else {
                 bm25_score
@@ -900,17 +976,48 @@ impl MemoryStoreTrait for SqliteMemoryStore {
             // Factor in importance
             let final_score = temporal_score * (0.5 + entry.importance * 0.5);
 
-            candidates.push((entry, final_score));
+            candidates.push((
+                entry,
+                RetrievalScoreFactors {
+                    lexical_score: bm25_score,
+                    vector_score: None,
+                    recency_score,
+                    confidence_score,
+                    importance_score,
+                    fused_score: final_score,
+                    vector_lane: RetrievalVectorLane::Unavailable,
+                },
+            ));
         }
 
         // Sort by score descending
-        candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        candidates.sort_by(|a, b| {
+            b.1.fused_score
+                .partial_cmp(&a.1.fused_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Take top N
         candidates.truncate(query.limit);
         let results: Vec<ScoredMemory> = candidates
             .into_iter()
-            .map(|(entry, score)| ScoredMemory { entry, score })
+            .map(|(entry, factors)| {
+                let score = factors.fused_score;
+                let explanation = Self::retrieval_explanation(
+                    &entry,
+                    now,
+                    factors,
+                    Some(RetrievalDegradedState {
+                        code: RetrievalDegradedCode::VectorUnavailable,
+                        message: "query embeddings are unavailable on this retrieval path; vector scoring was not applied".to_string(),
+                    }),
+                );
+                ScoredMemory {
+                    entry,
+                    score,
+                    explanation,
+                }
+            })
             .collect();
 
         // Update access counts for retrieved memories

@@ -1,6 +1,6 @@
 //! Hybrid search: BM25 + vector similarity fusion.
 
-use openrustclaw_core::types::ScoredMemory;
+use openrustclaw_core::types::{RetrievalExplanation, ScoredMemory};
 
 /// Fuse BM25 and vector search results using Reciprocal Rank Fusion (RRF).
 pub fn reciprocal_rank_fusion(
@@ -144,6 +144,7 @@ mod tests {
                 metadata: serde_json::Value::Object(serde_json::Map::new()),
             },
             score,
+            explanation: RetrievalExplanation::default(),
         }
     }
 

@@ -1,6 +1,6 @@
 //! RAG pipeline: chunk, embed, retrieve, grade.
 
-use openrustclaw_core::types::{ScoredMemory, SourceType};
+use openrustclaw_core::types::{RetrievalExplanation, ScoredMemory, SourceType};
 
 /// Configuration for the RAG chunking pipeline.
 #[derive(Debug, Clone)]
@@ -98,6 +98,7 @@ mod tests {
                 metadata: serde_json::Value::Object(serde_json::Map::new()),
             },
             score,
+            explanation: RetrievalExplanation::default(),
         }
     }
 

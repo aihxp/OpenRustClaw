@@ -472,12 +472,159 @@ impl Default for MemoryQuery {
 }
 
 /// A memory entry paired with its relevance score from a search.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RetrievalArtifactKind {
+    RecallMemory,
+    ConversationMemory,
+    DocumentChunk,
+    CodeChunk,
+    ConfigFragment,
+    RunbookStep,
+    ToolSchema,
+    ArchiveSummary,
+}
+
+impl RetrievalArtifactKind {
+    pub fn from_memory_parts(memory_type: MemoryType, source_type: Option<SourceType>) -> Self {
+        match source_type {
+            Some(SourceType::Document) => Self::DocumentChunk,
+            Some(SourceType::Code) => Self::CodeChunk,
+            Some(SourceType::Config) => Self::ConfigFragment,
+            Some(SourceType::Conversation) => Self::ConversationMemory,
+            Some(SourceType::Runbook) => Self::RunbookStep,
+            Some(SourceType::ToolSchema) => Self::ToolSchema,
+            None if memory_type == MemoryType::Episodic => Self::ConversationMemory,
+            None => Self::RecallMemory,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RetrievalVectorLane {
+    NativeLibsql,
+    RustRescored,
+    Unavailable,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RetrievalDegradedCode {
+    VectorUnavailable,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RetrievalArtifactRef {
+    pub artifact_id: String,
+    pub artifact_kind: RetrievalArtifactKind,
+    pub namespace: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_type: Option<SourceType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_label: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RetrievalScoreFactors {
+    pub lexical_score: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vector_score: Option<f32>,
+    pub recency_score: f32,
+    pub confidence_score: f32,
+    pub importance_score: f32,
+    pub fused_score: f32,
+    pub vector_lane: RetrievalVectorLane,
+}
+
+impl Default for RetrievalScoreFactors {
+    fn default() -> Self {
+        Self {
+            lexical_score: 0.0,
+            vector_score: None,
+            recency_score: 0.0,
+            confidence_score: 0.0,
+            importance_score: 0.0,
+            fused_score: 0.0,
+            vector_lane: RetrievalVectorLane::Unavailable,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RetrievalFreshness {
+    pub created_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_accessed: Option<DateTime<Utc>>,
+    pub age_seconds: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RetrievalDegradedState {
+    pub code: RetrievalDegradedCode,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RetrievalExplanation {
+    pub primary_artifact: RetrievalArtifactRef,
+    #[serde(default)]
+    pub contributing_artifacts: Vec<RetrievalArtifactRef>,
+    pub factors: RetrievalScoreFactors,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub freshness: Option<RetrievalFreshness>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub degraded_state: Option<RetrievalDegradedState>,
+}
+
+impl RetrievalExplanation {
+    pub fn empty(
+        artifact_kind: RetrievalArtifactKind,
+        artifact_id: String,
+        namespace: String,
+    ) -> Self {
+        let primary_artifact = RetrievalArtifactRef {
+            artifact_id,
+            artifact_kind,
+            namespace,
+            source_type: None,
+            source_label: None,
+        };
+
+        Self {
+            contributing_artifacts: vec![primary_artifact.clone()],
+            primary_artifact,
+            factors: RetrievalScoreFactors::default(),
+            freshness: None,
+            degraded_state: Some(RetrievalDegradedState {
+                code: RetrievalDegradedCode::VectorUnavailable,
+                message:
+                    "query embeddings are unavailable on this retrieval path; vector scoring was not applied"
+                        .to_string(),
+            }),
+        }
+    }
+}
+
+impl Default for RetrievalExplanation {
+    fn default() -> Self {
+        Self::empty(
+            RetrievalArtifactKind::RecallMemory,
+            "unknown".to_string(),
+            "global".to_string(),
+        )
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScoredMemory {
     /// The matching memory entry.
     pub entry: MemoryEntry,
     /// Relevance score (higher = more relevant, typically 0.0 – 1.0).
     pub score: f32,
+    /// Typed explanation for why this memory surfaced.
+    #[serde(default)]
+    pub explanation: RetrievalExplanation,
 }
 
 /// A slot in the agent's persistent core memory (key-value pairs held in the system prompt).

@@ -5,7 +5,9 @@
 
 use crate::policies::MemoryPolicies;
 use chrono::Utc;
-use openrustclaw_core::types::{MemoryEntry, MemorySource, MemoryType, ScoredMemory};
+use openrustclaw_core::types::{
+    MemoryEntry, MemorySource, MemoryType, RetrievalExplanation, ScoredMemory,
+};
 use tracing::debug;
 use uuid::Uuid;
 
@@ -119,6 +121,7 @@ mod tests {
                 metadata: serde_json::Value::Object(serde_json::Map::new()),
             },
             score,
+            explanation: RetrievalExplanation::default(),
         }
     }
 
