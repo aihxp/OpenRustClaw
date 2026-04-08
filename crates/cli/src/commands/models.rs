@@ -2,8 +2,12 @@
 
 use anyhow::Result;
 use openrustclaw_app::agent_backend_catalog::{
-    AgentBackendAuthStatus, AgentBackendCapability, AgentBackendCatalogEntry,
-    AgentBackendCatalogService, AgentBackendReadiness,
+    AgentBackendAuthStatus, AgentBackendCatalogEntry, AgentBackendCatalogService,
+    AgentBackendReadiness,
+};
+use openrustclaw_app::agent_backend_control::AgentBackendControlService;
+use openrustclaw_app::onboarding_lane_catalog::{
+    DirectProviderLaneStatus, OnboardingLaneCatalogService, OnboardingLaneDescriptor,
 };
 use std::collections::HashMap;
 use std::time::Duration;
@@ -205,35 +209,33 @@ pub async fn list() -> Result<()> {
         let _ = runtime::apply_runtime_secret_sources(&workspace_root);
     }
     println!("╔══════════════════════════════════════════════════════════╗");
-    println!("║              Available LLM Providers                     ║");
+    println!("║        Available Provider and Runtime Lanes              ║");
     println!("╚══════════════════════════════════════════════════════════╝");
+    println!();
+    println!("Direct API providers and local runtimes that onboarding can validate today:");
     println!();
 
     let providers = get_default_models();
-
-    // Check which providers are configured
-    let anthropic_key = std::env::var("ANTHROPIC_API_KEY").is_ok();
-    let openai_key = std::env::var("OPENAI_API_KEY").is_ok();
-    let openrouter_key = std::env::var("OPENROUTER_API_KEY").is_ok();
-    let gemini_key = std::env::var("GEMINI_API_KEY").is_ok();
     let ollama_available = check_ollama().await;
+    let agent_backends = AgentBackendCatalogService::new().discover();
+    let delegated_contracts =
+        AgentBackendControlService::new().contracts_from_catalog(&agent_backends);
+    let lane_catalog = OnboardingLaneCatalogService::new().catalog(
+        &direct_provider_lane_statuses(ollama_available),
+        &delegated_contracts,
+    );
 
-    for (provider_name, models) in providers {
-        let status = match provider_name {
-            "anthropic" if anthropic_key => "\x1b[32m✓ configured\x1b[0m",
-            "anthropic" => "\x1b[90m○ not configured\x1b[0m",
-            "openai" if openai_key => "\x1b[32m✓ configured\x1b[0m",
-            "openai" => "\x1b[90m○ not configured\x1b[0m",
-            "openrouter" if openrouter_key => "\x1b[32m✓ configured\x1b[0m",
-            "openrouter" => "\x1b[90m○ not configured\x1b[0m",
-            "gemini" if gemini_key => "\x1b[32m✓ configured\x1b[0m",
-            "gemini" => "\x1b[90m○ not configured\x1b[0m",
-            "ollama" if ollama_available => "\x1b[32m✓ available\x1b[0m",
-            "ollama" => "\x1b[90m○ not detected\x1b[0m",
-            _ => "",
+    for lane in lane_catalog.iter().filter(|lane| lane.backend_id.is_none()) {
+        let status = render_lane_status(&lane.status_label);
+        println!("\x1b[1m{}\x1b[0m {}", lane.label, status);
+        if let Some(note) = lane.compatibility_note.as_deref() {
+            println!("  Note: {note}");
+        }
+        let Some(models) = providers.get(lane.provider_id.as_str()) else {
+            println!("  Default: N/A");
+            println!();
+            continue;
         };
-
-        println!("\x1b[1m{}\x1b[0m {}", provider_name.to_uppercase(), status);
         println!(
             "  Default: {}",
             models.first().map(|m| m.name.as_str()).unwrap_or("N/A")
@@ -250,11 +252,17 @@ pub async fn list() -> Result<()> {
     println!("  ANTHROPIC_API_KEY  - Required for Anthropic models");
     println!("  OPENAI_API_KEY     - Required for OpenAI models");
     println!("  OPENROUTER_API_KEY - Required for OpenRouter models");
-    println!("  GEMINI_API_KEY     - Required for Gemini API models");
+    println!("  GEMINI_API_KEY     - Preferred for Gemini API models");
+    println!("  GOOGLE_API_KEY     - Also supported for Gemini API models");
     println!("  OLLAMA_BASE_URL    - Optional, defaults to http://localhost:11434");
     println!();
+    println!(
+        "Delegated local agent lanes use the installed CLI and signed-in session when policy allows."
+    );
+    println!("OpenRustClaw does not import vendor tokens or browser sessions from those tools.");
+    println!();
 
-    print_local_agent_backends(&AgentBackendCatalogService::new().discover());
+    print_local_agent_backends(&agent_backends, &lane_catalog);
 
     Ok(())
 }
@@ -384,7 +392,7 @@ struct ProviderScan {
 }
 
 /// Check if Ollama is available locally.
-async fn check_ollama() -> bool {
+pub(crate) async fn check_ollama() -> bool {
     let base_url =
         std::env::var("OLLAMA_BASE_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
 
@@ -394,6 +402,61 @@ async fn check_ollama() -> bool {
         .send()
         .await
         .is_ok()
+}
+
+fn direct_provider_lane_statuses(ollama_available: bool) -> Vec<DirectProviderLaneStatus> {
+    [
+        (
+            "anthropic",
+            std::env::var("ANTHROPIC_API_KEY").is_ok(),
+            "configured",
+            "not configured",
+        ),
+        (
+            "openai",
+            std::env::var("OPENAI_API_KEY").is_ok(),
+            "configured",
+            "not configured",
+        ),
+        (
+            "openrouter",
+            std::env::var("OPENROUTER_API_KEY").is_ok(),
+            "configured",
+            "not configured",
+        ),
+        (
+            "gemini",
+            std::env::var("GEMINI_API_KEY").is_ok() || std::env::var("GOOGLE_API_KEY").is_ok(),
+            "configured",
+            "not configured",
+        ),
+        ("ollama", ollama_available, "available", "not detected"),
+    ]
+    .into_iter()
+    .map(
+        |(provider_id, available, available_label, unavailable_label)| DirectProviderLaneStatus {
+            provider_id: provider_id.to_string(),
+            available,
+            status_label: if available {
+                available_label.to_string()
+            } else {
+                unavailable_label.to_string()
+            },
+        },
+    )
+    .collect()
+}
+
+fn render_lane_status(status_label: &str) -> &'static str {
+    match status_label {
+        "configured" => "\x1b[32m✓ configured\x1b[0m",
+        "available" => "\x1b[32m✓ available\x1b[0m",
+        "ready locally" => "\x1b[32m✓ ready locally\x1b[0m",
+        "available locally" => "\x1b[33m◐ available locally\x1b[0m",
+        "detected only" => "\x1b[34m◌ detected only\x1b[0m",
+        "not detected" => "\x1b[90m○ not detected\x1b[0m",
+        _ => "\x1b[90m○ not configured\x1b[0m",
+    }
 }
 
 /// Format model features for display.
@@ -413,20 +476,47 @@ fn format_features(tools: bool, vision: bool) -> String {
     }
 }
 
-fn print_local_agent_backends(entries: &[AgentBackendCatalogEntry]) {
+fn print_local_agent_backends(
+    entries: &[AgentBackendCatalogEntry],
+    lane_catalog: &[OnboardingLaneDescriptor],
+) {
     println!("╔══════════════════════════════════════════════════════════╗");
     println!("║           Detected Local Agent Backends                  ║");
     println!("╚══════════════════════════════════════════════════════════╝");
     println!();
 
-    for entry in entries {
-        let status = match entry.readiness {
-            AgentBackendReadiness::Ready => "\x1b[32m✓ ready\x1b[0m",
-            AgentBackendReadiness::Candidate => "\x1b[33m◐ candidate\x1b[0m",
-            AgentBackendReadiness::DetectionOnly => "\x1b[34m◌ detected only\x1b[0m",
-            AgentBackendReadiness::Unavailable => "\x1b[90m○ not detected\x1b[0m",
-        };
+    let backend_control = AgentBackendControlService::new();
+    let delegated_lanes = lane_catalog
+        .iter()
+        .filter(|lane| lane.backend_id.is_some())
+        .filter_map(|lane| {
+            lane.backend_id
+                .as_ref()
+                .map(|backend_id| (backend_id.clone(), lane))
+        })
+        .collect::<HashMap<_, _>>();
+
+    let detected_entries = entries
+        .iter()
+        .filter_map(|entry| {
+            let backend_id = backend_control.backend_id_for_entry(entry);
+            delegated_lanes
+                .get(&backend_id)
+                .copied()
+                .map(|lane| (entry, lane))
+        })
+        .collect::<Vec<_>>();
+
+    if detected_entries.is_empty() {
+        println!("No supported local agent backends detected on this machine.");
+        println!();
+        return;
+    }
+
+    for (entry, lane) in detected_entries {
+        let status = render_lane_status(&lane.status_label);
         println!("\x1b[1m{}\x1b[0m {}", entry.display_name(), status);
+        println!("  Provider lane: {}", lane.provider_id);
         println!(
             "  Binary: {}",
             entry
@@ -437,6 +527,15 @@ fn print_local_agent_backends(entries: &[AgentBackendCatalogEntry]) {
         if let Some(version) = entry.version_text.as_deref() {
             println!("  Version: {version}");
         }
+        let execution_status = match entry.readiness {
+            AgentBackendReadiness::Ready => "eligible for bounded delegated execution",
+            AgentBackendReadiness::Candidate => "visible locally but still not execution-ready",
+            AgentBackendReadiness::DetectionOnly => {
+                "detection-only until a supported contract exists"
+            }
+            AgentBackendReadiness::Unavailable => "not detected on this machine",
+        };
+        println!("  Runtime lane: {execution_status}");
         println!(
             "  Auth: {}",
             match entry.auth_status {
@@ -453,15 +552,12 @@ fn print_local_agent_backends(entries: &[AgentBackendCatalogEntry]) {
         );
         println!(
             "  Model discovery: {}",
-            match entry.model_discovery {
-                AgentBackendCapability::Supported => "supported",
-                AgentBackendCapability::Candidate => "candidate",
-                AgentBackendCapability::Unsupported => "not exposed",
-                AgentBackendCapability::Unknown => "unknown",
-            }
+            lane.model_catalog_label.as_deref().unwrap_or("unknown")
         );
         println!("  Policy class: {}", entry.policy_classification);
-        if let Some(reason) = entry.readiness_reason.as_deref() {
+        if let Some(note) = lane.compatibility_note.as_deref() {
+            println!("  Note: {note}");
+        } else if let Some(reason) = entry.readiness_reason.as_deref() {
             println!("  Note: {reason}");
         }
         println!();

@@ -78,6 +78,12 @@ pub struct SetupLifecycleState {
     pub status: String,
     pub setup_path: Option<String>,
     pub selected_provider: Option<String>,
+    pub selected_lane_id: Option<String>,
+    pub selected_lane_label: Option<String>,
+    pub selected_lane_kind: Option<String>,
+    pub selected_backend_id: Option<String>,
+    pub selected_lane_detail: Option<String>,
+    pub selected_lane_compatibility_note: Option<String>,
     pub selected_access_mode: Option<String>,
     pub selected_primary_model: Option<String>,
     pub selected_primary_model_source: Option<String>,
@@ -390,15 +396,25 @@ impl SetupLifecycleService {
 
     fn selected_model_lane_summary(setup: &SetupLifecycleState) -> Option<String> {
         let provider = setup.selected_provider.as_deref()?;
+        let lane_label = setup.selected_lane_label.as_deref();
+        let lane_kind = setup.selected_lane_kind.as_deref();
         let access_mode = setup.selected_access_mode.as_deref();
         let model = setup.selected_primary_model.as_deref();
+        let lane_prefix = match (lane_label, lane_kind) {
+            (Some(label), Some("delegated_agent")) => {
+                format!("delegated lane `{label}` via provider `{provider}`")
+            }
+            (Some(label), Some("local_runtime")) => format!("local runtime lane `{label}`"),
+            (Some(label), _) if label != provider => format!("lane `{label}` via `{provider}`"),
+            _ => format!("provider `{provider}`"),
+        };
         match (access_mode, model) {
             (Some(access_mode), Some(model)) => {
-                Some(format!("`{provider}` via `{access_mode}` using `{model}`"))
+                Some(format!("{lane_prefix} via `{access_mode}` using `{model}`"))
             }
-            (Some(access_mode), None) => Some(format!("`{provider}` via `{access_mode}`")),
-            (None, Some(model)) => Some(format!("`{provider}` using `{model}`")),
-            (None, None) => Some(format!("`{provider}`")),
+            (Some(access_mode), None) => Some(format!("{lane_prefix} via `{access_mode}`")),
+            (None, Some(model)) => Some(format!("{lane_prefix} using `{model}`")),
+            (None, None) => Some(lane_prefix),
         }
     }
 }
@@ -458,6 +474,12 @@ mod tests {
             status: "ready".to_string(),
             setup_path: Some("Advanced".to_string()),
             selected_provider: Some("anthropic".to_string()),
+            selected_lane_id: Some("anthropic".to_string()),
+            selected_lane_label: Some("Anthropic (Claude)".to_string()),
+            selected_lane_kind: Some("direct_api".to_string()),
+            selected_backend_id: None,
+            selected_lane_detail: Some("Use a provider API key stored in `.env`.".to_string()),
+            selected_lane_compatibility_note: None,
             selected_access_mode: Some("api_key".to_string()),
             selected_primary_model: None,
             selected_primary_model_source: None,
@@ -491,6 +513,12 @@ mod tests {
             status: "blocked".to_string(),
             setup_path: Some("Advanced".to_string()),
             selected_provider: Some("anthropic".to_string()),
+            selected_lane_id: Some("anthropic".to_string()),
+            selected_lane_label: Some("Anthropic (Claude)".to_string()),
+            selected_lane_kind: Some("direct_api".to_string()),
+            selected_backend_id: None,
+            selected_lane_detail: Some("Use a provider API key stored in `.env`.".to_string()),
+            selected_lane_compatibility_note: None,
             selected_access_mode: Some("api_key".to_string()),
             selected_primary_model: None,
             selected_primary_model_source: None,
@@ -575,6 +603,14 @@ mod tests {
             status: "blocked".to_string(),
             setup_path: Some("Advanced".to_string()),
             selected_provider: Some("ollama".to_string()),
+            selected_lane_id: Some("ollama".to_string()),
+            selected_lane_label: Some("Ollama (Local models)".to_string()),
+            selected_lane_kind: Some("local_runtime".to_string()),
+            selected_backend_id: None,
+            selected_lane_detail: Some(
+                "Use a local runtime already running on this machine.".to_string(),
+            ),
+            selected_lane_compatibility_note: None,
             selected_access_mode: Some("local_runtime".to_string()),
             selected_primary_model: None,
             selected_primary_model_source: None,
@@ -609,6 +645,12 @@ mod tests {
             status: "ready".to_string(),
             setup_path: Some("Advanced".to_string()),
             selected_provider: Some("openrouter".to_string()),
+            selected_lane_id: Some("openrouter".to_string()),
+            selected_lane_label: Some("OpenRouter (Multiple models)".to_string()),
+            selected_lane_kind: Some("direct_api".to_string()),
+            selected_backend_id: None,
+            selected_lane_detail: Some("Use a provider API key stored in `.env`.".to_string()),
+            selected_lane_compatibility_note: None,
             selected_access_mode: Some("api_key".to_string()),
             selected_primary_model: Some("openai/gpt-4o".to_string()),
             selected_primary_model_source: Some("live_discovery".to_string()),

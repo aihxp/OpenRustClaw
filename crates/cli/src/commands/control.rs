@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
+use openrustclaw_app::agent_backend_catalog::AgentBackendCatalogService;
+use openrustclaw_app::agent_backend_control::AgentBackendControlService;
 use openrustclaw_app::autonomy_lessons_control::AutonomyLessonRequest;
 use openrustclaw_app::control_registry as app_control_registry;
 use openrustclaw_app::learning_review::{LearningReviewService, LearningReviewSource};
@@ -623,6 +625,7 @@ pub fn init(root: Option<&str>) -> Result<()> {
             },
         })?,
     )?;
+    write_detected_delegated_model_profiles(&root)?;
 
     write_if_missing(
         &claws_dir(&root).join("main.yaml"),
@@ -683,6 +686,52 @@ pub fn init(root: Option<&str>) -> Result<()> {
 
     sync_runtime_artifact(&root)?;
     println!("Initialized control registry at {}", root.display());
+    Ok(())
+}
+
+fn write_detected_delegated_model_profiles(root: &Path) -> Result<()> {
+    let catalog = AgentBackendCatalogService::new().discover();
+    let control = AgentBackendControlService::new();
+    for contract in control
+        .contracts_from_catalog(&catalog)
+        .into_iter()
+        .filter(|contract| contract.execution_eligible)
+    {
+        let profile_id = format!("delegated-{}", contract.backend_id);
+        write_if_missing(
+            &models_dir(root).join(format!("{profile_id}.yaml")),
+            &serde_yaml::to_string(&ModelProfileManifest {
+                version: 1,
+                model: ModelProfileSpec {
+                    id: profile_id,
+                    provider: contract.backend_id.clone(),
+                    model: "vendor-managed".to_string(),
+                    context_window: None,
+                    max_output_tokens: Some(4096),
+                    supports_tools: false,
+                    supports_vision: false,
+                    role_tags: vec![
+                        "delegated_backend".to_string(),
+                        "vendor_managed".to_string(),
+                    ],
+                    artifact_preferences: vec!["AGENTS.md".to_string()],
+                    fallback_order: vec![
+                        "control-openrouter".to_string(),
+                        "local-ollama".to_string(),
+                    ],
+                    latency_hint: Some("local_cli".to_string()),
+                    cost_hint: Some("vendor_managed".to_string()),
+                    reasoning_hint: Some("delegated".to_string()),
+                    metadata: serde_json::json!({
+                        "delegated_backend_id": contract.backend_id,
+                        "detected_local_agent": true,
+                        "vendor_managed_model_selection": true,
+                        "display_name": contract.display_name,
+                    }),
+                },
+            })?,
+        )?;
+    }
     Ok(())
 }
 

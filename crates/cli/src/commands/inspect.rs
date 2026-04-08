@@ -1100,6 +1100,12 @@ fn map_setup_handoff_state(
         detail,
         explicit_setup_state: true,
         selected_provider: setup.selected_provider,
+        selected_lane_id: setup.selected_lane_id,
+        selected_lane_label: setup.selected_lane_label,
+        selected_lane_kind: setup.selected_lane_kind,
+        selected_backend_id: setup.selected_backend_id,
+        selected_lane_detail: setup.selected_lane_detail,
+        selected_lane_compatibility_note: setup.selected_lane_compatibility_note,
         selected_access_mode: setup.selected_access_mode,
         selected_primary_model: setup.selected_primary_model,
         selected_primary_model_source: setup.selected_primary_model_source,
@@ -1124,12 +1130,82 @@ fn map_setup_handoff_state(
     }
 }
 
+fn selected_lane_journey_detail(report: &SetupHandoffReport) -> Option<String> {
+    let lane_label = report
+        .selected_lane_label
+        .as_deref()
+        .or(report.selected_provider.as_deref())?;
+    let access_mode = report
+        .selected_access_mode
+        .as_deref()
+        .unwrap_or("unspecified");
+    let model_suffix = report
+        .selected_primary_model
+        .as_deref()
+        .map(|model| format!(" using `{model}`"))
+        .unwrap_or_default();
+    match report.selected_backend_id.as_deref() {
+        Some(backend_id) => Some(format!(
+            "Selected lane `{lane_label}` stays visible as delegated local agent `{backend_id}`. First-run bootstrap validates provider `{}` via `{access_mode}`{model_suffix}, and later delegated runs route through the installed CLI when policy allows.",
+            report.selected_provider.as_deref().unwrap_or(backend_id)
+        )),
+        None => Some(format!(
+            "Selected lane `{lane_label}` currently runs as provider `{}` via `{access_mode}`{model_suffix}.",
+            report.selected_provider.as_deref().unwrap_or(lane_label)
+        )),
+    }
+}
+
+fn detected_backends_journey_detail(report: &SetupHandoffReport) -> Option<String> {
+    let detected = report
+        .agent_backends
+        .iter()
+        .filter(|entry| entry.detected)
+        .map(|entry| {
+            format!(
+                "{} ({})",
+                entry.display_name(),
+                match entry.readiness {
+                    openrustclaw_app::agent_backend_catalog::AgentBackendReadiness::Ready => {
+                        "ready locally"
+                    }
+                    openrustclaw_app::agent_backend_catalog::AgentBackendReadiness::Candidate => {
+                        "available locally"
+                    }
+                    openrustclaw_app::agent_backend_catalog::AgentBackendReadiness::DetectionOnly => {
+                        "detection only"
+                    }
+                    openrustclaw_app::agent_backend_catalog::AgentBackendReadiness::Unavailable => {
+                        "not detected"
+                    }
+                }
+            )
+        })
+        .collect::<Vec<_>>();
+    if detected.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "Detected local agent backends: {}.",
+            detected.join(", ")
+        ))
+    }
+}
+
 pub fn setup_handoff_summary(workspace_root: &Path) -> Result<SetupHandoffReport> {
     let service = SetupHandoffService::new(WorkspaceSetupHandoffSource::new(workspace_root));
     let mut report = service.report().map_err(anyhow::Error::from)?;
     report.agent_backends = AgentBackendCatalogService::new().discover();
     report.delegated_backend_contracts =
         AgentBackendControlService::new().contracts_from_catalog(&report.agent_backends);
+    let mut detail_parts = vec![report.detail.clone()];
+    if let Some(detail) = selected_lane_journey_detail(&report) {
+        detail_parts.push(detail);
+    }
+    if let Some(detail) = detected_backends_journey_detail(&report) {
+        detail_parts.push(detail);
+    }
+    report.detail = detail_parts.join(" ");
     Ok(report)
 }
 
@@ -2204,6 +2280,14 @@ mod tests {
                     }),
                     setup_path: Some("Advanced".to_string()),
                     selected_provider: Some("openrouter".to_string()),
+                    selected_lane_id: Some("openrouter".to_string()),
+                    selected_lane_label: Some("OpenRouter (Multiple models)".to_string()),
+                    selected_lane_kind: Some("direct_api".to_string()),
+                    selected_backend_id: None,
+                    selected_lane_detail: Some(
+                        "Use a provider API key stored in `.env`.".to_string(),
+                    ),
+                    selected_lane_compatibility_note: None,
                     selected_access_mode: Some("api_key".to_string()),
                     selected_primary_model: Some("openai/gpt-4o".to_string()),
                     selected_primary_model_source: Some("live_discovery".to_string()),

@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.44
 milestone_name: Agent Discovery, Journey Cohesion, and Provider Access
-current_phase: 188
-current_phase_name: onboarding and model selection cohesion
-current_plan: 188-01
-status: planning phase 188
-stopped_at: Phase 187 completed after wiring delegated backend contracts into inspect setup handoff and enterprise policy surfaces.
-last_updated: "2026-04-08T16:10:00Z"
+current_phase: none
+current_phase_name: none
+current_plan: none
+status: milestone complete
+stopped_at: Phase 190 completed after repairing the remaining provider-versus-agent journey seams across README, onboarding, inspect, and Control UI.
+last_updated: "2026-04-08T23:59:00Z"
 last_activity: 2026-04-08
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 5
   total_plans: 10
-  completed_plans: 4
-  percent: 40
+  completed_plans: 10
+  percent: 100
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-08)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** v1.44 has completed the delegated-backend contract layer and is now planning Phase 188 to make onboarding and model selection truthful across direct providers, local runtimes, and delegated local agents.
+**Current focus:** `v1.44` is complete. The next planning action is to start a new milestone from this stronger agent-lane baseline.
 
 ## Current Position
 
-Current Phase: 188
-Current Phase Name: onboarding and model selection cohesion
+Current Phase: none
+Current Phase Name: none
 Total Phases: 5
-Current Plan: 188-01
-Total Plans in Phase: 2
-Status: planning phase 188
+Current Plan: none
+Total Plans in Phase: 0
+Status: milestone complete
 Last activity: 2026-04-08
 
-Phase: 3 of 5
-Plan: 0 of 2
-Progress: [####------] 40%
+Phase: 5 of 5
+Plan: 2 of 2
+Progress: [##########] 100%
 
 ## Performance Metrics
 
@@ -63,7 +63,9 @@ Recent decisions affecting current work:
 - Phase 186 is now complete: the shared app-layer local-agent discovery catalog is reused in `openrustclaw models`, onboarding, and setup handoff or inspect, and Gemini now has runtime parity through those flows.
 - Phase 187 plan 01 now formalizes delegated local vendor-agent backends as typed contracts with vendor-managed model labels and policy-ready execution evaluation.
 - Phase 187 is now complete after surfacing delegated backend contracts through setup handoff and enterprise policy while keeping the allowlist boundary unified.
-- Phase 188 will reconcile onboarding and model selection with those contracts so operators see one truthful provider-or-agent lane instead of stitched-together hints.
+- Phase 188 is complete: onboarding and `openrustclaw models` share one provider-or-agent lane catalog, and durable setup state remembers selected lane identity through inspect and repair flows.
+- Phase 189 is complete: delegated local-agent backends now resolve through the runtime provider factory as bounded audited runtime lanes, and control init can seed vendor-managed model-profile templates for eligible backends.
+- Phase 190 is complete: README, onboarding, inspect, and Control UI now use the same truthful provider-lane versus delegated-agent language and expose delegated runtime receipts more clearly.
 
 ### Pending Todos
 
@@ -76,5 +78,5 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-04-08
-Stopped at: Phase 187 completed after wiring delegated backend contracts into inspect setup handoff and enterprise policy surfaces.
+Stopped at: Phase 190 completed after repairing the remaining provider-versus-agent journey seams across README, onboarding, inspect, and Control UI.
 Resume file: None

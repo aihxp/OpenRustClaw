@@ -1,5 +1,21 @@
 # Project Milestones: OpenRustClaw
 
+## v1.44 Agent Discovery, Journey Cohesion, and Provider Access (Shipped: 2026-04-08)
+
+**Phases completed:** 5 phases, 10 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.44-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Added truthful local-agent discovery for Claude Code, Codex, Gemini CLI, and conservative Cursor detection with durable readiness, auth, and policy metadata.
+- Introduced compliance-safe delegated backend contracts that keep installed vendor CLIs separate from direct API providers and avoid token scraping or unsupported OAuth reuse.
+- Unified onboarding, model selection, setup handoff, and inspect around one provider-or-agent lane catalog with durable lane identity persistence.
+- Routed eligible work through bounded delegated local-agent runtime lanes with audit receipts, seeded control model profiles, and clearer tool-execution visibility.
+- Repaired the user and agent journey across README, onboarding, inspect, and Control UI so provider lanes, local runtimes, and delegated local agents now tell the same truthful story.
+
+---
+
 ## v1.43 Learning Loop, Memory Depth, and God Mode (Shipped: 2026-04-08)
 
 **Phases completed:** 5 phases, 10 plans, 0 tasks

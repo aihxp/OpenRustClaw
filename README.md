@@ -7,7 +7,7 @@
 
 OpenRustClaw is a self-hosted open-source assistant platform built around a Rust-first runtime, durable operator surfaces, and a trust-first control plane. It is designed for people who want one deployable assistant product they can run for themselves, a small team, a company, or an enterprise environment without depending on a hosted SaaS control layer.
 
-The product already ships a coherent baseline for onboarding, persisted assistant continuity, memory policy, tools and coding audit trails, browser and channel workflows, voice and mobile operator surfaces, enterprise governance, and an operator-gated full-autonomy lane. The current documentation milestone is about making that shipped surface legible.
+The product already ships a coherent baseline for onboarding, persisted assistant continuity, memory policy, tools and coding audit trails, browser and channel workflows, voice and mobile operator surfaces, enterprise governance, and an operator-gated full-autonomy lane. It now also presents one truthful agent story across direct providers, local runtimes, and supported delegated local agent CLIs.
 
 ## Choose Your Path
 
@@ -59,6 +59,8 @@ cargo run --bin openrustclaw -- onboard
 
 The onboarding flow asks which deployment mode you want, offers `Standard`, `Advanced`, or `Custom` setup depth, validates provider and runtime readiness, and only offers to launch the assistant after the first-start health gate passes.
 
+Direct providers and local runtimes are configured during onboarding. If OpenRustClaw detects supported local agent CLIs such as Claude Code, Codex, or Gemini CLI, onboarding shows them as delegated local agent lanes, preserves that lane selection, and explains the support boundary truthfully: first-run bootstrap still validates the documented provider path, while later delegated execution uses the installed CLI without importing vendor tokens.
+
 ### 3. Start the runtime and assistant
 
 ```bash
@@ -76,7 +78,7 @@ The normal operator loop is:
 2. `openrustclaw doctor` to verify first-start or repair blockers
 3. `openrustclaw start` to run the Rust-owned runtime
 4. `openrustclaw assistant` for the persisted assistant session
-5. `/control/ui` for sessions, setup handoff, product mode, tools, browser, enterprise, autonomy, and runtime inspection
+5. `/control/ui` for sessions, setup handoff, provider or agent lane visibility, delegated runtime receipts, product mode, tools, browser, enterprise, autonomy, and runtime inspection
 
 Useful commands:
 
@@ -113,6 +115,7 @@ OpenRustClaw is intentionally opinionated:
 - it is self-hosted and open source, not a hosted SaaS assistant
 - the Rust runtime is the default production path
 - the Python sidecar is an optional compatibility lane, not the required runtime core
+- installed vendor CLIs are treated as delegated execution backends; OpenRustClaw does not scrape cached browser sessions or import vendor tokens from them
 - full autonomy is a separate operator-gated lane, not the default behavior
 - documentation should describe shipped behavior, not aspirational scope
 

@@ -26,6 +26,7 @@ pub mod memory_views;
 pub mod mobile_operator;
 pub mod mobile_runtime_control;
 pub mod mobile_runtime_status;
+pub mod onboarding_lane_catalog;
 pub mod operator_status_control;
 pub mod orchestration_reporting;
 pub mod orchestration_routing;

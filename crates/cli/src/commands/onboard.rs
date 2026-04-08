@@ -5,9 +5,11 @@ use chrono::Utc;
 use console::style;
 use dialoguer::{Confirm, Input, MultiSelect, Password, Select, theme::ColorfulTheme};
 use indicatif::{ProgressBar, ProgressStyle};
-use openrustclaw_app::agent_backend_catalog::{
-    AgentBackendCatalogEntry, AgentBackendCatalogService, AgentBackendReadiness,
-    backend_for_provider,
+use openrustclaw_app::agent_backend_catalog::AgentBackendCatalogService;
+use openrustclaw_app::agent_backend_control::AgentBackendControlService;
+use openrustclaw_app::onboarding_lane_catalog::{
+    DirectProviderLaneStatus, OnboardingLaneCatalogService, OnboardingLaneDescriptor,
+    OnboardingLaneKind,
 };
 use openrustclaw_app::setup_lifecycle as app_setup_lifecycle;
 use openrustclaw_core::config::AppConfig;
@@ -27,6 +29,12 @@ pub struct OnboardingState {
     pub channels_configured: Vec<String>,
     pub model_configured: bool,
     pub preferred_provider: Option<String>,
+    pub selected_lane_id: Option<String>,
+    pub selected_lane_label: Option<String>,
+    pub selected_lane_kind: Option<String>,
+    pub selected_backend_id: Option<String>,
+    pub selected_lane_detail: Option<String>,
+    pub selected_lane_compatibility_note: Option<String>,
     pub selected_access_mode: Option<String>,
     pub selected_primary_model: Option<String>,
     pub selected_primary_model_source: Option<String>,
@@ -171,6 +179,18 @@ pub struct SetupState {
     #[serde(default)]
     pub selected_provider: Option<String>,
     #[serde(default)]
+    pub selected_lane_id: Option<String>,
+    #[serde(default)]
+    pub selected_lane_label: Option<String>,
+    #[serde(default)]
+    pub selected_lane_kind: Option<String>,
+    #[serde(default)]
+    pub selected_backend_id: Option<String>,
+    #[serde(default)]
+    pub selected_lane_detail: Option<String>,
+    #[serde(default)]
+    pub selected_lane_compatibility_note: Option<String>,
+    #[serde(default)]
     pub selected_access_mode: Option<String>,
     #[serde(default)]
     pub selected_primary_model: Option<String>,
@@ -255,163 +275,108 @@ impl OnboardingProviderAccessMode {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-struct OnboardingProviderDescriptor {
-    id: &'static str,
-    label: &'static str,
-    access_modes: &'static [OnboardingProviderAccessMode],
-    api_key_prompt: Option<&'static str>,
-    recommended: bool,
+fn direct_provider_lane_statuses(ollama_available: bool) -> Vec<DirectProviderLaneStatus> {
+    [
+        (
+            "anthropic",
+            std::env::var("ANTHROPIC_API_KEY").is_ok(),
+            "configured",
+            "not configured",
+        ),
+        (
+            "openai",
+            std::env::var("OPENAI_API_KEY").is_ok(),
+            "configured",
+            "not configured",
+        ),
+        (
+            "openrouter",
+            std::env::var("OPENROUTER_API_KEY").is_ok(),
+            "configured",
+            "not configured",
+        ),
+        (
+            "gemini",
+            std::env::var("GEMINI_API_KEY").is_ok() || std::env::var("GOOGLE_API_KEY").is_ok(),
+            "configured",
+            "not configured",
+        ),
+        ("ollama", ollama_available, "available", "not detected"),
+    ]
+    .into_iter()
+    .map(
+        |(provider_id, available, available_label, unavailable_label)| DirectProviderLaneStatus {
+            provider_id: provider_id.to_string(),
+            available,
+            status_label: if available {
+                available_label.to_string()
+            } else {
+                unavailable_label.to_string()
+            },
+        },
+    )
+    .collect()
 }
 
-impl OnboardingProviderDescriptor {
-    fn display_label(self) -> String {
-        if self.recommended {
-            format!("{} - Recommended", self.label)
-        } else {
-            self.label.to_string()
-        }
-    }
+async fn onboarding_lane_catalog() -> Result<Vec<OnboardingLaneDescriptor>> {
+    let agent_backends = AgentBackendCatalogService::new().discover();
+    let delegated_contracts =
+        AgentBackendControlService::new().contracts_from_catalog(&agent_backends);
+    let direct_statuses = direct_provider_lane_statuses(models::check_ollama().await);
+    Ok(OnboardingLaneCatalogService::new().catalog(&direct_statuses, &delegated_contracts))
 }
 
-const PROVIDER_ACCESS_API_KEY: [OnboardingProviderAccessMode; 1] =
-    [OnboardingProviderAccessMode::ApiKey];
-const PROVIDER_ACCESS_LOCAL_RUNTIME: [OnboardingProviderAccessMode; 1] =
-    [OnboardingProviderAccessMode::LocalRuntime];
-
-const ONBOARDING_PROVIDER_DESCRIPTORS: [OnboardingProviderDescriptor; 5] = [
-    OnboardingProviderDescriptor {
-        id: "anthropic",
-        label: "Anthropic (Claude)",
-        access_modes: &PROVIDER_ACCESS_API_KEY,
-        api_key_prompt: Some("Anthropic API key (starts with sk-ant-...)"),
-        recommended: true,
-    },
-    OnboardingProviderDescriptor {
-        id: "openai",
-        label: "OpenAI (GPT)",
-        access_modes: &PROVIDER_ACCESS_API_KEY,
-        api_key_prompt: Some("OpenAI API key (starts with sk-...)"),
-        recommended: false,
-    },
-    OnboardingProviderDescriptor {
-        id: "openrouter",
-        label: "OpenRouter (Multiple models)",
-        access_modes: &PROVIDER_ACCESS_API_KEY,
-        api_key_prompt: Some("OpenRouter API key"),
-        recommended: false,
-    },
-    OnboardingProviderDescriptor {
-        id: "gemini",
-        label: "Google Gemini",
-        access_modes: &PROVIDER_ACCESS_API_KEY,
-        api_key_prompt: Some("Gemini API key"),
-        recommended: false,
-    },
-    OnboardingProviderDescriptor {
-        id: "ollama",
-        label: "Ollama (Local models)",
-        access_modes: &PROVIDER_ACCESS_LOCAL_RUNTIME,
-        api_key_prompt: None,
-        recommended: false,
-    },
-];
-
-fn onboarding_provider_descriptors() -> &'static [OnboardingProviderDescriptor] {
-    &ONBOARDING_PROVIDER_DESCRIPTORS
-}
-
-fn provider_display_label(
-    descriptor: OnboardingProviderDescriptor,
-    agent_backends: &[AgentBackendCatalogEntry],
-) -> String {
-    let mut label = descriptor.display_label();
-    if let Some(entry) = backend_for_provider(agent_backends, descriptor.id)
-        && entry.detected
-    {
-        let suffix = match entry.readiness {
-            AgentBackendReadiness::Ready => {
-                format!("{} detected locally", entry.display_name())
-            }
-            AgentBackendReadiness::Candidate => {
-                format!("{} available locally", entry.display_name())
-            }
-            AgentBackendReadiness::DetectionOnly => {
-                format!("{} detected (integration only)", entry.display_name())
-            }
-            AgentBackendReadiness::Unavailable => String::new(),
-        };
-        if !suffix.is_empty() {
-            label.push_str(" - ");
-            label.push_str(&suffix);
-        }
-    }
-    label
-}
-
-fn print_onboarding_agent_backend_hints(agent_backends: &[AgentBackendCatalogEntry]) {
-    let relevant = onboarding_provider_descriptors()
+fn print_onboarding_agent_backend_hints(lanes: &[OnboardingLaneDescriptor]) {
+    let delegated = lanes
         .iter()
-        .filter_map(|descriptor| {
-            backend_for_provider(agent_backends, descriptor.id)
-                .filter(|entry| entry.detected)
-                .map(|entry| (descriptor.label, entry))
-        })
+        .filter(|lane| lane.backend_id.is_some())
         .collect::<Vec<_>>();
 
-    if !relevant.is_empty() {
-        println!("Detected local agent accounts:");
-        for (provider_label, entry) in relevant {
-            let readiness = match entry.readiness {
-                AgentBackendReadiness::Ready => "ready for future delegated backend work",
-                AgentBackendReadiness::Candidate => {
-                    "detected and awaiting delegated backend wiring"
-                }
-                AgentBackendReadiness::DetectionOnly => {
-                    "detected, but only integration metadata is confirmed today"
-                }
-                AgentBackendReadiness::Unavailable => "not detected",
-            };
-            println!(
-                "  - {} via {}: {}",
-                provider_label,
-                entry.display_name(),
-                readiness
-            );
+    if !delegated.is_empty() {
+        println!("Detected delegated local agent lanes:");
+        println!(
+            "  OpenRustClaw keeps these lanes visible, but later delegated runs use the installed CLI directly instead of importing vendor tokens."
+        );
+        for lane in delegated {
+            println!("  - {}: {}", lane.label, lane.status_label);
+            if let Some(note) = lane.compatibility_note.as_deref() {
+                println!("    {}", note);
+            }
         }
         println!();
     }
 }
 
-fn print_selected_provider_backend_hint(
-    descriptor: OnboardingProviderDescriptor,
-    agent_backends: &[AgentBackendCatalogEntry],
-) {
-    if let Some(entry) = backend_for_provider(agent_backends, descriptor.id)
-        && entry.detected
-    {
+fn print_selected_provider_backend_hint(descriptor: &OnboardingLaneDescriptor) {
+    if descriptor.backend_id.is_some() {
         println!(
-            "  Local {} status: {}.",
-            entry.display_name(),
-            entry
-                .readiness_reason
-                .as_deref()
-                .unwrap_or("detected on this machine")
+            "  {} stays visible as a delegated local agent lane backed by `{}`.",
+            descriptor.label, descriptor.provider_id
         );
+        println!("  Local agent status: {}.", descriptor.detail);
+        if let Some(note) = descriptor.compatibility_note.as_deref() {
+            println!("  Compatibility note: {note}");
+        }
         println!(
-            "  Onboarding will keep using the documented {} path until delegated backend execution is fully wired.",
-            descriptor.label
+            "  First-run onboarding still bootstraps through the documented `{}` provider path today, and later delegated execution stays bounded and audited.",
+            descriptor.provider_id
         );
     }
 }
 
 fn persist_provider_path_selection(
     workspace_root: &Path,
-    provider: &str,
+    descriptor: &OnboardingLaneDescriptor,
     access_mode: Option<&str>,
 ) -> Result<()> {
     with_setup_state_mut(workspace_root, |setup| {
-        setup.selected_provider = Some(provider.to_string());
+        setup.selected_provider = Some(descriptor.provider_id.clone());
+        setup.selected_lane_id = Some(descriptor.lane_id.clone());
+        setup.selected_lane_label = Some(descriptor.label.clone());
+        setup.selected_lane_kind = Some(lane_kind_id(&descriptor.kind).to_string());
+        setup.selected_backend_id = descriptor.backend_id.clone();
+        setup.selected_lane_detail = Some(descriptor.detail.clone());
+        setup.selected_lane_compatibility_note = descriptor.compatibility_note.clone();
         setup.selected_access_mode = access_mode.map(ToString::to_string);
         setup.selected_primary_model = None;
         setup.selected_primary_model_source = None;
@@ -420,20 +385,44 @@ fn persist_provider_path_selection(
 
 fn select_provider_access_mode(
     wizard: &OnboardingWizard,
-    descriptor: OnboardingProviderDescriptor,
+    descriptor: &OnboardingLaneDescriptor,
 ) -> Result<OnboardingProviderAccessMode> {
-    if descriptor.access_modes.len() == 1 {
-        let mode = descriptor.access_modes[0];
-        println!(
-            "  {} uses the {} onboarding path.",
-            descriptor.label,
-            mode.label()
-        );
+    let access_modes = descriptor
+        .supported_access_modes
+        .iter()
+        .filter_map(|mode| OnboardingProviderAccessMode::from_id(mode))
+        .collect::<Vec<_>>();
+
+    if access_modes.is_empty() {
+        return Err(anyhow!(
+            "{} does not yet expose a supported onboarding path",
+            descriptor.label
+        ));
+    }
+
+    if access_modes.len() == 1 {
+        let mode = access_modes[0];
+        if descriptor.backend_id.is_some() {
+            println!(
+                "  {} stays selected as a delegated local agent lane.",
+                descriptor.label
+            );
+            println!(
+                "  Onboarding will validate the backing `{}` provider path via {}.",
+                descriptor.provider_id,
+                mode.label()
+            );
+        } else {
+            println!(
+                "  {} uses the {} onboarding path.",
+                descriptor.label,
+                mode.label()
+            );
+        }
         return Ok(mode);
     }
 
-    let labels = descriptor
-        .access_modes
+    let labels = access_modes
         .iter()
         .map(|mode| format!("{} - {}", mode.label(), mode.detail()))
         .collect::<Vec<_>>();
@@ -442,12 +431,7 @@ fn select_provider_access_mode(
         .selected_access_mode
         .as_deref()
         .and_then(OnboardingProviderAccessMode::from_id)
-        .and_then(|current| {
-            descriptor
-                .access_modes
-                .iter()
-                .position(|mode| *mode == current)
-        })
+        .and_then(|current| access_modes.iter().position(|mode| *mode == current))
         .unwrap_or(0);
     let selection = Select::with_theme(&wizard.theme)
         .with_prompt(format!(
@@ -457,11 +441,18 @@ fn select_provider_access_mode(
         .items(&labels)
         .default(default)
         .interact()?;
-    descriptor
-        .access_modes
+    access_modes
         .get(selection)
         .copied()
         .ok_or_else(|| anyhow!("invalid provider access-mode selection"))
+}
+
+fn lane_kind_id(kind: &OnboardingLaneKind) -> &'static str {
+    match kind {
+        OnboardingLaneKind::DirectApi => "direct_api",
+        OnboardingLaneKind::LocalRuntime => "local_runtime",
+        OnboardingLaneKind::DelegatedAgent => "delegated_agent",
+    }
 }
 
 fn default_setup_state_version() -> u32 {
@@ -649,6 +640,15 @@ impl OnboardingWizard {
                     remote_connectivity_profile: self.state.remote_connectivity_profile.clone(),
                     setup_path: self.state.profile.clone(),
                     selected_provider: self.state.preferred_provider.clone(),
+                    selected_lane_id: self.state.selected_lane_id.clone(),
+                    selected_lane_label: self.state.selected_lane_label.clone(),
+                    selected_lane_kind: self.state.selected_lane_kind.clone(),
+                    selected_backend_id: self.state.selected_backend_id.clone(),
+                    selected_lane_detail: self.state.selected_lane_detail.clone(),
+                    selected_lane_compatibility_note: self
+                        .state
+                        .selected_lane_compatibility_note
+                        .clone(),
                     selected_access_mode: self.state.selected_access_mode.clone(),
                     selected_primary_model: self.state.selected_primary_model.clone(),
                     selected_primary_model_source: self.state.selected_primary_model_source.clone(),
@@ -697,6 +697,13 @@ Let's get started!
             setup_state.setup.remote_connectivity_profile.clone();
         self.state.profile = setup_state.setup.setup_path.clone();
         self.state.preferred_provider = setup_state.setup.selected_provider.clone();
+        self.state.selected_lane_id = setup_state.setup.selected_lane_id.clone();
+        self.state.selected_lane_label = setup_state.setup.selected_lane_label.clone();
+        self.state.selected_lane_kind = setup_state.setup.selected_lane_kind.clone();
+        self.state.selected_backend_id = setup_state.setup.selected_backend_id.clone();
+        self.state.selected_lane_detail = setup_state.setup.selected_lane_detail.clone();
+        self.state.selected_lane_compatibility_note =
+            setup_state.setup.selected_lane_compatibility_note.clone();
         self.state.selected_access_mode = setup_state.setup.selected_access_mode.clone();
         self.state.selected_primary_model = setup_state.setup.selected_primary_model.clone();
         self.state.selected_primary_model_source =
@@ -797,6 +804,9 @@ Let's get started!
         );
         if let Some(provider) = self.state.preferred_provider.as_deref() {
             println!("  Provider: {provider}");
+        }
+        if let Some(lane) = self.state.selected_lane_label.as_deref() {
+            println!("  Selected Lane: {lane}");
         }
         if let Some(access_mode) = self.state.selected_access_mode.as_deref() {
             println!("  Access Mode: {access_mode}");
@@ -1318,38 +1328,44 @@ async fn setup_slack(wizard: &mut OnboardingWizard) -> Result<&'static str> {
 // ============================================================================
 
 async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
-    let providers = onboarding_provider_descriptors();
-    let agent_backends = AgentBackendCatalogService::new().discover();
-    print_onboarding_agent_backend_hints(&agent_backends);
+    let providers = onboarding_lane_catalog().await?;
+    print_onboarding_agent_backend_hints(&providers);
     let provider_labels = providers
         .iter()
-        .map(|descriptor| provider_display_label(*descriptor, &agent_backends))
+        .map(OnboardingLaneDescriptor::selection_label)
         .collect::<Vec<_>>();
     let default_provider_index = wizard
         .state
-        .preferred_provider
+        .selected_lane_id
         .as_deref()
+        .or(wizard.state.preferred_provider.as_deref())
         .and_then(|provider| {
-            providers
-                .iter()
-                .position(|descriptor| descriptor.id == provider)
+            providers.iter().position(|descriptor| {
+                descriptor.provider_id == provider || descriptor.lane_id == provider
+            })
         })
         .unwrap_or(0);
 
     let selection = Select::with_theme(&wizard.theme)
-        .with_prompt("Choose your LLM provider")
+        .with_prompt("Choose your first provider or delegated agent lane")
         .items(&provider_labels)
         .default(default_provider_index)
         .interact()?;
     let descriptor = providers
         .get(selection)
-        .copied()
+        .cloned()
         .ok_or_else(|| anyhow!("invalid provider selection"))?;
-    print_selected_provider_backend_hint(descriptor, &agent_backends);
+    print_selected_provider_backend_hint(&descriptor);
 
-    wizard.state.preferred_provider = Some(descriptor.id.to_string());
+    wizard.state.preferred_provider = Some(descriptor.provider_id.clone());
+    wizard.state.selected_lane_id = Some(descriptor.lane_id.clone());
+    wizard.state.selected_lane_label = Some(descriptor.label.clone());
+    wizard.state.selected_lane_kind = Some(lane_kind_id(&descriptor.kind).to_string());
+    wizard.state.selected_backend_id = descriptor.backend_id.clone();
+    wizard.state.selected_lane_detail = Some(descriptor.detail.clone());
+    wizard.state.selected_lane_compatibility_note = descriptor.compatibility_note.clone();
 
-    let access_mode = select_provider_access_mode(wizard, descriptor)?;
+    let access_mode = select_provider_access_mode(wizard, &descriptor)?;
     wizard.state.selected_access_mode = Some(access_mode.id().to_string());
     wizard.state.selected_primary_model = None;
     wizard.state.selected_primary_model_source = None;
@@ -1357,7 +1373,7 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
     let workspace_root = std::env::current_dir()?;
     persist_provider_path_selection(
         &workspace_root,
-        descriptor.id,
+        &descriptor,
         wizard.state.selected_access_mode.as_deref(),
     )?;
 
@@ -1369,7 +1385,7 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
             runtime::switch_provider(
                 "config/default.toml",
                 &workspace_root,
-                descriptor.id,
+                &descriptor.provider_id,
                 None,
                 None,
                 None,
@@ -1380,7 +1396,8 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
             println!("  {}", access_mode.detail());
             let api_key_prompt = descriptor
                 .api_key_prompt
-                .ok_or_else(|| anyhow!("{} requires an API key prompt", descriptor.id))?;
+                .as_deref()
+                .ok_or_else(|| anyhow!("{} requires an API key prompt", descriptor.provider_id))?;
             let api_key = Password::with_theme(&wizard.theme)
                 .with_prompt(api_key_prompt)
                 .interact()?;
@@ -1388,11 +1405,11 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
                 println!("⚠️  No API key provided, skipping model setup");
                 return Ok(true);
             }
-            save_provider_config(descriptor.id, &api_key).await?;
+            save_provider_config(&descriptor.provider_id, &api_key).await?;
             runtime::switch_provider(
                 "config/default.toml",
                 &workspace_root,
-                descriptor.id,
+                &descriptor.provider_id,
                 None,
                 None,
                 None,
@@ -1406,27 +1423,32 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
         }
     }
 
-    let provider_assessment =
-        validate_provider_bootstrap(&workspace_root, descriptor.id, Some(access_mode.id()), true)
-            .await?;
+    let provider_assessment = validate_provider_bootstrap(
+        &workspace_root,
+        &descriptor.provider_id,
+        Some(access_mode.id()),
+        true,
+    )
+    .await?;
     record_bootstrap_outcome_with_metadata(
         &workspace_root,
         "provider",
-        descriptor.id,
+        &descriptor.provider_id,
         provider_assessment.status,
         provider_assessment.detail.clone(),
         Some(&provider_assessment),
     )?;
-    print_bootstrap_assessment(descriptor.id, &provider_assessment);
+    print_bootstrap_assessment(&descriptor.provider_id, &provider_assessment);
     if provider_assessment.blocking {
         return Err(anyhow!(provider_assessment.detail));
     }
 
-    let primary_model = select_primary_model(wizard, &workspace_root, descriptor.id).await?;
+    let primary_model =
+        select_primary_model(wizard, &workspace_root, &descriptor.provider_id).await?;
     runtime::switch_provider(
         "config/default.toml",
         &workspace_root,
-        descriptor.id,
+        &descriptor.provider_id,
         Some(primary_model.model.as_str()),
         None,
         None,
@@ -1437,7 +1459,7 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
 
     let provider_assessment = validate_provider_bootstrap(
         &workspace_root,
-        descriptor.id,
+        &descriptor.provider_id,
         Some(access_mode.id()),
         false,
     )
@@ -1445,12 +1467,12 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
     record_bootstrap_outcome_with_metadata(
         &workspace_root,
         "provider",
-        descriptor.id,
+        &descriptor.provider_id,
         provider_assessment.status,
         provider_assessment.detail.clone(),
         Some(&provider_assessment),
     )?;
-    print_bootstrap_assessment(descriptor.id, &provider_assessment);
+    print_bootstrap_assessment(&descriptor.provider_id, &provider_assessment);
 
     wizard.state.model_configured = true;
     let runtime_assessment =
@@ -1466,12 +1488,26 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
     if provider_assessment.blocking {
         return Err(anyhow!(provider_assessment.detail));
     }
-    println!(
-        "✓ Model configured ({} via {} / {})",
-        descriptor.label,
-        access_mode.label(),
-        primary_model.model
-    );
+    if descriptor.backend_id.is_some() {
+        println!(
+            "✓ Lane configured ({} via {} / {})",
+            descriptor.label,
+            access_mode.label(),
+            primary_model.model
+        );
+        if let Some(backend_id) = descriptor.backend_id.as_deref() {
+            println!(
+                "  Delegated runtime routing for `{backend_id}` is available later through control model profiles and policy-backed execution."
+            );
+        }
+    } else {
+        println!(
+            "✓ Model configured ({} via {} / {})",
+            descriptor.label,
+            access_mode.label(),
+            primary_model.model
+        );
+    }
     println!(
         "  Control-plane actions will prefer the dedicated fallback lane in config/default.toml"
     );
@@ -1734,6 +1770,12 @@ fn app_setup_state(setup: &SetupState) -> app_setup_lifecycle::SetupLifecycleSta
         status: setup.status.clone(),
         setup_path: setup.setup_path.clone(),
         selected_provider: setup.selected_provider.clone(),
+        selected_lane_id: setup.selected_lane_id.clone(),
+        selected_lane_label: setup.selected_lane_label.clone(),
+        selected_lane_kind: setup.selected_lane_kind.clone(),
+        selected_backend_id: setup.selected_backend_id.clone(),
+        selected_lane_detail: setup.selected_lane_detail.clone(),
+        selected_lane_compatibility_note: setup.selected_lane_compatibility_note.clone(),
         selected_access_mode: setup.selected_access_mode.clone(),
         selected_primary_model: setup.selected_primary_model.clone(),
         selected_primary_model_source: setup.selected_primary_model_source.clone(),
@@ -1840,6 +1882,12 @@ where
             remote_connectivity_profile: None,
             setup_path: None,
             selected_provider: None,
+            selected_lane_id: None,
+            selected_lane_label: None,
+            selected_lane_kind: None,
+            selected_backend_id: None,
+            selected_lane_detail: None,
+            selected_lane_compatibility_note: None,
             selected_access_mode: None,
             selected_primary_model: None,
             selected_primary_model_source: None,
@@ -3121,32 +3169,33 @@ mod tests {
     }
 
     #[test]
-    fn test_onboarding_provider_descriptors_match_current_supported_paths() {
-        let descriptors = onboarding_provider_descriptors();
-        assert_eq!(descriptors.len(), 5);
+    fn test_onboarding_lane_catalog_matches_current_supported_paths() {
+        let catalog =
+            OnboardingLaneCatalogService::new().catalog(&direct_provider_lane_statuses(false), &[]);
+        assert_eq!(catalog.len(), 5);
         assert_eq!(
-            descriptors
+            catalog
                 .iter()
-                .find(|descriptor| descriptor.id == "anthropic")
+                .find(|descriptor| descriptor.provider_id == "anthropic")
                 .unwrap()
-                .access_modes,
-            &[OnboardingProviderAccessMode::ApiKey]
+                .supported_access_modes,
+            vec!["api_key".to_string()]
         );
         assert_eq!(
-            descriptors
+            catalog
                 .iter()
-                .find(|descriptor| descriptor.id == "gemini")
+                .find(|descriptor| descriptor.provider_id == "gemini")
                 .unwrap()
-                .access_modes,
-            &[OnboardingProviderAccessMode::ApiKey]
+                .supported_access_modes,
+            vec!["api_key".to_string()]
         );
         assert_eq!(
-            descriptors
+            catalog
                 .iter()
-                .find(|descriptor| descriptor.id == "ollama")
+                .find(|descriptor| descriptor.provider_id == "ollama")
                 .unwrap()
-                .access_modes,
-            &[OnboardingProviderAccessMode::LocalRuntime]
+                .supported_access_modes,
+            vec!["local_runtime".to_string()]
         );
     }
 
@@ -3223,6 +3272,12 @@ mod tests {
                 }),
                 setup_path: Some("Custom".to_string()),
                 selected_provider: Some("openrouter".to_string()),
+                selected_lane_id: Some("openrouter".to_string()),
+                selected_lane_label: Some("OpenRouter (Multiple models)".to_string()),
+                selected_lane_kind: Some("direct_api".to_string()),
+                selected_backend_id: None,
+                selected_lane_detail: Some("Use a provider API key stored in `.env`.".to_string()),
+                selected_lane_compatibility_note: None,
                 selected_access_mode: Some("api_key".to_string()),
                 selected_primary_model: Some("openai/gpt-4o".to_string()),
                 selected_primary_model_source: Some("live_discovery".to_string()),
@@ -3295,6 +3350,12 @@ mod tests {
             remote_connectivity_profile: None,
             setup_path: Some("Standard".to_string()),
             selected_provider: None,
+            selected_lane_id: None,
+            selected_lane_label: None,
+            selected_lane_kind: None,
+            selected_backend_id: None,
+            selected_lane_detail: None,
+            selected_lane_compatibility_note: None,
             selected_access_mode: None,
             selected_primary_model: None,
             selected_primary_model_source: None,
@@ -3405,6 +3466,12 @@ mod tests {
             remote_connectivity_profile: None,
             setup_path: Some("Advanced".to_string()),
             selected_provider: Some("anthropic".to_string()),
+            selected_lane_id: Some("anthropic".to_string()),
+            selected_lane_label: Some("Anthropic (Claude)".to_string()),
+            selected_lane_kind: Some("direct_api".to_string()),
+            selected_backend_id: None,
+            selected_lane_detail: Some("Use a provider API key stored in `.env`.".to_string()),
+            selected_lane_compatibility_note: None,
             selected_access_mode: Some("api_key".to_string()),
             selected_primary_model: Some("claude-sonnet-4-20250514".to_string()),
             selected_primary_model_source: Some("manual_entry".to_string()),
@@ -3501,6 +3568,12 @@ mod tests {
                 remote_connectivity_profile: None,
                 setup_path: Some("Advanced".to_string()),
                 selected_provider: Some("anthropic".to_string()),
+                selected_lane_id: Some("anthropic".to_string()),
+                selected_lane_label: Some("Anthropic (Claude)".to_string()),
+                selected_lane_kind: Some("direct_api".to_string()),
+                selected_backend_id: None,
+                selected_lane_detail: Some("Use a provider API key stored in `.env`.".to_string()),
+                selected_lane_compatibility_note: None,
                 selected_access_mode: Some("api_key".to_string()),
                 selected_primary_model: Some("claude-sonnet-4-20250514".to_string()),
                 selected_primary_model_source: Some("manual_entry".to_string()),
@@ -3605,6 +3678,14 @@ mod tests {
                 remote_connectivity_profile: None,
                 setup_path: Some("Standard".to_string()),
                 selected_provider: Some("ollama".to_string()),
+                selected_lane_id: Some("ollama".to_string()),
+                selected_lane_label: Some("Ollama (Local models)".to_string()),
+                selected_lane_kind: Some("local_runtime".to_string()),
+                selected_backend_id: None,
+                selected_lane_detail: Some(
+                    "Use a local runtime already running on this machine.".to_string(),
+                ),
+                selected_lane_compatibility_note: None,
                 selected_access_mode: Some("local_runtime".to_string()),
                 selected_primary_model: None,
                 selected_primary_model_source: None,
@@ -3661,6 +3742,12 @@ mod tests {
                 remote_connectivity_profile: None,
                 setup_path: Some("Standard".to_string()),
                 selected_provider: Some("anthropic".to_string()),
+                selected_lane_id: Some("anthropic".to_string()),
+                selected_lane_label: Some("Anthropic (Claude)".to_string()),
+                selected_lane_kind: Some("direct_api".to_string()),
+                selected_backend_id: None,
+                selected_lane_detail: Some("Use a provider API key stored in `.env`.".to_string()),
+                selected_lane_compatibility_note: None,
                 selected_access_mode: Some("api_key".to_string()),
                 selected_primary_model: Some("claude-sonnet-4-20250514".to_string()),
                 selected_primary_model_source: Some("live_discovery".to_string()),
@@ -3674,10 +3761,29 @@ mod tests {
         };
         save_setup_state(dir.path(), &manifest).unwrap();
 
-        persist_provider_path_selection(dir.path(), "openai", Some("api_key")).unwrap();
+        let descriptor = OnboardingLaneDescriptor {
+            lane_id: "openai".to_string(),
+            provider_id: "openai".to_string(),
+            backend_id: None,
+            label: "OpenAI (GPT)".to_string(),
+            kind: OnboardingLaneKind::DirectApi,
+            supported_access_modes: vec!["api_key".to_string()],
+            api_key_prompt: Some("OpenAI API key".to_string()),
+            recommended: false,
+            status_label: "configured".to_string(),
+            detail: "Use a provider API key stored in `.env`.".to_string(),
+            compatibility_note: None,
+            model_catalog_label: None,
+        };
+        persist_provider_path_selection(dir.path(), &descriptor, Some("api_key")).unwrap();
 
         let loaded = load_setup_state(dir.path()).unwrap().unwrap();
         assert_eq!(loaded.setup.selected_provider.as_deref(), Some("openai"));
+        assert_eq!(loaded.setup.selected_lane_id.as_deref(), Some("openai"));
+        assert_eq!(
+            loaded.setup.selected_lane_label.as_deref(),
+            Some("OpenAI (GPT)")
+        );
         assert_eq!(
             loaded.setup.selected_access_mode.as_deref(),
             Some("api_key")

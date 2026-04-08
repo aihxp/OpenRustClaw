@@ -368,8 +368,8 @@
           <h1>Runtime, services, sessions, memory, jobs, channels, orchestration, browser, and extension control.</h1>
           <p>
             This dashboard reuses the shipped <code>/control/...</code> APIs instead of inventing
-            a separate frontend-only state model. It is the shipped UI shell, not the final unbounded
-            endpoint.
+            a separate frontend-only state model. It keeps provider lanes, local runtimes, delegated
+            local agents, and their receipts on the same truthful operator path.
           </p>
           <div class="status-grid" id="status-cards">
             <div class="status-pill"><label>Default Provider</label><strong id="status-provider">-</strong></div>
@@ -463,7 +463,7 @@
         </article>
         <article class="panel span-12">
           <h2>Setup Handoff</h2>
-          <p class="muted">Current onboarding status, next action, and retained bootstrap outcomes from the durable setup-state contract.</p>
+          <p class="muted">Current onboarding status, selected provider or delegated agent lane, and retained bootstrap outcomes from the durable setup-state contract.</p>
           <div class="surface"><div id="setup-handoff" class="summary-card empty">Loading…</div></div>
           <div class="surface" style="margin-top: 12px">
             <table class="table">
@@ -471,6 +471,14 @@
                 <tr><th>Surface</th><th>Status</th><th>Updated</th><th>Detail</th></tr>
               </thead>
               <tbody id="setup-bootstrap-outcomes"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
+                <tr><th>Backend</th><th>Readiness</th><th>Auth</th><th>Runtime Lane</th><th>Detail</th></tr>
+              </thead>
+              <tbody id="setup-agent-backends"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
             </table>
           </div>
         </article>
@@ -2984,10 +2992,43 @@
         renderSelfHostedProductMode(payload);
       }
 
+      function renderAgentBackendAuth(entry) {
+        switch (entry?.auth_status) {
+          case "logged_in":
+            return entry?.auth_method ? `logged in via ${entry.auth_method}` : "logged in";
+          case "logged_out":
+            return "not logged in";
+          case "not_supported":
+            return "vendor-specific or not exposed";
+          default:
+            return "status unknown";
+        }
+      }
+
+      function renderAgentBackendRuntimeLane(contract, entry) {
+        if (!contract) {
+          return "visible for discovery only";
+        }
+        if (contract.execution_eligible) {
+          return "bounded delegated execution available";
+        }
+        switch (entry?.readiness) {
+          case "candidate":
+            return "visible locally but still not execution-ready";
+          case "detection_only":
+            return "detection only";
+          case "unavailable":
+            return "not detected";
+          default:
+            return "visible for discovery only";
+        }
+      }
+
       function renderSetupHandoff(report) {
         if (!report || report.error) {
           renderSummaryCard("setup-handoff", report?.error || "No setup handoff summary available.", null);
           renderTableRows("setup-bootstrap-outcomes", [], "No bootstrap outcomes recorded yet.");
+          renderTableRows("setup-agent-backends", [], "No local agent backends detected yet.");
           return;
         }
 
@@ -2998,6 +3039,12 @@
         const remoteFallbacks = remoteProfile
           ? ((remoteProfile.fallback_paths || []).map((value) => String(value).replaceAll("_", " ")).join(", ") || "none")
           : "none";
+        const selectedLane = report.selected_lane_label || report.selected_provider || "-";
+        const selectedLaneDetail = report.selected_backend_id
+          ? `delegated backend ${report.selected_backend_id}`
+          : (report.selected_access_mode || "-");
+        const detectedBackends = (report.agent_backends || []).filter((entry) => entry.detected);
+        const executionEligibleCount = (report.delegated_backend_contracts || []).filter((contract) => contract.execution_eligible).length;
 
         renderSummaryCard("setup-handoff", "No setup handoff summary available.", buildSummaryMarkup({
           kicker: "Onboarding / Setup",
@@ -3007,6 +3054,9 @@
             { label: "Ready", value: report.ready_for_first_start ? "yes" : "no", detail: report.next_action || report.manifest_path || "-" },
             { label: "Deployment", value: report.deployment_mode || "-", detail: report.deployment_path || "-" },
             { label: "Remote Path", value: remotePrimary, detail: remoteFallbacks },
+            { label: "Lane", value: selectedLane, detail: selectedLaneDetail },
+            { label: "Model", value: report.selected_primary_model || "-", detail: report.selected_primary_model_source || "-" },
+            { label: "Agent Backends", value: `${detectedBackends.length}`, detail: `${executionEligibleCount} execution eligible` },
             { label: "Path", value: report.setup_path || "-", detail: report.workspace_action || "-" },
             { label: "Steps", value: `${report.completed_step_count || 0}/${report.selected_step_count || 0}`, detail: (report.pending_steps || []).join(", ") || "no pending steps" },
             { label: "Current", value: report.current_step || "-", detail: report.next_action || "-" },
@@ -3020,6 +3070,21 @@
         }
         if ((report.pending_steps || []).length) {
           extras.push(`<div style="margin-top: 10px"><strong>Pending</strong>: ${escapeHtml(report.pending_steps.join(", "))}</div>`);
+        }
+        if (report.selected_lane_label || report.selected_provider) {
+          extras.push(
+            `<div style="margin-top: 10px"><strong>Selected lane</strong>: ${escapeHtml(selectedLane)}${report.selected_access_mode ? ` via ${escapeHtml(report.selected_access_mode)}` : ""}${report.selected_backend_id ? `, delegated backend ${escapeHtml(report.selected_backend_id)}` : ""}</div>`
+          );
+        }
+        if (report.selected_lane_detail) {
+          extras.push(
+            `<div style="margin-top: 10px"><strong>Lane detail</strong>: ${escapeHtml(report.selected_lane_detail)}</div>`
+          );
+        }
+        if (report.selected_lane_compatibility_note) {
+          extras.push(
+            `<div style="margin-top: 10px"><strong>Compatibility</strong>: ${escapeHtml(report.selected_lane_compatibility_note)}</div>`
+          );
         }
         if (remoteProfile) {
           extras.push(
@@ -3041,6 +3106,27 @@
             </tr>
           `),
           "No bootstrap outcomes recorded yet."
+        );
+
+        const contractMap = Object.fromEntries((report.delegated_backend_contracts || []).map((contract) => [contract.backend_id, contract]));
+        renderTableRows(
+          "setup-agent-backends",
+          detectedBackends.map((entry) => {
+            const backendId = String(entry.host || "").replaceAll("-", "_");
+            const contract = contractMap[backendId] || null;
+            const detail = entry.readiness_reason || (Array.isArray(entry.notes) && entry.notes.length ? entry.notes[0] : "-");
+            const displayName = contract?.display_name || String(entry.host || backendId || "-").replaceAll("_", " ");
+            return `
+              <tr>
+                <td><strong>${escapeHtml(displayName)}</strong><div class="muted mono">${escapeHtml(backendId || "-")}</div></td>
+                <td>${escapeHtml((contract?.readiness || entry.readiness || "-").replaceAll("_", " "))}</td>
+                <td>${escapeHtml(renderAgentBackendAuth(entry))}</td>
+                <td>${escapeHtml(renderAgentBackendRuntimeLane(contract, entry))}</td>
+                <td>${escapeHtml(detail)}</td>
+              </tr>
+            `;
+          }),
+          "No local agent backends detected yet."
         );
       }
 
@@ -5103,7 +5189,12 @@
       async function loadToolExecutions() {
         const payload = await fetchJson("/control/tool-executions?limit=12");
         const rows = (payload.entries || []).map((entry) => {
-          const detail = entry.error || entry.artifact_path || entry.status_detail || "-";
+          const args = entry.args || {};
+          const preview = entry.result_preview || {};
+          const delegatedDetail = entry.tool_name === "delegated_backend.completion"
+            ? `${args.backend_id || entry.source || "-"} via ${args.provider_id || "-"} / ${args.model || "vendor-managed"}${preview.text ? ` - ${String(preview.text).slice(0, 80)}` : ""}`
+            : null;
+          const detail = delegatedDetail || entry.error || entry.artifact_path || entry.status_detail || "-";
           return `<tr>
             <td>${entry.created_at || "-"}</td>
             <td>${entry.source || "-"}</td>

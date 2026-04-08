@@ -3,13 +3,21 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
+use std::process::Stdio;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use anyhow::{Context, Result};
 use argon2::Argon2;
+use async_trait::async_trait;
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{Key, XChaCha20Poly1305, XNonce};
 use chrono::Utc;
+use futures::Stream;
+use openrustclaw_app::agent_backend_catalog::AgentBackendCatalogService;
+use openrustclaw_app::agent_backend_control::{
+    AgentBackendControlService, DelegatedAgentBackendContract,
+};
 use openrustclaw_app::runtime_maintenance_planning::{
     RuntimeMaintenancePlanningService, RuntimeRollbackPlanningRequest,
     RuntimeSelfUpdatePlanningRequest, RuntimeUpgradePlanningRequest,
@@ -21,9 +29,17 @@ use openrustclaw_app::runtime_reload_planning::{
     RuntimeAppliedSnapshot, RuntimeReloadPlan, RuntimeReloadPlanningService,
 };
 use openrustclaw_app::runtime_vault::{RuntimeVaultService, RuntimeVaultState};
+use openrustclaw_app::{
+    agent_backend_catalog::AgentBackendReadiness,
+    browser_backend_control::ExternalBackendAuditEntry,
+};
 use openrustclaw_core::config::AppConfig;
-use openrustclaw_core::error::Error as CoreError;
+use openrustclaw_core::error::{Error as CoreError, ProviderError, Result as CoreResult};
 use openrustclaw_core::traits::LlmProvider;
+use openrustclaw_core::types::{
+    CompletionRequest, CompletionResponse, FinishReason, Message, StreamChunk, TokenUsage,
+    ToolFormat,
+};
 use openrustclaw_memory::{WorkspaceArtifactRegistry, artifacts::ArtifactClass};
 use openrustclaw_providers::{
     AnthropicProvider, GeminiProvider, OllamaProvider, OpenAiProvider, OpenRouterProvider,
@@ -31,8 +47,13 @@ use openrustclaw_providers::{
 };
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::time::Duration;
+use tokio::process::Command;
+use uuid::Uuid;
+
+use super::inspect;
 
 pub const DEFAULT_VAULT_PATH: &str = ".claw/control/runtime-vault.json";
 pub const DEFAULT_RUNTIME_HEALTH_PATH: &str = ".claw/control/runtime-health.json";
@@ -2212,6 +2233,366 @@ pub fn validate_runtime_provider(config: &AppConfig, provider: &str) -> Result<(
     Ok(())
 }
 
+#[derive(Debug, Clone)]
+struct DelegatedCliProvider {
+    backend_id: String,
+    model: String,
+    workspace_root: PathBuf,
+    policy: openrustclaw_app::agent_backend_control::AgentBackendPolicy,
+    contract: DelegatedAgentBackendContract,
+}
+
+impl DelegatedCliProvider {
+    fn new(
+        backend_id: &str,
+        model: String,
+        workspace_root: PathBuf,
+        config: &AppConfig,
+    ) -> Result<Self> {
+        let catalog = AgentBackendCatalogService::new().discover();
+        let control = AgentBackendControlService::new();
+        let contract = control
+            .contracts_from_catalog(&catalog)
+            .into_iter()
+            .find(|candidate| candidate.backend_id == backend_id)
+            .ok_or_else(|| {
+                anyhow::anyhow!("delegated backend '{}' is not discoverable", backend_id)
+            })?;
+
+        if contract.readiness == AgentBackendReadiness::Unavailable {
+            anyhow::bail!(
+                "delegated backend '{}' is not available on this machine",
+                backend_id
+            );
+        }
+
+        let audit_path = workspace_root.join(&config.external_backends.audit_log_path);
+        let policy = control.policy_from_config(config, audit_path.display().to_string());
+        let decision = control.evaluate_execution(
+            &policy,
+            &contract,
+            "completion",
+            None,
+            Utc::now().to_rfc3339(),
+        );
+        if !decision.allowed {
+            anyhow::bail!(
+                "{}",
+                decision
+                    .error_message
+                    .unwrap_or_else(|| "delegated backend denied by policy".to_string())
+            );
+        }
+
+        Ok(Self {
+            backend_id: backend_id.to_string(),
+            model,
+            workspace_root,
+            policy,
+            contract,
+        })
+    }
+
+    fn command_program(&self) -> &'static str {
+        match self.backend_id.as_str() {
+            "claude_code" => "claude",
+            "codex" => "codex",
+            "gemini_cli" => "gemini",
+            _ => unreachable!("unsupported delegated backend"),
+        }
+    }
+
+    fn build_prompt(&self, request: &CompletionRequest) -> String {
+        let mut sections = Vec::new();
+        if let Some(system_prompt) = request.system_prompt.as_deref()
+            && !system_prompt.trim().is_empty()
+        {
+            sections.push(format!("System instructions:\n{system_prompt}"));
+        }
+
+        let history = request
+            .messages
+            .iter()
+            .map(|message| {
+                let role = match message.role {
+                    openrustclaw_core::types::Role::System => "System",
+                    openrustclaw_core::types::Role::User => "User",
+                    openrustclaw_core::types::Role::Assistant => "Assistant",
+                    openrustclaw_core::types::Role::Tool => "Tool",
+                };
+                format!("{role}:\n{}", message.content)
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        if !history.trim().is_empty() {
+            sections.push(history);
+        }
+
+        sections.join("\n\n")
+    }
+
+    fn command_env(&self) -> Vec<(String, String)> {
+        let mut keys = vec![
+            "PATH", "HOME", "SHELL", "TERM", "TMPDIR", "USER", "LOGNAME", "LANG", "LC_ALL", "PWD",
+        ];
+        keys.extend(self.policy.command_env_allowlist.iter().map(String::as_str));
+        keys.sort();
+        keys.dedup();
+        keys.into_iter()
+            .filter_map(|key| {
+                std::env::var(key)
+                    .ok()
+                    .map(|value| (key.to_string(), value))
+            })
+            .collect()
+    }
+
+    fn build_command(&self, prompt: &str) -> Result<(Command, Option<PathBuf>)> {
+        let mut command = Command::new(self.command_program());
+        let use_explicit_model =
+            !self.model.trim().is_empty() && !self.model.eq_ignore_ascii_case("vendor-managed");
+        let output_path = if self.backend_id == "codex" {
+            Some(std::env::temp_dir().join(format!(
+                "openrustclaw-delegated-{}-{}.txt",
+                self.backend_id,
+                Uuid::new_v4()
+            )))
+        } else {
+            None
+        };
+
+        match self.backend_id.as_str() {
+            "claude_code" => {
+                command.args([
+                    "-p",
+                    prompt,
+                    "--permission-mode",
+                    "plan",
+                    "--output-format",
+                    "text",
+                    "--add-dir",
+                ]);
+                command.arg(&self.workspace_root);
+                if use_explicit_model {
+                    command.args(["--model", &self.model]);
+                }
+                command.arg("--no-session-persistence");
+            }
+            "codex" => {
+                command.arg("exec");
+                command.arg(prompt);
+                command.args([
+                    "-C",
+                    self.workspace_root.to_string_lossy().as_ref(),
+                    "--sandbox",
+                    "read-only",
+                    "-a",
+                    "never",
+                ]);
+                if use_explicit_model {
+                    command.args(["--model", &self.model]);
+                }
+                if let Some(path) = output_path.as_ref() {
+                    command.args(["--output-last-message", path.to_string_lossy().as_ref()]);
+                }
+            }
+            "gemini_cli" => {
+                command.args([
+                    "--prompt",
+                    prompt,
+                    "--approval-mode",
+                    "plan",
+                    "--sandbox",
+                    "--output-format",
+                    "text",
+                    "--include-directories",
+                ]);
+                command.arg(&self.workspace_root);
+                if use_explicit_model {
+                    command.args(["--model", &self.model]);
+                }
+            }
+            _ => anyhow::bail!("unsupported delegated backend '{}'", self.backend_id),
+        }
+
+        command.current_dir(&self.workspace_root);
+        command.stdin(Stdio::null());
+        command.stdout(Stdio::piped());
+        command.stderr(Stdio::piped());
+        command.env_clear();
+        for (key, value) in self.command_env() {
+            command.env(key, value);
+        }
+        Ok((command, output_path))
+    }
+
+    fn parse_output(
+        &self,
+        stdout: &[u8],
+        stderr: &[u8],
+        output_path: Option<&Path>,
+    ) -> Result<String> {
+        let stdout_text = String::from_utf8_lossy(stdout).trim().to_string();
+        let stderr_text = String::from_utf8_lossy(stderr).trim().to_string();
+        if self.backend_id == "codex"
+            && let Some(path) = output_path
+            && path.exists()
+        {
+            let text = fs::read_to_string(path)
+                .with_context(|| format!("Failed to read '{}'", path.display()))?;
+            let trimmed = text.trim().to_string();
+            if !trimmed.is_empty() {
+                return Ok(trimmed);
+            }
+        }
+        if !stdout_text.is_empty() {
+            return Ok(stdout_text);
+        }
+        if !stderr_text.is_empty() {
+            return Ok(stderr_text);
+        }
+        anyhow::bail!("delegated backend '{}' returned no output", self.backend_id)
+    }
+
+    fn append_audit_entry(&self, entry: &ExternalBackendAuditEntry) -> Result<()> {
+        let path = self.workspace_root.join(&self.policy.audit_log_path);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let mut file = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)?;
+        use std::io::Write as _;
+        writeln!(file, "{}", serde_json::to_string(entry)?)?;
+        Ok(())
+    }
+
+    fn record_tool_execution(
+        &self,
+        status: &str,
+        duration_ms: u64,
+        error: Option<String>,
+        result_preview: Option<String>,
+    ) {
+        let record = inspect::new_tool_execution_record(
+            "delegated_backend.completion",
+            self.backend_id.clone(),
+            status.to_string(),
+            match (status, error.as_deref()) {
+                ("failure", Some(message)) => message.to_string(),
+                _ => format!("delegated backend {} {}", self.backend_id, status),
+            },
+            duration_ms,
+            error,
+            None,
+            Some(json!({
+                "backend_id": self.backend_id,
+                "provider_id": self.contract.provider_id,
+                "model": self.model,
+            })),
+            result_preview.map(|preview| json!({ "text": preview })),
+        );
+        let _ = inspect::append_tool_execution_record(&self.workspace_root, &record);
+    }
+}
+
+#[async_trait]
+impl LlmProvider for DelegatedCliProvider {
+    async fn complete(&self, request: CompletionRequest) -> CoreResult<CompletionResponse> {
+        let prompt = self.build_prompt(&request);
+        let (mut command, output_path) = self
+            .build_command(&prompt)
+            .map_err(|error| CoreError::Provider(ProviderError::Request(error.to_string())))?;
+        let started_at = std::time::Instant::now();
+        let output = command
+            .output()
+            .await
+            .map_err(|error| CoreError::Provider(ProviderError::Request(error.to_string())))?;
+        let duration_ms = started_at.elapsed().as_millis() as u64;
+        let response_text = self
+            .parse_output(&output.stdout, &output.stderr, output_path.as_deref())
+            .map_err(|error| CoreError::Provider(ProviderError::Parse(error.to_string())))?;
+        let success = output.status.success();
+        let detail = if success {
+            Some(format!(
+                "delegated backend '{}' completed in {} ms",
+                self.backend_id, duration_ms
+            ))
+        } else {
+            Some(String::from_utf8_lossy(&output.stderr).trim().to_string())
+        };
+        let audit_entry = AgentBackendControlService::new().audit_entry(
+            &self.contract,
+            "completion",
+            None,
+            success,
+            detail.clone(),
+            Utc::now().to_rfc3339(),
+        );
+        let _ = self.append_audit_entry(&audit_entry);
+        self.record_tool_execution(
+            if success { "success" } else { "failure" },
+            duration_ms,
+            if success { None } else { detail.clone() },
+            Some(response_text.chars().take(400).collect()),
+        );
+        if !success {
+            return Err(CoreError::Provider(ProviderError::Request(
+                detail.unwrap_or_else(|| "delegated backend execution failed".to_string()),
+            )));
+        }
+
+        Ok(CompletionResponse {
+            id: Uuid::new_v4().to_string(),
+            message: Message::assistant(response_text.clone()),
+            model: self.model.clone(),
+            usage: TokenUsage {
+                prompt_tokens: prompt.len() / 4,
+                completion_tokens: response_text.len() / 4,
+                total_tokens: (prompt.len() + response_text.len()) / 4,
+                cost_usd: None,
+            },
+            provider: self.backend_id.clone(),
+            finish_reason: FinishReason::Stop,
+        })
+    }
+
+    async fn stream(
+        &self,
+        _request: CompletionRequest,
+    ) -> CoreResult<Pin<Box<dyn Stream<Item = CoreResult<StreamChunk>> + Send>>> {
+        Err(CoreError::Provider(ProviderError::StreamError {
+            provider: self.backend_id.clone(),
+            message: "delegated CLI providers do not yet support streaming".to_string(),
+        }))
+    }
+
+    fn model_id(&self) -> &str {
+        &self.model
+    }
+
+    fn max_tokens(&self) -> usize {
+        200_000
+    }
+
+    fn provider_name(&self) -> &str {
+        &self.backend_id
+    }
+
+    fn supports_strict_tools(&self) -> bool {
+        false
+    }
+
+    fn supports_streaming_tool_deltas(&self) -> bool {
+        false
+    }
+
+    fn native_tool_format(&self) -> ToolFormat {
+        ToolFormat::OpenAi
+    }
+}
+
 pub fn create_provider_from_config(
     provider_name: &str,
     config: &AppConfig,
@@ -2285,8 +2666,26 @@ pub fn create_provider_from_config(
             config.providers.ollama.model.clone(),
             config.providers.ollama.base_url.clone(),
         ))),
+        "claude_code" => Ok(Arc::new(DelegatedCliProvider::new(
+            "claude_code",
+            config.providers.anthropic.model.clone(),
+            std::env::current_dir().context("Failed to determine current workspace")?,
+            config,
+        )?)),
+        "codex" => Ok(Arc::new(DelegatedCliProvider::new(
+            "codex",
+            config.providers.openai.model.clone(),
+            std::env::current_dir().context("Failed to determine current workspace")?,
+            config,
+        )?)),
+        "gemini_cli" => Ok(Arc::new(DelegatedCliProvider::new(
+            "gemini_cli",
+            config.providers.gemini.model.clone(),
+            std::env::current_dir().context("Failed to determine current workspace")?,
+            config,
+        )?)),
         _ => anyhow::bail!(
-            "Unknown provider '{}'. Available: anthropic, openai, openrouter, gemini, ollama",
+            "Unknown provider '{}'. Available: anthropic, openai, openrouter, gemini, ollama, claude_code, codex, gemini_cli",
             provider_name
         ),
     }
