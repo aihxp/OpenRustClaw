@@ -439,3 +439,162 @@ impl Tool for CoreMemoryUpdateTool {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use chrono::Utc;
+    use openrustclaw_core::traits::{EmbeddingProvider, MemoryStore};
+    use openrustclaw_core::types::{
+        MemoryEntry, RetrievalArtifactKind, RetrievalExplanation, ScoredMemory, ToolContext,
+    };
+    use openrustclaw_memory::EmbeddingService;
+    use serde_json::json;
+    use std::sync::Mutex;
+    use uuid::Uuid;
+
+    struct RecordingMemoryStore {
+        search_calls: Mutex<usize>,
+        hybrid_calls: Mutex<usize>,
+    }
+
+    impl RecordingMemoryStore {
+        fn new() -> Self {
+            Self {
+                search_calls: Mutex::new(0),
+                hybrid_calls: Mutex::new(0),
+            }
+        }
+
+        fn scored(content: &str, degraded: bool) -> ScoredMemory {
+            let mut explanation = RetrievalExplanation::empty(
+                RetrievalArtifactKind::RecallMemory,
+                Uuid::new_v4().to_string(),
+                "user-1".to_string(),
+            );
+            if !degraded {
+                explanation.degraded_state = None;
+            }
+            ScoredMemory {
+                entry: MemoryEntry {
+                    id: Uuid::new_v4(),
+                    memory_type: MemoryType::Semantic,
+                    content: content.to_string(),
+                    content_hash: MemoryPolicies::content_hash(content),
+                    source: Some("test".to_string()),
+                    source_type: None,
+                    session_id: None,
+                    user_id: Some("user-1".to_string()),
+                    namespace: "user-1".to_string(),
+                    importance: 0.8,
+                    confidence: 0.9,
+                    access_count: 0,
+                    last_accessed: None,
+                    created_at: Utc::now(),
+                    expires_at: None,
+                    metadata: json!({}),
+                },
+                score: 0.8,
+                explanation,
+            }
+        }
+    }
+
+    #[async_trait]
+    impl MemoryStore for RecordingMemoryStore {
+        async fn store(&self, _entry: MemoryEntry) -> Result<()> {
+            Ok(())
+        }
+
+        async fn search(&self, _query: &MemoryQuery) -> Result<Vec<ScoredMemory>> {
+            *self.search_calls.lock().unwrap() += 1;
+            Ok(vec![Self::scored("lexical fallback", true)])
+        }
+
+        async fn search_with_embedding(
+            &self,
+            _query: &MemoryQuery,
+            _query_embedding: &[f32],
+        ) -> Result<Vec<ScoredMemory>> {
+            *self.hybrid_calls.lock().unwrap() += 1;
+            Ok(vec![Self::scored("hybrid search", false)])
+        }
+
+        async fn get(&self, _id: &str) -> Result<Option<MemoryEntry>> {
+            Ok(None)
+        }
+
+        async fn delete(&self, _id: &str) -> Result<()> {
+            Ok(())
+        }
+
+        async fn dedupe_check(&self, _content_hash: &str) -> Result<Option<String>> {
+            Ok(None)
+        }
+
+        async fn expire_stale(&self) -> Result<u64> {
+            Ok(0)
+        }
+    }
+
+    struct StaticEmbeddingProvider;
+
+    #[async_trait]
+    impl EmbeddingProvider for StaticEmbeddingProvider {
+        async fn embed(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
+            Ok(texts.iter().map(|_| vec![1.0, 0.0, 0.0]).collect())
+        }
+
+        fn dimensions(&self) -> usize {
+            3
+        }
+
+        fn model_id(&self) -> &str {
+            "static-test"
+        }
+    }
+
+    fn tool_ctx() -> ToolContext {
+        ToolContext {
+            session_id: Uuid::new_v4().to_string(),
+            user_id: "user-1".to_string(),
+            workspace_path: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn memory_search_uses_query_embeddings_when_service_is_available() {
+        let store = Arc::new(RecordingMemoryStore::new());
+        let embedding_service = Arc::new(EmbeddingService::new(
+            Arc::new(StaticEmbeddingProvider),
+            1,
+        ));
+        let tool = MemorySearchTool::new(store.clone(), Some(embedding_service));
+
+        let output = tool
+            .execute(json!({"query":"ownership","limit":2}), &tool_ctx())
+            .await
+            .expect("tool execution should succeed");
+
+        assert!(!output.is_error);
+        assert_eq!(*store.hybrid_calls.lock().unwrap(), 1);
+        assert_eq!(*store.search_calls.lock().unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn memory_search_reports_degraded_retrieval_when_embeddings_are_missing() {
+        let store = Arc::new(RecordingMemoryStore::new());
+        let tool = MemorySearchTool::new(store.clone(), None);
+
+        let output = tool
+            .execute(json!({"query":"ownership","limit":2}), &tool_ctx())
+            .await
+            .expect("tool execution should succeed");
+
+        assert!(!output.is_error);
+        assert!(output.content.contains("degraded"));
+        assert!(output.content.contains("vector"));
+        assert_eq!(*store.search_calls.lock().unwrap(), 1);
+    }
+}

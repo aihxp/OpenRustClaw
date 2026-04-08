@@ -1277,12 +1277,30 @@ mod tests {
     use axum::body::{Body, to_bytes};
     use http::Request;
     use http::header::{CONTENT_TYPE, HeaderValue};
-    use openrustclaw_core::traits::CoreMemoryStore;
+    use openrustclaw_core::traits::{CoreMemoryStore, EmbeddingProvider};
     use openrustclaw_core::types::CoreEntry;
     use openrustclaw_db::{
         SqliteCoreMemoryStore, SqliteMemoryStore, SqliteRagStore, init_pool, run_migrations,
     };
+    use openrustclaw_memory::EmbeddingService;
     use tower::ServiceExt;
+
+    struct StaticEmbeddingProvider;
+
+    #[async_trait]
+    impl EmbeddingProvider for StaticEmbeddingProvider {
+        async fn embed(&self, texts: &[&str]) -> openrustclaw_core::error::Result<Vec<Vec<f32>>> {
+            Ok(texts.iter().map(|_| vec![1.0, 0.0, 0.0]).collect())
+        }
+
+        fn dimensions(&self) -> usize {
+            3
+        }
+
+        fn model_id(&self) -> &str {
+            "gateway-static-test"
+        }
+    }
 
     fn test_state() -> GatewayState {
         GatewayState {
@@ -1296,6 +1314,7 @@ mod tests {
             memory_store: None,
             core_memory_store: None,
             rag_store: None,
+            embedding_service: None,
             langsmith: None,
         }
     }
@@ -1399,6 +1418,7 @@ mod tests {
             memory_store: Some(memory_store),
             core_memory_store: Some(core_memory_store),
             rag_store: Some(Arc::new(SqliteRagStore::new(pool.clone()))),
+            embedding_service: None,
             langsmith: None,
         };
 
@@ -1546,6 +1566,7 @@ mod tests {
             memory_store: Some(memory_store),
             core_memory_store: Some(core_memory_store),
             rag_store: Some(Arc::new(SqliteRagStore::new(pool.clone()))),
+            embedding_service: None,
             langsmith: None,
         };
 
@@ -1638,6 +1659,7 @@ mod tests {
             memory_store: Some(Arc::new(SqliteMemoryStore::new(pool.clone()))),
             core_memory_store: Some(Arc::new(SqliteCoreMemoryStore::new(pool.clone()))),
             rag_store: Some(Arc::new(SqliteRagStore::new(pool.clone()))),
+            embedding_service: None,
             langsmith: None,
         };
 
@@ -1711,6 +1733,151 @@ mod tests {
             .unwrap();
         let delete_json: serde_json::Value = serde_json::from_slice(&delete_body).unwrap();
         assert_eq!(delete_json["deleted_chunks"], 1);
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    #[tokio::test]
+    async fn internal_memory_search_uses_query_embeddings_when_available() {
+        let db_path =
+            std::env::temp_dir().join(format!("gateway-hybrid-memory-{}.db", Uuid::new_v4()));
+        let pool = init_pool(&format!("sqlite://{}", db_path.display()), 1)
+            .await
+            .unwrap();
+        run_migrations(&pool).await.unwrap();
+
+        let memory_store = Arc::new(SqliteMemoryStore::new(pool.clone()));
+        let mut entry = MemoryEntry {
+            id: Uuid::new_v4(),
+            memory_type: MemoryType::Semantic,
+            content: "Rust ownership matters".to_string(),
+            content_hash: "hybrid-hash".to_string(),
+            source: Some("test".to_string()),
+            source_type: Some(SourceType::Document),
+            session_id: None,
+            user_id: Some("user-1".to_string()),
+            namespace: "user-1".to_string(),
+            importance: 0.8,
+            confidence: 0.9,
+            access_count: 0,
+            last_accessed: None,
+            created_at: chrono::Utc::now(),
+            expires_at: None,
+            metadata: json!({}),
+        };
+        let entry_id = entry.id.to_string();
+        memory_store.store(entry.clone()).await.unwrap();
+        memory_store
+            .store_vector(&entry_id, vec![1.0, 0.0, 0.0], "test-model")
+            .await
+            .unwrap();
+
+        let state = GatewayState {
+            session_manager: Arc::new(crate::sessions::SessionManager::new()),
+            origin_validator: Arc::new(OriginValidator::new(vec![
+                "http://localhost:3000".to_string(),
+            ])),
+            require_auth: false,
+            internal_api_token: Some(Arc::new("test-token".to_string())),
+            trusted_proxy_token: None,
+            memory_store: Some(memory_store),
+            core_memory_store: Some(Arc::new(SqliteCoreMemoryStore::new(pool.clone()))),
+            rag_store: Some(Arc::new(SqliteRagStore::new(pool.clone()))),
+            embedding_service: Some(Arc::new(EmbeddingService::new(
+                Arc::new(StaticEmbeddingProvider),
+                1,
+            ))),
+            langsmith: None,
+        };
+
+        let app = GatewayServer::new("127.0.0.1".to_string(), 0).router(state);
+
+        let search_request = Request::builder()
+            .method("POST")
+            .uri("/internal/memory/search")
+            .header(CONTENT_TYPE, "application/json")
+            .header("x-openrustclaw-internal-token", "test-token")
+            .body(Body::from(
+                r#"{"user_id":"user-1","query":"ownership","limit":1}"#,
+            ))
+            .unwrap();
+        let search_response = app.oneshot(search_request).await.unwrap();
+        assert_eq!(search_response.status(), StatusCode::OK);
+        let search_body = to_bytes(search_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let search_json: serde_json::Value = serde_json::from_slice(&search_body).unwrap();
+        assert_eq!(
+            search_json["memories"][0]["explanation"]["factors"]["vector_lane"],
+            "rust_rescored"
+        );
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    #[tokio::test]
+    async fn internal_memory_search_reports_degraded_state_without_embeddings() {
+        let db_path =
+            std::env::temp_dir().join(format!("gateway-degraded-memory-{}.db", Uuid::new_v4()));
+        let pool = init_pool(&format!("sqlite://{}", db_path.display()), 1)
+            .await
+            .unwrap();
+        run_migrations(&pool).await.unwrap();
+
+        let memory_store = Arc::new(SqliteMemoryStore::new(pool.clone()));
+        memory_store
+            .store(MemoryEntry {
+                id: Uuid::new_v4(),
+                memory_type: MemoryType::Semantic,
+                content: "Fallback lexical retrieval".to_string(),
+                content_hash: "degraded-hash".to_string(),
+                source: Some("test".to_string()),
+                source_type: Some(SourceType::Conversation),
+                session_id: None,
+                user_id: Some("user-2".to_string()),
+                namespace: "user-2".to_string(),
+                importance: 0.7,
+                confidence: 0.9,
+                access_count: 0,
+                last_accessed: None,
+                created_at: chrono::Utc::now(),
+                expires_at: None,
+                metadata: json!({}),
+            })
+            .await
+            .unwrap();
+
+        let state = GatewayState {
+            session_manager: Arc::new(crate::sessions::SessionManager::new()),
+            origin_validator: Arc::new(OriginValidator::new(vec![
+                "http://localhost:3000".to_string(),
+            ])),
+            require_auth: false,
+            internal_api_token: Some(Arc::new("test-token".to_string())),
+            trusted_proxy_token: None,
+            memory_store: Some(memory_store),
+            core_memory_store: Some(Arc::new(SqliteCoreMemoryStore::new(pool.clone()))),
+            rag_store: Some(Arc::new(SqliteRagStore::new(pool.clone()))),
+            embedding_service: None,
+            langsmith: None,
+        };
+
+        let app = GatewayServer::new("127.0.0.1".to_string(), 0).router(state);
+        let search_request = Request::builder()
+            .method("POST")
+            .uri("/internal/memory/search")
+            .header(CONTENT_TYPE, "application/json")
+            .header("x-openrustclaw-internal-token", "test-token")
+            .body(Body::from(r#"{"user_id":"user-2","query":"fallback","limit":2}"#))
+            .unwrap();
+        let search_response = app.oneshot(search_request).await.unwrap();
+        let search_body = to_bytes(search_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let search_json: serde_json::Value = serde_json::from_slice(&search_body).unwrap();
+        assert!(
+            search_json["memories"][0]["explanation"]["degraded_state"].is_object()
+        );
 
         let _ = std::fs::remove_file(db_path);
     }
