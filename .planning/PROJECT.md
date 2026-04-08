@@ -24,12 +24,16 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 **Archive:** `.planning/milestones/v1.42-ROADMAP.md`, `.planning/milestones/v1.42-REQUIREMENTS.md`, `.planning/milestones/v1.42-MILESTONE-AUDIT.md`, `.planning/milestones/v1.42-VERIFICATIONS.md`
 
-## Current Milestone: none
+## Current Milestone: v1.43 Learning Loop, Memory Depth, and God Mode
 
-**Goal:** Define a new canonical follow-on queue only when new work warrants it.
+**Goal:** Make OpenRustClaw better at remembering, adapting, and improving over time while adding an explicit full-autonomy, full-access, full-power operator lane.
 
 **Target features:**
-- None. The onboarding primary-model selection queue is closed.
+- A bounded self-learning loop that turns reflection candidates and successful work into reusable lessons, memory artifacts, and skill improvements
+- Stronger memory retrieval, ranking, summarization, and inspection so recall is more useful and less brittle
+- Deeper cross-session user and operator modeling without injecting raw memory files into prompts
+- A `God Mode` lane with full autonomy, full access, and full power as a distinct operator-explicit runtime mode
+- Explicit audit trails, warnings, enable or disable boundaries, and recovery paths for both learned artifacts and God Mode actions
 
 ## Requirements
 
@@ -173,10 +177,12 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ### Active
 
-- **ONB-01:** Operators can choose a primary LLM provider during onboarding through a flow that represents the provider's supported access modes truthfully.
-- **ONB-02:** Onboarding verifies the chosen provider connection before it reports the model step as ready.
-- **ONB-03:** Onboarding can discover or scan available models for the chosen provider and persist an explicit primary task model selection.
-- **ONB-04:** Setup state, handoff, and follow-on operator guidance reflect the persisted primary provider and model without requiring a separate runtime switch step.
+- **MEM-01:** Memory recall uses better retrieval ranking, score shaping, and result assembly so relevant prior context is surfaced reliably across sessions.
+- **MEM-02:** The runtime can consolidate durable memory summaries and explicit user or operator model artifacts without injecting raw memory files into prompts.
+- **LEARN-01:** Completed runs can produce reviewable learning candidates that become durable lessons or memory artifacts under explicit policy.
+- **LEARN-02:** Successful workflows can suggest new or improved reusable skills without hidden self-modification.
+- **GOD-01:** Operators can explicitly enable a `God Mode` lane that grants full autonomy, full access, and full power.
+- **GOD-02:** God Mode remains auditable, clearly signposted, reversible, and separated from the default trust-first runtime path.
 
 ### Out of Scope
 
@@ -315,4 +321,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-31 after shipping v1.42 milestone*
+*Last updated: 2026-04-07 after starting v1.43 milestone*

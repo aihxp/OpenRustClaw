@@ -1,44 +1,44 @@
 ---
 gsd_state_version: 1.0
-milestone: none
-milestone_name: none
+milestone: v1.43
+milestone_name: Learning Loop, Memory Depth, and God Mode
 current_phase: none
-current_phase_name: no active phase
+current_phase_name: defining requirements
 current_plan: none
-status: milestone complete
-stopped_at: v1.42 archived after onboarding provider and primary-model selection closure, verification, and milestone closeout.
-last_updated: "2026-03-31T04:07:00Z"
-last_activity: 2026-03-31
+status: defining requirements
+stopped_at: v1.43 started; requirements, research, and roadmap in progress for learning loop, memory depth, and God Mode.
+last_updated: "2026-04-07T00:00:00Z"
+last_activity: 2026-04-07
 progress:
   total_phases: 0
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
-  percent: 100
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-31)
+See: .planning/PROJECT.md (updated 2026-04-07)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** No active milestone. The onboarding primary-model selection queue is shipped and archived.
+**Current focus:** v1.43 is starting to close the learning-loop, memory-depth, and God Mode gaps.
 
 ## Current Position
 
 Current Phase: none
-Current Phase Name: no active phase
+Current Phase Name: defining requirements
 Total Phases: 0
 Current Plan: none
 Total Plans in Phase: 0
-Status: milestone complete
-Last activity: 2026-03-31
+Status: defining requirements
+Last activity: 2026-04-07
 
 Phase: 0 of 0
 Plan: 0 of 0
-Progress: [##########] 100%
+Progress: [----------] 0%
 
 ## Performance Metrics
 
@@ -66,10 +66,10 @@ Recent decisions affecting current work:
 ### Blockers/Concerns
 
 - v1.0 archive notes missing phase verification artifacts as lifecycle debt already captured in the archive.
-- None active.
+- Milestone scope is intentionally broad, so roadmap slicing must keep memory, learning, and God Mode independently shippable.
 
 ## Session Continuity
 
-Last session: 2026-03-31
-Stopped at: v1.42 archived after onboarding provider and primary-model selection closure, verification, and milestone closeout.
+Last session: 2026-04-07
+Stopped at: v1.43 started; requirements, research, and roadmap in progress for learning loop, memory depth, and God Mode.
 Resume file: None
