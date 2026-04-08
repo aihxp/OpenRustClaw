@@ -7,17 +7,17 @@
 
 ### Local Agent Discovery and Compliance
 
-- [ ] **DISC-01**: OpenRustClaw detects supported local agent tools such as `claude`, `codex`, `gemini`, and any documented Cursor agent surface without unsafe probing or hidden side effects.
-- [ ] **DISC-02**: Discovery records durable evidence for each detected backend, including binary path, version, invocation style, auth status or auth capability, model-discovery capability, and policy classification.
-- [ ] **DISC-03**: Detected-but-unusable agent tools stay visible with truthful reasons such as unsupported auth reuse, missing model discovery, blocked policy, or missing vendor support.
-- [ ] **DISC-04**: Local agent discovery and refresh actions are policy-gated, auditable, and available through shared app services instead of disconnected CLI-only checks.
+- [x] **DISC-01**: OpenRustClaw detects supported local agent tools such as `claude`, `codex`, `gemini`, and any documented Cursor agent surface without unsafe probing or hidden side effects.
+- [x] **DISC-02**: Discovery records durable evidence for each detected backend, including binary path, version, invocation style, auth status or auth capability, model-discovery capability, and policy classification.
+- [x] **DISC-03**: Detected-but-unusable agent tools stay visible with truthful reasons such as unsupported auth reuse, missing model discovery, blocked policy, or missing vendor support.
+- [x] **DISC-04**: Local agent discovery and refresh actions are policy-gated, auditable, and available through shared app services instead of disconnected CLI-only checks.
 
 ### OAuth-Safe Account-Backed Access
 
-- [ ] **AUTH-01**: Subscription-managed or account-managed access is only used through supported vendor execution surfaces or documented APIs; OpenRustClaw must not import cached browser sessions, copy tokens from vendor stores, or impersonate vendor logins.
-- [ ] **AUTH-02**: OpenRustClaw distinguishes direct API providers from delegated local agent backends and preserves truthful capability metadata for each lane.
-- [ ] **AUTH-03**: Backend policy can allow or deny delegated local agent execution per backend while preserving environment allowlists, audit logging, and runtime controls.
-- [ ] **AUTH-04**: Model availability for delegated agent backends is discovered truthfully when supported and otherwise labeled as vendor-managed or unknown instead of guessed.
+- [x] **AUTH-01**: Subscription-managed or account-managed access is only used through supported vendor execution surfaces or documented APIs; OpenRustClaw must not import cached browser sessions, copy tokens from vendor stores, or impersonate vendor logins.
+- [x] **AUTH-02**: OpenRustClaw distinguishes direct API providers from delegated local agent backends and preserves truthful capability metadata for each lane.
+- [x] **AUTH-03**: Backend policy can allow or deny delegated local agent execution per backend while preserving environment allowlists, audit logging, and runtime controls.
+- [x] **AUTH-04**: Model availability for delegated agent backends is discovered truthfully when supported and otherwise labeled as vendor-managed or unknown instead of guessed.
 
 ### Onboarding and Model Selection Cohesion
 
@@ -71,14 +71,14 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DISC-01 | Phase 186 | Planned |
-| DISC-02 | Phase 186 | Planned |
-| DISC-03 | Phase 186 | Planned |
-| DISC-04 | Phase 186 | Planned |
-| AUTH-01 | Phase 187 | Planned |
-| AUTH-02 | Phase 187 | Planned |
-| AUTH-03 | Phase 187 | Planned |
-| AUTH-04 | Phase 187 | Planned |
+| DISC-01 | Phase 186 | Completed |
+| DISC-02 | Phase 186 | Completed |
+| DISC-03 | Phase 186 | Completed |
+| DISC-04 | Phase 186 | Completed |
+| AUTH-01 | Phase 187 | Completed |
+| AUTH-02 | Phase 187 | Completed |
+| AUTH-03 | Phase 187 | Completed |
+| AUTH-04 | Phase 187 | Completed |
 | ONBR-01 | Phase 188 | Planned |
 | ONBR-02 | Phase 188 | Planned |
 | ONBR-03 | Phase 188 | Planned |
@@ -99,4 +99,4 @@
 
 ---
 *Requirements defined: 2026-04-08*
-*Last updated: 2026-04-08 after starting v1.44 milestone*
+*Last updated: 2026-04-08 after completing Phase 187*

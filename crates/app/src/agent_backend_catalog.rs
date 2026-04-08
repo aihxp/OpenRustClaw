@@ -57,6 +57,15 @@ impl AgentBackendCatalogEntry {
     pub fn display_name(&self) -> &'static str {
         self.host.display_name()
     }
+
+    pub fn matches_provider(&self, provider: &str) -> bool {
+        matches!(
+            (provider, self.host),
+            ("anthropic", AiHost::ClaudeCode)
+                | ("openai", AiHost::Codex)
+                | ("gemini", AiHost::GeminiCli)
+        )
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -151,6 +160,15 @@ impl AgentBackendCatalogService {
             notes: probe.notes.iter().map(|value| value.to_string()).collect(),
         }
     }
+}
+
+pub fn backend_for_provider<'a>(
+    entries: &'a [AgentBackendCatalogEntry],
+    provider: &str,
+) -> Option<&'a AgentBackendCatalogEntry> {
+    entries
+        .iter()
+        .find(|entry| entry.matches_provider(provider))
 }
 
 #[derive(Debug, Clone)]
@@ -410,6 +428,9 @@ mod tests {
             .unwrap();
         assert_eq!(cursor.readiness, AgentBackendReadiness::DetectionOnly);
         assert_eq!(cursor.policy_classification, "integration_only");
+
+        let mapped = backend_for_provider(&catalog, "anthropic").unwrap();
+        assert_eq!(mapped.host, AiHost::ClaudeCode);
 
         match original_path {
             Some(value) => unsafe {

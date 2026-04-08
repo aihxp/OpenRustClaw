@@ -82,6 +82,14 @@ fn apply_provider_switch(
                 config.providers.openrouter.api_key_env = Some(api_key_env);
             }
         }
+        "gemini" => {
+            if let Some(model) = request.model {
+                config.providers.gemini.model = model;
+            }
+            if let Some(api_key_env) = request.api_key_env {
+                config.providers.gemini.api_key_env = Some(api_key_env);
+            }
+        }
         "ollama" => {
             if let Some(model) = request.model {
                 config.providers.ollama.model = model;
@@ -226,6 +234,28 @@ mod tests {
 
         assert_eq!(config.providers.default_provider, "anthropic");
         assert_eq!(config.providers.anthropic.model, "claude-sonnet-4-20250514");
+        assert!(config.providers.control_plane_provider.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn runtime_provider_switch_supports_gemini() -> Result<()> {
+        let service = RuntimeProviderSwitchService::new(TestSource {
+            config: AppConfig::default(),
+        });
+        let config = service.switch_provider(RuntimeProviderSwitchRequest {
+            provider: "gemini".to_string(),
+            model: Some("gemini-2.5-pro".to_string()),
+            api_key_env: Some("GEMINI_API_KEY".to_string()),
+            fallback_chain: None,
+        })?;
+
+        assert_eq!(config.providers.default_provider, "gemini");
+        assert_eq!(config.providers.gemini.model, "gemini-2.5-pro");
+        assert_eq!(
+            config.providers.gemini.api_key_env.as_deref(),
+            Some("GEMINI_API_KEY")
+        );
         assert!(config.providers.control_plane_provider.is_some());
         Ok(())
     }

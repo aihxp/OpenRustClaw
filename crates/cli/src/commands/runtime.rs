@@ -26,7 +26,7 @@ use openrustclaw_core::error::Error as CoreError;
 use openrustclaw_core::traits::LlmProvider;
 use openrustclaw_memory::{WorkspaceArtifactRegistry, artifacts::ArtifactClass};
 use openrustclaw_providers::{
-    AnthropicProvider, OllamaProvider, OpenAiProvider, OpenRouterProvider,
+    AnthropicProvider, GeminiProvider, OllamaProvider, OpenAiProvider, OpenRouterProvider,
     openrouter::RouteStrategy,
 };
 use rand::RngCore;
@@ -83,6 +83,7 @@ pub struct RuntimeStatus {
     pub anthropic_model: String,
     pub openai_model: String,
     pub openrouter_model: String,
+    pub gemini_model: String,
     pub ollama_model: String,
     pub vault_path: String,
     pub vault_present: bool,
@@ -846,6 +847,7 @@ pub fn runtime_status(config_path: &str, workspace_root: &Path) -> Result<Runtim
         anthropic_model: config.providers.anthropic.model.clone(),
         openai_model: config.providers.openai.model.clone(),
         openrouter_model: config.providers.openrouter.model.clone(),
+        gemini_model: config.providers.gemini.model.clone(),
         ollama_model: config.providers.ollama.model.clone(),
         vault_path: vault_path.display().to_string(),
         vault_present,
@@ -1285,6 +1287,7 @@ fn capture_runtime_snapshot(
             "anthropic": config.providers.anthropic,
             "openai": config.providers.openai,
             "openrouter": config.providers.openrouter,
+            "gemini": config.providers.gemini,
             "ollama": config.providers.ollama,
         }))?,
         gateway_fingerprint: fingerprint_json(&config.gateway)?,
@@ -1354,6 +1357,7 @@ async fn scan_provider_health(provider: &str, config: &AppConfig) -> RuntimeHeal
         "anthropic" => config.providers.anthropic.model.clone(),
         "openai" => config.providers.openai.model.clone(),
         "openrouter" => config.providers.openrouter.model.clone(),
+        "gemini" => config.providers.gemini.model.clone(),
         "ollama" => config.providers.ollama.model.clone(),
         _ => String::new(),
     };
@@ -1432,6 +1436,28 @@ fn provider_recommendation(provider: &str, config: &AppConfig) -> Option<String>
         return Some("configured task/runtime primary".to_string());
     }
     None
+}
+
+enum RemoteProviderAuth {
+    Bearer,
+    Header(&'static str),
+}
+
+fn gemini_api_key(config: &AppConfig) -> Result<String> {
+    let primary_env = config
+        .providers
+        .gemini
+        .api_key_env
+        .as_deref()
+        .unwrap_or("GEMINI_API_KEY");
+    std::env::var(primary_env)
+        .or_else(|_| std::env::var("GOOGLE_API_KEY"))
+        .with_context(|| {
+            format!(
+                "{} or GOOGLE_API_KEY environment variable not set",
+                primary_env
+            )
+        })
 }
 
 fn health_scan_provider_order(config: &AppConfig) -> Vec<String> {
@@ -1647,7 +1673,7 @@ async fn probe_remote_provider_health(
     config: &AppConfig,
     model: &str,
 ) -> Result<ProviderHealthProbe> {
-    let (url, api_key, extra_headers) = match provider {
+    let (url, api_key, auth, extra_headers) = match provider {
         "anthropic" => (
             "https://api.anthropic.com/v1/models".to_string(),
             std::env::var(
@@ -1669,6 +1695,7 @@ async fn probe_remote_provider_health(
                         .unwrap_or("ANTHROPIC_API_KEY")
                 )
             })?,
+            RemoteProviderAuth::Bearer,
             vec![(
                 "anthropic-version".to_string(),
                 config.providers.anthropic.api_version.clone(),
@@ -1695,6 +1722,7 @@ async fn probe_remote_provider_health(
                         .unwrap_or("OPENAI_API_KEY")
                 )
             })?,
+            RemoteProviderAuth::Bearer,
             Vec::new(),
         ),
         "openrouter" => (
@@ -1718,6 +1746,22 @@ async fn probe_remote_provider_health(
                         .unwrap_or("OPENROUTER_API_KEY")
                 )
             })?,
+            RemoteProviderAuth::Bearer,
+            Vec::new(),
+        ),
+        "gemini" => (
+            format!(
+                "{}/models",
+                config
+                    .providers
+                    .gemini
+                    .base_url
+                    .as_deref()
+                    .unwrap_or("https://generativelanguage.googleapis.com/v1beta")
+                    .trim_end_matches('/')
+            ),
+            gemini_api_key(config)?,
+            RemoteProviderAuth::Header("x-goog-api-key"),
             Vec::new(),
         ),
         _ => {
@@ -1733,10 +1777,11 @@ async fn probe_remote_provider_health(
     };
 
     let client = reqwest::Client::new();
-    let mut request = client
-        .get(url)
-        .timeout(Duration::from_secs(5))
-        .bearer_auth(api_key);
+    let mut request = client.get(url).timeout(Duration::from_secs(5));
+    request = match auth {
+        RemoteProviderAuth::Bearer => request.bearer_auth(api_key),
+        RemoteProviderAuth::Header(name) => request.header(name, api_key),
+    };
     for (name, value) in extra_headers {
         request = request.header(name, value);
     }
@@ -1784,13 +1829,21 @@ async fn probe_remote_provider_health(
 }
 
 fn extract_provider_model_ids(provider: &str, body: &serde_json::Value) -> Vec<String> {
-    let data = body["data"].as_array().cloned().unwrap_or_default();
-    data.into_iter()
+    body["data"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .chain(body["models"].as_array().cloned().unwrap_or_default())
         .filter_map(|entry| match provider {
             "anthropic" | "openai" | "openrouter" => entry
                 .get("id")
                 .and_then(|value| value.as_str())
                 .map(str::to_string),
+            "gemini" => entry
+                .get("name")
+                .and_then(|value| value.as_str())
+                .map(|value| value.trim_start_matches("models/").to_string()),
             _ => None,
         })
         .collect()
@@ -1870,6 +1923,7 @@ fn default_model_for_provider(config: &AppConfig) -> &str {
         "anthropic" => &config.providers.anthropic.model,
         "openai" => &config.providers.openai.model,
         "openrouter" => &config.providers.openrouter.model,
+        "gemini" => &config.providers.gemini.model,
         "ollama" => &config.providers.ollama.model,
         _ => &config.providers.anthropic.model,
     }
@@ -2212,12 +2266,27 @@ pub fn create_provider_from_config(
                 strategy,
             )))
         }
+        "gemini" => {
+            let api_key = gemini_api_key(config)?;
+            if let Some(base_url) = config.providers.gemini.base_url.clone() {
+                Ok(Arc::new(GeminiProvider::with_base_url(
+                    api_key,
+                    config.providers.gemini.model.clone(),
+                    base_url,
+                )))
+            } else {
+                Ok(Arc::new(GeminiProvider::new(
+                    api_key,
+                    config.providers.gemini.model.clone(),
+                )))
+            }
+        }
         "ollama" => Ok(Arc::new(OllamaProvider::with_base_url(
             config.providers.ollama.model.clone(),
             config.providers.ollama.base_url.clone(),
         ))),
         _ => anyhow::bail!(
-            "Unknown provider '{}'. Available: anthropic, openai, openrouter, ollama",
+            "Unknown provider '{}'. Available: anthropic, openai, openrouter, gemini, ollama",
             provider_name
         ),
     }

@@ -15,8 +15,8 @@
 - Integer phases continue the live sequence from the prior milestone.
 - This milestone starts at Phase 186 because `v1.43` ended at Phase 185.
 
-- [ ] **Phase 186: Local Agent Discovery and Compliance Inventory** - Detect installed local agent backends and expose truthful capability and policy metadata.
-- [ ] **Phase 187: OAuth-Safe Delegated Backend Contracts** - Add compliance-safe delegated backend rules for subscription-managed vendor surfaces.
+- [x] **Phase 186: Local Agent Discovery and Compliance Inventory** - Detect installed local agent backends and expose truthful capability and policy metadata.
+- [x] **Phase 187: OAuth-Safe Delegated Backend Contracts** - Add compliance-safe delegated backend rules for subscription-managed vendor surfaces.
 - [ ] **Phase 188: Onboarding and Model Selection Cohesion** - Converge onboarding, model menus, inspect, and control around one shared provider or agent catalog.
 - [ ] **Phase 189: Runtime Integration and Agent Journey Delivery** - Route eligible tasks through delegated local agents with audit, attribution, and bounded autonomy controls.
 - [ ] **Phase 190: Journey Audit, UX Repair, and Product Truthfulness** - Audit the end-to-end user and agent journeys, repair disconnected surfaces, and verify the shipped story across docs and runtime surfaces.
@@ -32,7 +32,7 @@
   2. Discovery results include durable evidence for path, version, invocation mode, auth status or auth capability, model-discovery support, and policy classification.
   3. Unsupported or ambiguous tools remain visible as detected-but-unavailable with clear reasons instead of disappearing or being mislabeled as ready.
   4. Discovery feeds one shared app-level catalog that later onboarding, model selection, and runtime routing can reuse.
-**Plans**: 1/2 complete (`186-01` complete, `186-02` pending)
+**Plans**: 2/2 complete (`186-01`, `186-02`)
 
 ### Phase 187: OAuth-Safe Delegated Backend Contracts
 **Goal**: OpenRustClaw can use supported local vendor agent surfaces without scraping credentials or pretending subscription logins are general API keys.
@@ -43,7 +43,7 @@
   2. The runtime can allow or deny delegated local agent execution per backend while preserving audit logs, environment allowlists, and runtime controls.
   3. Model availability is either discovered from documented vendor surfaces or labeled vendor-managed or unknown instead of guessed.
   4. No OpenRustClaw flow copies cached vendor tokens, imports browser sessions, or claims unsupported OAuth reuse.
-**Plans**: TBD
+**Plans**: 2/2 complete (`187-01`, `187-02`)
 
 ### Phase 188: Onboarding and Model Selection Cohesion
 **Goal**: The first-run experience presents one truthful menu for API providers, local runtimes, and delegated local agents, and preserves that choice end to end.
@@ -54,7 +54,7 @@
   2. The selected provider or agent backend, access mode, and model lane survive handoff, repair, resume, inspect, and first launch.
   3. `openrustclaw models`, inspect, control, and onboarding no longer disagree about which providers or agent backends exist.
   4. Operators can understand why a detected backend is ready, blocked, partially supported, or vendor-managed without leaving the product flow.
-**Plans**: TBD
+**Plans**: 0/2 complete (`188-01`, `188-02` planned)
 
 ### Phase 189: Runtime Integration and Agent Journey Delivery
 **Goal**: Delegated local agent execution becomes a first-class bounded runtime path with audit receipts, routing visibility, and consistent control behavior.
@@ -82,15 +82,15 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 186. Local Agent Discovery and Compliance Inventory | 1/2 | In Progress | — |
-| 187. OAuth-Safe Delegated Backend Contracts | 0/2 | Not Started | — |
-| 188. Onboarding and Model Selection Cohesion | 0/2 | Not Started | — |
+| 186. Local Agent Discovery and Compliance Inventory | 2/2 | Complete | 2026-04-08 |
+| 187. OAuth-Safe Delegated Backend Contracts | 2/2 | Complete | 2026-04-08 |
+| 188. Onboarding and Model Selection Cohesion | 0/2 | In Progress | — |
 | 189. Runtime Integration and Agent Journey Delivery | 0/2 | Not Started | — |
 | 190. Journey Audit, UX Repair, and Product Truthfulness | 0/2 | Not Started | — |
 
 ## Current Status
 
 - Active milestone: v1.44 Agent Discovery, Journey Cohesion, and Provider Access
-- Roadmap progress: 0/5 phases complete
-- Current work: Phase 186 is in progress through the shared local-agent discovery catalog and the first shipped operator-facing catalog surface
-- Next step: complete Phase 186 plan 02 by wiring the shared catalog into onboarding, inspect, and policy-aware persistence surfaces
+- Roadmap progress: 2/5 phases complete
+- Current work: Phase 188 is next, focusing on turning discovery plus delegated backend contracts into one truthful onboarding and model-selection journey
+- Next step: converge onboarding, model menus, inspect, and control around one provider-or-agent catalog with persisted delegated backend choices

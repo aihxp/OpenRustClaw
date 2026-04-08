@@ -1,5 +1,9 @@
 use anyhow::{Context, Result, anyhow};
 use chrono::{Duration, Utc};
+use openrustclaw_app::agent_backend_catalog::AgentBackendCatalogService;
+use openrustclaw_app::agent_backend_control::{
+    AgentBackendControlService, DelegatedAgentBackendContract,
+};
 use openrustclaw_core::config::AppConfig;
 use openrustclaw_mobile::protocol::DeviceCommandKind;
 use serde::{Deserialize, Serialize};
@@ -129,6 +133,7 @@ pub struct EnterprisePolicyReport {
     pub autonomy_level: String,
     pub approval_policy: String,
     pub browser: EnterpriseBrowserPolicySummary,
+    pub delegated_agent_backends: Vec<DelegatedAgentBackendContract>,
     pub mobile: EnterpriseMobileApprovalPolicy,
     pub audit_export: EnterpriseAuditExportPolicy,
 }
@@ -305,6 +310,8 @@ pub fn summary(workspace_root: &Path, config_path: &str) -> Result<EnterprisePol
     let config = runtime::load_effective_config(config_path, workspace_root)
         .unwrap_or_else(|_| AppConfig::default());
     let browser = browser_summary_from_config(&config);
+    let delegated_agent_backends = AgentBackendControlService::new()
+        .contracts_from_catalog(&AgentBackendCatalogService::new().discover());
     let manifest = load_manifest(workspace_root)?.unwrap_or_default();
     let access_boundary_active = enterprise_access::access_is_configured(workspace_root)?;
     let access_registry_path = enterprise_access::enterprise_access_path(workspace_root)
@@ -327,6 +334,7 @@ pub fn summary(workspace_root: &Path, config_path: &str) -> Result<EnterprisePol
         autonomy_level,
         approval_policy,
         browser,
+        delegated_agent_backends,
         mobile: manifest.mobile,
         audit_export: manifest.audit_export,
     })
@@ -709,8 +717,20 @@ fn normalize_browser_backends(values: &[String]) -> Result<Vec<String>> {
             "agent_browser" | "agent_browser_cli" | "agentbrowser" => {
                 normalized.insert("agent_browser_cli".to_string());
             }
+            "claude" | "claude_code" => {
+                normalized.insert("claude_code".to_string());
+            }
+            "codex" => {
+                normalized.insert("codex".to_string());
+            }
+            "gemini" | "gemini_cli" => {
+                normalized.insert("gemini_cli".to_string());
+            }
+            "cursor" => {
+                normalized.insert("cursor".to_string());
+            }
             other => anyhow::bail!(
-                "unsupported browser backend '{}'; expected native_cdp or agent_browser_cli",
+                "unsupported external backend '{}'; expected native_cdp, agent_browser_cli, claude_code, codex, gemini_cli, or cursor",
                 other
             ),
         }
@@ -863,6 +883,46 @@ mod tests {
             &DeviceCommandKind::SyncNow
         ));
 
+        Ok(())
+    }
+
+    #[test]
+    fn update_policy_accepts_delegated_agent_backend_ids() -> Result<()> {
+        let root = tempdir().expect("tempdir");
+        let config_path = root.path().join("config/default.toml");
+        runtime::write_config_with_backup(
+            &config_path.display().to_string(),
+            &AppConfig::default(),
+        )?;
+
+        let report = update_policy(
+            root.path(),
+            &config_path.display().to_string(),
+            EnterprisePolicyUpdateRequest {
+                approval_policy: None,
+                browser: Some(EnterpriseBrowserPolicyUpdate {
+                    allowed_backends: Some(vec![
+                        "claude-code".to_string(),
+                        "codex".to_string(),
+                        "gemini_cli".to_string(),
+                    ]),
+                    allow_local_cli_wrappers: None,
+                    allow_cloud_agent_execution: None,
+                    command_env_allowlist: None,
+                }),
+                mobile: None,
+                audit_export: None,
+            },
+        )?;
+
+        assert_eq!(
+            report.browser.allowed_backends,
+            vec![
+                "claude_code".to_string(),
+                "codex".to_string(),
+                "gemini_cli".to_string()
+            ]
+        );
         Ok(())
     }
 

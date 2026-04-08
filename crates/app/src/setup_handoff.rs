@@ -1,3 +1,5 @@
+use crate::agent_backend_catalog::AgentBackendCatalogEntry;
+use crate::agent_backend_control::DelegatedAgentBackendContract;
 use openrustclaw_core::error::Result;
 use serde::{Deserialize, Serialize};
 
@@ -98,6 +100,10 @@ pub struct SetupHandoffReport {
     pub pending_steps: Vec<String>,
     pub blockers: Vec<String>,
     pub bootstrap_outcomes: Vec<SetupBootstrapOutcome>,
+    #[serde(default)]
+    pub agent_backends: Vec<AgentBackendCatalogEntry>,
+    #[serde(default)]
+    pub delegated_backend_contracts: Vec<DelegatedAgentBackendContract>,
 }
 
 impl From<SetupHandoffState> for SetupHandoffReport {
@@ -124,6 +130,8 @@ impl From<SetupHandoffState> for SetupHandoffReport {
             pending_steps: state.pending_steps,
             blockers: state.blockers,
             bootstrap_outcomes: state.bootstrap_outcomes,
+            agent_backends: Vec::new(),
+            delegated_backend_contracts: Vec::new(),
         }
     }
 }
@@ -173,6 +181,8 @@ where
                 pending_steps: Vec::new(),
                 blockers: Vec::new(),
                 bootstrap_outcomes: Vec::new(),
+                agent_backends: Vec::new(),
+                delegated_backend_contracts: Vec::new(),
             })
         }
     }

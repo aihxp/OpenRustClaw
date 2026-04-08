@@ -1,5 +1,7 @@
 use anyhow::Result;
 use chrono::Utc;
+use openrustclaw_app::agent_backend_catalog::AgentBackendCatalogService;
+use openrustclaw_app::agent_backend_control::AgentBackendControlService;
 use openrustclaw_app::assistant_continuity::AssistantContinuityService;
 use openrustclaw_app::enterprise_admin::{
     EnterpriseAdminAccessState as AppEnterpriseAdminAccessState,
@@ -1124,7 +1126,11 @@ fn map_setup_handoff_state(
 
 pub fn setup_handoff_summary(workspace_root: &Path) -> Result<SetupHandoffReport> {
     let service = SetupHandoffService::new(WorkspaceSetupHandoffSource::new(workspace_root));
-    service.report().map_err(Into::into)
+    let mut report = service.report().map_err(anyhow::Error::from)?;
+    report.agent_backends = AgentBackendCatalogService::new().discover();
+    report.delegated_backend_contracts =
+        AgentBackendControlService::new().contracts_from_catalog(&report.agent_backends);
+    Ok(report)
 }
 
 pub fn enterprise_access_summary(workspace_root: &Path) -> Result<EnterpriseAccessReport> {

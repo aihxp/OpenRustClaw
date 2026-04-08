@@ -5,6 +5,10 @@ use chrono::Utc;
 use console::style;
 use dialoguer::{Confirm, Input, MultiSelect, Password, Select, theme::ColorfulTheme};
 use indicatif::{ProgressBar, ProgressStyle};
+use openrustclaw_app::agent_backend_catalog::{
+    AgentBackendCatalogEntry, AgentBackendCatalogService, AgentBackendReadiness,
+    backend_for_provider,
+};
 use openrustclaw_app::setup_lifecycle as app_setup_lifecycle;
 use openrustclaw_core::config::AppConfig;
 use serde::{Deserialize, Serialize};
@@ -275,7 +279,7 @@ const PROVIDER_ACCESS_API_KEY: [OnboardingProviderAccessMode; 1] =
 const PROVIDER_ACCESS_LOCAL_RUNTIME: [OnboardingProviderAccessMode; 1] =
     [OnboardingProviderAccessMode::LocalRuntime];
 
-const ONBOARDING_PROVIDER_DESCRIPTORS: [OnboardingProviderDescriptor; 4] = [
+const ONBOARDING_PROVIDER_DESCRIPTORS: [OnboardingProviderDescriptor; 5] = [
     OnboardingProviderDescriptor {
         id: "anthropic",
         label: "Anthropic (Claude)",
@@ -298,6 +302,13 @@ const ONBOARDING_PROVIDER_DESCRIPTORS: [OnboardingProviderDescriptor; 4] = [
         recommended: false,
     },
     OnboardingProviderDescriptor {
+        id: "gemini",
+        label: "Google Gemini",
+        access_modes: &PROVIDER_ACCESS_API_KEY,
+        api_key_prompt: Some("Gemini API key"),
+        recommended: false,
+    },
+    OnboardingProviderDescriptor {
         id: "ollama",
         label: "Ollama (Local models)",
         access_modes: &PROVIDER_ACCESS_LOCAL_RUNTIME,
@@ -308,6 +319,90 @@ const ONBOARDING_PROVIDER_DESCRIPTORS: [OnboardingProviderDescriptor; 4] = [
 
 fn onboarding_provider_descriptors() -> &'static [OnboardingProviderDescriptor] {
     &ONBOARDING_PROVIDER_DESCRIPTORS
+}
+
+fn provider_display_label(
+    descriptor: OnboardingProviderDescriptor,
+    agent_backends: &[AgentBackendCatalogEntry],
+) -> String {
+    let mut label = descriptor.display_label();
+    if let Some(entry) = backend_for_provider(agent_backends, descriptor.id)
+        && entry.detected
+    {
+        let suffix = match entry.readiness {
+            AgentBackendReadiness::Ready => {
+                format!("{} detected locally", entry.display_name())
+            }
+            AgentBackendReadiness::Candidate => {
+                format!("{} available locally", entry.display_name())
+            }
+            AgentBackendReadiness::DetectionOnly => {
+                format!("{} detected (integration only)", entry.display_name())
+            }
+            AgentBackendReadiness::Unavailable => String::new(),
+        };
+        if !suffix.is_empty() {
+            label.push_str(" - ");
+            label.push_str(&suffix);
+        }
+    }
+    label
+}
+
+fn print_onboarding_agent_backend_hints(agent_backends: &[AgentBackendCatalogEntry]) {
+    let relevant = onboarding_provider_descriptors()
+        .iter()
+        .filter_map(|descriptor| {
+            backend_for_provider(agent_backends, descriptor.id)
+                .filter(|entry| entry.detected)
+                .map(|entry| (descriptor.label, entry))
+        })
+        .collect::<Vec<_>>();
+
+    if !relevant.is_empty() {
+        println!("Detected local agent accounts:");
+        for (provider_label, entry) in relevant {
+            let readiness = match entry.readiness {
+                AgentBackendReadiness::Ready => "ready for future delegated backend work",
+                AgentBackendReadiness::Candidate => {
+                    "detected and awaiting delegated backend wiring"
+                }
+                AgentBackendReadiness::DetectionOnly => {
+                    "detected, but only integration metadata is confirmed today"
+                }
+                AgentBackendReadiness::Unavailable => "not detected",
+            };
+            println!(
+                "  - {} via {}: {}",
+                provider_label,
+                entry.display_name(),
+                readiness
+            );
+        }
+        println!();
+    }
+}
+
+fn print_selected_provider_backend_hint(
+    descriptor: OnboardingProviderDescriptor,
+    agent_backends: &[AgentBackendCatalogEntry],
+) {
+    if let Some(entry) = backend_for_provider(agent_backends, descriptor.id)
+        && entry.detected
+    {
+        println!(
+            "  Local {} status: {}.",
+            entry.display_name(),
+            entry
+                .readiness_reason
+                .as_deref()
+                .unwrap_or("detected on this machine")
+        );
+        println!(
+            "  Onboarding will keep using the documented {} path until delegated backend execution is fully wired.",
+            descriptor.label
+        );
+    }
 }
 
 fn persist_provider_path_selection(
@@ -1224,9 +1319,11 @@ async fn setup_slack(wizard: &mut OnboardingWizard) -> Result<&'static str> {
 
 async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
     let providers = onboarding_provider_descriptors();
+    let agent_backends = AgentBackendCatalogService::new().discover();
+    print_onboarding_agent_backend_hints(&agent_backends);
     let provider_labels = providers
         .iter()
-        .map(|descriptor| descriptor.display_label())
+        .map(|descriptor| provider_display_label(*descriptor, &agent_backends))
         .collect::<Vec<_>>();
     let default_provider_index = wizard
         .state
@@ -1248,6 +1345,7 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
         .get(selection)
         .copied()
         .ok_or_else(|| anyhow!("invalid provider selection"))?;
+    print_selected_provider_backend_hint(descriptor, &agent_backends);
 
     wizard.state.preferred_provider = Some(descriptor.id.to_string());
 
@@ -2194,6 +2292,7 @@ fn configured_model_for_provider(config: &AppConfig, provider: &str) -> String {
         "anthropic" => config.providers.anthropic.model.clone(),
         "openai" => config.providers.openai.model.clone(),
         "openrouter" => config.providers.openrouter.model.clone(),
+        "gemini" => config.providers.gemini.model.clone(),
         "ollama" => config.providers.ollama.model.clone(),
         _ => String::new(),
     }
@@ -2315,6 +2414,42 @@ async fn discover_live_provider_models(
                 .flatten()
                 .filter_map(|entry| entry.get("id").and_then(|value| value.as_str()))
                 .map(str::to_string)
+                .collect::<Vec<_>>()
+        }
+        "gemini" => {
+            let api_key = config
+                .providers
+                .gemini
+                .api_key_env
+                .as_deref()
+                .and_then(|name| std::env::var(name).ok())
+                .or_else(|| std::env::var("GOOGLE_API_KEY").ok())
+                .ok_or_else(|| {
+                    anyhow!("GEMINI_API_KEY or GOOGLE_API_KEY environment variable not set")
+                })?;
+            let response = client
+                .get(format!(
+                    "{}/models",
+                    config
+                        .providers
+                        .gemini
+                        .base_url
+                        .as_deref()
+                        .unwrap_or("https://generativelanguage.googleapis.com/v1beta")
+                        .trim_end_matches('/')
+                ))
+                .timeout(Duration::from_secs(5))
+                .header("x-goog-api-key", api_key)
+                .send()
+                .await?
+                .error_for_status()?;
+            let body: serde_json::Value = response.json().await?;
+            body["models"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|entry| entry.get("name").and_then(|value| value.as_str()))
+                .map(|value| value.trim_start_matches("models/").to_string())
                 .collect::<Vec<_>>()
         }
         "ollama" => {
@@ -2583,6 +2718,7 @@ async fn save_provider_config(provider: &str, api_key: &str) -> Result<()> {
         "anthropic" => "ANTHROPIC_API_KEY",
         "openai" => "OPENAI_API_KEY",
         "openrouter" => "OPENROUTER_API_KEY",
+        "gemini" => "GEMINI_API_KEY",
         _ => return Ok(()),
     };
 
@@ -2987,11 +3123,19 @@ mod tests {
     #[test]
     fn test_onboarding_provider_descriptors_match_current_supported_paths() {
         let descriptors = onboarding_provider_descriptors();
-        assert_eq!(descriptors.len(), 4);
+        assert_eq!(descriptors.len(), 5);
         assert_eq!(
             descriptors
                 .iter()
                 .find(|descriptor| descriptor.id == "anthropic")
+                .unwrap()
+                .access_modes,
+            &[OnboardingProviderAccessMode::ApiKey]
+        );
+        assert_eq!(
+            descriptors
+                .iter()
+                .find(|descriptor| descriptor.id == "gemini")
                 .unwrap()
                 .access_modes,
             &[OnboardingProviderAccessMode::ApiKey]
