@@ -451,6 +451,89 @@ impl SqliteMemoryStore {
         (-age_days / 30.0).exp()
     }
 
+    fn normalize_fts_distance(rank: f64) -> f32 {
+        if !rank.is_finite() {
+            return 0.0;
+        }
+        let distance = rank.abs() as f32;
+        1.0 / (1.0 + distance)
+    }
+
+    fn lexical_scores(rows: &[MemorySearchRow]) -> HashMap<String, f32> {
+        let mut base_scores = HashMap::new();
+        let mut min_score = f32::INFINITY;
+        let mut max_score = f32::NEG_INFINITY;
+
+        for row in rows {
+            let score = Self::normalize_fts_distance(row._rank);
+            min_score = min_score.min(score);
+            max_score = max_score.max(score);
+            base_scores.insert(row.entry.id.clone(), score);
+        }
+
+        if base_scores.is_empty() {
+            return base_scores;
+        }
+
+        if (max_score - min_score).abs() < f32::EPSILON {
+            return base_scores
+                .into_iter()
+                .map(|(id, score)| (id, score.clamp(0.0, 1.0)))
+                .collect();
+        }
+
+        base_scores
+            .into_iter()
+            .map(|(id, score)| {
+                let relative = ((score - min_score) / (max_score - min_score)).clamp(0.0, 1.0);
+                let normalized = ((relative * 0.8) + (score * 0.2)).clamp(0.0, 1.0);
+                (id, normalized)
+            })
+            .collect()
+    }
+
+    fn fuse_score(
+        lexical_score: f32,
+        vector_score: Option<f32>,
+        recency_score: f32,
+        confidence_score: f32,
+        importance_score: f32,
+        recency_weight: f32,
+    ) -> f32 {
+        let mut weighted_sum = 0.0;
+        let mut weight_total = 0.0;
+
+        let lexical_weight = 0.35;
+        weighted_sum += lexical_score * lexical_weight;
+        weight_total += lexical_weight;
+
+        let confidence_weight = 0.20;
+        weighted_sum += confidence_score * confidence_weight;
+        weight_total += confidence_weight;
+
+        let importance_weight = 0.15;
+        weighted_sum += importance_score * importance_weight;
+        weight_total += importance_weight;
+
+        let recency_weight = recency_weight.clamp(0.0, 1.0) * 0.15;
+        if recency_weight > 0.0 {
+            weighted_sum += recency_score * recency_weight;
+            weight_total += recency_weight;
+        }
+
+        if let Some(vector_score) = vector_score {
+            let vector_weight = 0.15;
+            weighted_sum += vector_score * vector_weight;
+            weight_total += vector_weight;
+        }
+
+        if weight_total == 0.0 {
+            0.0
+        } else {
+            (weighted_sum / weight_total).clamp(0.0, 1.0)
+        }
+    }
+
     /// Build a permissive FTS query that matches any meaningful term.
     fn build_fts_query(text: &str) -> String {
         let terms: Vec<String> = text
@@ -671,6 +754,7 @@ impl SqliteMemoryStore {
             .fetch_all(&self.pool)
             .await
             .map_err(|e| Error::Database(DatabaseError::Query(format!("Search failed: {}", e))))?;
+        let lexical_scores = Self::lexical_scores(&rows);
 
         // Convert to MemoryEntry and apply scoring
         let mut candidates: Vec<(MemoryEntry, RetrievalScoreFactors)> = Vec::new();
@@ -681,29 +765,27 @@ impl SqliteMemoryStore {
             let confidence_score = entry.confidence.clamp(0.0, 1.0);
             let importance_score = entry.importance.clamp(0.0, 1.0);
 
-            // Calculate base score from BM25 rank (inverted and normalized)
-            let bm25_score = 1.0; // We could extract actual rank and normalize
-
-            // Apply temporal decay if recency weight is set
-            let temporal_score = if query.recency_weight > 0.0 {
-                let decay = recency_score;
-                bm25_score * (1.0 - query.recency_weight) + decay * query.recency_weight
-            } else {
-                bm25_score
-            };
-
-            // Factor in importance
-            let final_score = temporal_score * (0.5 + entry.importance * 0.5);
+            let lexical_score = lexical_scores
+                .get(&entry.id.to_string())
+                .copied()
+                .unwrap_or_else(|| Self::normalize_fts_distance(row._rank));
 
             candidates.push((
                 entry,
                 RetrievalScoreFactors {
-                    lexical_score: bm25_score,
+                    lexical_score,
                     vector_score: None,
                     recency_score,
                     confidence_score,
                     importance_score,
-                    fused_score: final_score,
+                    fused_score: Self::fuse_score(
+                        lexical_score,
+                        None,
+                        recency_score,
+                        confidence_score,
+                        importance_score,
+                        query.recency_weight,
+                    ),
                     vector_lane: RetrievalVectorLane::RustRescored,
                 },
             ));
@@ -719,9 +801,15 @@ impl SqliteMemoryStore {
             if let Some(vector) = vectors.get(&entry.id.to_string()) {
                 let vector_sim = Self::cosine_similarity(query_embedding, vector);
                 let vector_score = ((vector_sim + 1.0) / 2.0).clamp(0.0, 1.0);
-                // Combine BM25 and vector scores
                 factors.vector_score = Some(vector_score);
-                factors.fused_score = (factors.fused_score * 0.5) + (vector_score * 0.5);
+                factors.fused_score = Self::fuse_score(
+                    factors.lexical_score,
+                    factors.vector_score,
+                    factors.recency_score,
+                    factors.confidence_score,
+                    factors.importance_score,
+                    query.recency_weight,
+                );
             }
         }
 
@@ -952,6 +1040,7 @@ impl MemoryStoreTrait for SqliteMemoryStore {
             .fetch_all(&self.pool)
             .await
             .map_err(|e| Error::Database(DatabaseError::Query(format!("Search failed: {}", e))))?;
+        let lexical_scores = Self::lexical_scores(&rows);
 
         // Convert to MemoryEntry and apply scoring
         let mut candidates: Vec<(MemoryEntry, RetrievalScoreFactors)> = Vec::new();
@@ -962,29 +1051,27 @@ impl MemoryStoreTrait for SqliteMemoryStore {
             let confidence_score = entry.confidence.clamp(0.0, 1.0);
             let importance_score = entry.importance.clamp(0.0, 1.0);
 
-            // Calculate base score from BM25 rank (inverted and normalized)
-            let bm25_score = 1.0; // We could extract actual rank and normalize
-
-            // Apply temporal decay if recency weight is set
-            let temporal_score = if query.recency_weight > 0.0 {
-                let decay = recency_score;
-                bm25_score * (1.0 - query.recency_weight) + decay * query.recency_weight
-            } else {
-                bm25_score
-            };
-
-            // Factor in importance
-            let final_score = temporal_score * (0.5 + entry.importance * 0.5);
+            let lexical_score = lexical_scores
+                .get(&entry.id.to_string())
+                .copied()
+                .unwrap_or_else(|| Self::normalize_fts_distance(row._rank));
 
             candidates.push((
                 entry,
                 RetrievalScoreFactors {
-                    lexical_score: bm25_score,
+                    lexical_score,
                     vector_score: None,
                     recency_score,
                     confidence_score,
                     importance_score,
-                    fused_score: final_score,
+                    fused_score: Self::fuse_score(
+                        lexical_score,
+                        None,
+                        recency_score,
+                        confidence_score,
+                        importance_score,
+                        query.recency_weight,
+                    ),
                     vector_lane: RetrievalVectorLane::Unavailable,
                 },
             ));
