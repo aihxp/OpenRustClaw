@@ -1696,4 +1696,96 @@ mod tests {
         );
         assert!(results[0].explanation.degraded_state.is_some());
     }
+
+    #[tokio::test]
+    async fn integration_search_reports_distinct_lexical_scores() {
+        let store = setup_in_memory_store().await;
+
+        let strong = make_entry("rust ownership borrowing rust ownership guarantees");
+        let weak = make_entry("rust patterns");
+        store.store(strong).await.expect("store strong failed");
+        store.store(weak).await.expect("store weak failed");
+
+        let query = MemoryQuery {
+            text: "rust ownership".to_string(),
+            limit: 5,
+            ..Default::default()
+        };
+
+        let results = store.search(&query).await.expect("search failed");
+        assert!(results.len() >= 2, "expected at least two matching results");
+        assert!(
+            results[0].explanation.factors.lexical_score
+                > results[1].explanation.factors.lexical_score,
+            "lexical factor should distinguish stronger textual matches"
+        );
+        assert_ne!(results[0].explanation.factors.lexical_score, 1.0);
+        assert_ne!(results[1].explanation.factors.lexical_score, 1.0);
+    }
+
+    #[tokio::test]
+    async fn integration_search_with_embedding_reports_complete_factor_payload() {
+        let store = setup_in_memory_store().await;
+        let mut entry = make_entry("Rust ownership notes from design docs");
+        entry.source_type = Some(SourceType::Document);
+        let entry_id = entry.id.to_string();
+        store.store(entry).await.expect("store failed");
+        store
+            .store_vector(&entry_id, vec![0.8, 0.2, 0.0], "test-model")
+            .await
+            .expect("store_vector failed");
+
+        let query = MemoryQuery {
+            text: "ownership".to_string(),
+            limit: 3,
+            recency_weight: 0.4,
+            ..Default::default()
+        };
+
+        let results = store
+            .search_with_embedding(&query, &[1.0, 0.0, 0.0])
+            .await
+            .expect("search_with_embedding failed");
+        let factors = &results[0].explanation.factors;
+        assert!(factors.lexical_score >= 0.0 && factors.lexical_score <= 1.0);
+        assert!(factors.vector_score.is_some());
+        assert!(factors.recency_score >= 0.0 && factors.recency_score <= 1.0);
+        assert!(factors.confidence_score >= 0.0 && factors.confidence_score <= 1.0);
+        assert!(factors.importance_score >= 0.0 && factors.importance_score <= 1.0);
+        assert!(results[0].explanation.freshness.is_some());
+        assert_eq!(
+            results[0].explanation.primary_artifact.artifact_kind,
+            openrustclaw_core::types::RetrievalArtifactKind::DocumentChunk
+        );
+    }
+
+    #[tokio::test]
+    async fn integration_search_filters_low_confidence_and_updates_access_counts() {
+        let store = setup_in_memory_store().await;
+        let mut kept = make_entry("bounded retrieval stays trustworthy");
+        kept.confidence = 0.9;
+        let kept_id = kept.id.to_string();
+        let mut filtered = make_entry("bounded retrieval discarded");
+        filtered.confidence = 0.2;
+
+        store.store(kept).await.expect("store kept failed");
+        store.store(filtered).await.expect("store filtered failed");
+
+        let query = MemoryQuery {
+            text: "bounded retrieval".to_string(),
+            limit: 5,
+            min_confidence: 0.5,
+            ..Default::default()
+        };
+
+        let results = store.search(&query).await.expect("search failed");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].entry.id.to_string(), kept_id);
+
+        let retrieved = store.get(&kept_id).await.expect("get failed").unwrap();
+        assert_eq!(
+            retrieved.access_count, 1,
+            "search should increment access count before a follow-up read"
+        );
+    }
 }
