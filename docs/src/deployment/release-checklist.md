@@ -32,6 +32,7 @@ Use this checklist before promoting an OpenRustClaw MVP release candidate.
 
 - Build the release artifact with `scripts/build-release-artifacts.sh --target <triple>`.
 - Dry-run the GitHub release matrix on the candidate branch with `gh workflow run release-binaries.yml --ref <branch>` when workflow changes or target support changed.
+- Confirm whether the GitHub release you are updating is a public semver release or a planning milestone archive tag, and do not let one masquerade as the other.
 - Run `scripts/check-runtime-budgets.sh`.
 - Confirm the produced tarball and `.sha256` checksum exist for the target runtime.
 - Confirm the candidate binary path used by `openrustclaw runtime self-update-plan --artifact <path>` matches the artifact being promoted.

@@ -1,6 +1,6 @@
 # OpenRustClaw Docs Audit
 
-Reviewed: 2026-03-27
+Reviewed: 2026-04-08
 
 This is the canonical documentation and test-coverage audit for the shipped OpenRustClaw surface. It answers two questions:
 
@@ -20,11 +20,12 @@ Use this audit with:
 | --- | --- | --- | --- | --- |
 | Gateway runtime and deployment | `README.md`, `docs/src/getting-started/quickstart.md` | `docs/src/deployment/production.md` | `docs/src/operations/observability.md`, `docs/src/deployment/production.md` | `tests/integration/src/gateway_test.rs`, `tests/e2e/tests/vertical/test_gateway_layer.rs`, `scripts/check-runtime-budgets.sh` |
 | Setup and onboarding | `README.md`, `docs/src/getting-started/installation.md`, `docs/src/getting-started/quickstart.md` | `docs/src/deployment/production.md` | `docs/src/getting-started/installation.md`, `docs/src/guides/security.md` | `cargo test -p openrustclaw-cli onboard -- --nocapture`, `cargo test -p openrustclaw-cli doctor -- --nocapture` |
+| Delegated agent discovery, routing, and first-task launch | `README.md`, `docs/product-positioning.md`, `docs/src/getting-started/first-agent.md` | `docs/feature-matrix.md`, `docs/surface-matrix.md`, `docs/src/deployment/production.md` | `docs/src/guides/security.md`, `docs/src/deployment/crates-io-release.md` | `cargo test -p openrustclaw-app agent_backend_catalog -- --nocapture`, `cargo test -p openrustclaw-app agent_fabric_registry -- --nocapture`, `cargo test -p openrustclaw-app agent_route_policy -- --nocapture`, `cargo test -p openrustclaw-cli inspect -- --nocapture`, `cargo test -p openrustclaw-cli control -- --nocapture` |
 | Sessions, memory, and continuity | `README.md`, `docs/src/getting-started/quickstart.md`, `docs/src/getting-started/first-agent.md` | `docs/src/operations/observability.md`, `docs/feature-matrix.md` | `docs/src/operations/observability.md`, `docs/src/guides/security.md` | `tests/integration/src/fixture_suite_test.rs`, `tests/integration/src/documented_scenario_test.rs`, `crates/cli/src/commands/start.rs` unit tests |
 | Tools, browser, and coding evidence | `README.md`, `docs/src/getting-started/first-agent.md` | `docs/src/operations/observability.md`, `docs/feature-matrix.md` | `docs/src/operations/observability.md` | `tests/integration/src/mcp_test.rs`, `cargo test -p openrustclaw-cli skills --quiet`, `cargo test -p openrustclaw-cli mcp_server --quiet` |
 | Channels, communications, voice, and mobile | `README.md`, `docs/feature-matrix.md` | `docs/src/deployment/production.md`, `docs/surface-matrix.md` | `docs/src/operations/observability.md`, `docs/src/guides/security.md` | `tests/integration/src/channel_fixture_test.rs`, `tests/integration/src/documented_scenario_test.rs`, `cargo test -p openrustclaw-cli mobile --quiet` |
 | Enterprise and autonomy controls | `README.md`, `docs/product-positioning.md` | `docs/src/deployment/production.md`, `docs/src/guides/security.md`, `docs/surface-matrix.md` | `docs/src/operations/observability.md`, `docs/src/deployment/production.md` | `cargo test -p openrustclaw-cli enterprise_access -- --nocapture`, `cargo test -p openrustclaw-cli enterprise_autonomy -- --nocapture` |
-| Runtime operations, release, and security posture | `README.md`, `docs/src/getting-started/installation.md` | `docs/src/deployment/production.md`, `docs/src/guides/security.md` | `docs/src/operations/observability.md`, `docs/src/deployment/release-checklist.md` | `cargo test -p openrustclaw-cli runtime --quiet`, `scripts/build-release-artifacts.sh`, `scripts/check-runtime-budgets.sh` |
+| Runtime operations, release, and security posture | `README.md`, `docs/src/getting-started/installation.md`, `docs/src/changelog.md` | `docs/src/deployment/production.md`, `docs/src/guides/security.md`, `docs/src/deployment/crates-io-release.md` | `docs/src/operations/observability.md`, `docs/src/deployment/release-checklist.md` | `cargo test -p openrustclaw-cli runtime --quiet`, `scripts/build-release-artifacts.sh`, `scripts/check-runtime-budgets.sh`, `bash scripts/check-crates-io-readiness.sh openrustclaw-core` |
 
 ## Drift-Prevention Checklist
 
@@ -33,6 +34,7 @@ When a future milestone changes shipped behavior, verify that it updates:
 - `README.md` if the product story, first-run path, or primary operator loop changed
 - the relevant mdBook guide under `docs/src/`
 - any affected canonical planning doc under `docs/`
+- the release docs and changelog if semver publication state or milestone-tag semantics changed
 - this audit if a shipped feature family gained, lost, or materially changed documentation coverage
 
 If a milestone changes behavior but cannot name the canonical docs it updated, the docs work is incomplete.
@@ -46,4 +48,3 @@ The rewritten docs set now has:
 - one aligned getting-started path
 - one compact operator-facing runbook set
 - one standing audit artifact for future drift checks
-

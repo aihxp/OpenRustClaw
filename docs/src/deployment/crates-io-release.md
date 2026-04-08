@@ -6,6 +6,8 @@ OpenRustClaw's current public Rust package surface is intentionally narrow. The 
 
 The rest of the workspace remains out of the public crates.io lane until it has an explicit publish contract.
 
+This semver package lane is different from planning milestone tags such as `v1.45`. Milestone tags and milestone GitHub releases are archive markers for shipped planning slices. The public package line is the semver `1.4.x` line for `openrustclaw-core`.
+
 ## Preflight
 
 Before attempting a publish:
@@ -47,4 +49,4 @@ After publish succeeds:
 
 ## Current Blocker Shape
 
-If no crates.io credential is configured, stop before publish and preserve the dry-run evidence. That is a truthful operator checkpoint; do not claim public publication until crates.io and docs.rs are both visible.
+If no crates.io credential is configured, or if the configured token lacks publish permission, stop before publish and preserve the dry-run evidence plus the explicit error. That is a truthful operator checkpoint; do not claim public publication until crates.io and docs.rs are both visible.

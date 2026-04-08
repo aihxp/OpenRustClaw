@@ -1,83 +1,66 @@
-# Requirements: OpenRustClaw v1.45 Agent Fabric, Routing Console, and Guided Delegation
+# Requirements: OpenRustClaw v1.46 Milestone Audit, Deck Convergence, and Release Alignment
 
 **Defined:** 2026-04-08
 **Core Value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
 
 ## v1 Requirements
 
-### Cursor and Backend Expansion
+### Milestone and Archive Audit
 
-- [ ] **CURS-01**: Operator can see whether Cursor exposes a documented programmable execution surface and why it is supported, blocked, or detection-only.
-- [ ] **CURS-02**: If Cursor exposes a supported execution surface, OpenRustClaw can route bounded delegated work through it with the same audit, sandbox, and policy controls used for other delegated backends.
-- [ ] **CURS-03**: If Cursor does not expose a supported execution surface, onboarding, models, inspect, and Control UI all keep Cursor visible as detection-only with explicit compliance reasons.
+- [ ] **AUD-01**: The shipped milestone stack is reviewed against its preserved audit and verification artifacts instead of milestone memory.
+- [ ] **AUD-02**: Any real residual blocker, release mismatch, or documentation drift is preserved once in canonical planning docs instead of remaining implicit.
 
-### Delegation Fabric
+### Canonical Deck Convergence
 
-- [ ] **FABR-01**: Operator can register and inspect trusted remote hosts that advertise delegated agent backends and their capability metadata.
-- [ ] **FABR-02**: Route selection can evaluate both local and trusted remote delegated backends using explicit readiness, policy, and compatibility signals.
-- [x] **FABR-03**: Remote delegated execution preserves audit evidence, operator attribution, environment allowlists, and bounded runtime controls.
-- [x] **FABR-04**: When a delegated backend is blocked or fails, OpenRustClaw records the route decision and recovery hints instead of failing silently.
+- [ ] **DOC-01**: The live planning deck reflects `v1.45` as shipped and `v1.46` as the active audit/release milestone with archived `v1.45` roadmap and requirements snapshots preserved.
+- [ ] **DOC-02**: The canonical docs deck describes the shipped delegated-agent fabric, Cursor delegated-backend support, routing console, trusted remote backends, and guided first-task journey truthfully.
+- [ ] **DOC-03**: The release docs explain the difference between planning milestone tags and the public semver release line so README, docs, and GitHub metadata do not contradict one another.
 
-### Routing Console
+### Public Release Alignment
 
-- [x] **ROUTX-01**: Control UI exposes a dedicated routing console that shows delegated backend inventory, readiness, policy state, and routeable capacity.
-- [x] **ROUTX-02**: Operator can enable, disable, or constrain delegated backends and route policy through shipped CLI and Control UI surfaces without editing raw files.
-- [x] **ROUTX-03**: Operators can inspect route decisions and delegated receipts per task or run using the same vocabulary across CLI, Control UI, and inspect surfaces.
-
-### Guided First-Task Orchestration
-
-- [x] **TASK-01**: The first task after onboarding or repair suggests a truthful execution path based on the selected lane, available backends, and current policy state.
-- [x] **TASK-02**: Orchestration can recommend or prefill the right provider, delegated backend, claw, or model-profile path for an initial task instead of dropping operators into generic defaults.
-- [x] **TASK-03**: If the preferred lane is blocked, unavailable, or detection-only, OpenRustClaw offers actionable fallback choices before first-task execution begins.
+- [ ] **REL-01**: GitHub contains a truthful `v1.45` milestone release/tag as an archive marker for the shipped delegated-agent fabric milestone.
+- [ ] **REL-02**: The public semver lane for `openrustclaw-core 1.4.1` is verified and either published successfully or stopped at a truthful credential or platform blocker with evidence.
+- [ ] **REL-03**: GitHub `Latest` release metadata points at the public semver release line rather than the planning milestone line.
+- [ ] **REL-04**: Release evidence records the verification commands used, the final GitHub release URLs, and the crates.io/docs.rs state.
 
 ## v2 Requirements
 
-### Delegation Fabric Depth
+### Release Automation Hardening
 
-- **FABR-05**: Delegated backend routing can weight latency, quotas, and spend hints across multiple hosts.
-- **FABR-06**: Operator can group remote backends into pools and assign workload classes to those pools.
+- **REL-05**: The repo can generate milestone-archive release notes and semver release notes from separate templates so the two public surfaces stop drifting.
+- **REL-06**: Release evidence is emitted automatically into a single planning archive file after a successful publish.
 
-### Routing UX Depth
+### Docs Deck Automation
 
-- **ROUTX-04**: Control UI visualizes live route saturation, queue depth, and backend health trends over time.
-- **ROUTX-05**: Operators can simulate a route decision before sending a task.
-
-### Guided Task UX Depth
-
-- **TASK-04**: OpenRustClaw can turn the onboarding handoff into a one-click “run the first meaningful task” journey with preflight and rollback baked in.
+- **DOC-04**: Canonical docs freshness can be linted so stale shipped-surface claims fail CI before release.
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Importing vendor browser sessions, cached OAuth tokens, or desktop secrets from Cursor, Claude Code, Codex, or Gemini CLI | Violates the trust-first and compliance-safe backend contract |
-| Pretending Cursor is a supported backend without a documented programmable surface | Detection is useful, but fake support would reopen the exact truthfulness gap v1.44 just closed |
-| Fully automatic ambient discovery of remote hosts without explicit operator trust enrollment | Multi-host delegation needs a clear trust and audit boundary |
-| Broad visual redesign work unrelated to routing clarity, backend policy, or first-task guidance | Valuable later, but not required to close this milestone’s product-shape gap |
+| Broad net-new product features unrelated to audit, documentation convergence, or release alignment | This milestone is for truthfulness and release integrity, not breadth expansion |
+| Expanding crates.io publication beyond `openrustclaw-core` | The public crate lane remains intentionally narrow until a new publish contract exists |
+| Rewriting every historical milestone summary or audit file | The goal is to preserve truthful archives and repair current canonical surfaces, not flatten history |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CURS-01 | Phase 191 | Complete |
-| CURS-02 | Phase 191 | Complete |
-| CURS-03 | Phase 191 | Complete |
-| FABR-01 | Phase 192 | Complete |
-| FABR-02 | Phase 192 | Complete |
-| FABR-03 | Phase 193 | Complete |
-| FABR-04 | Phase 193 | Complete |
-| ROUTX-01 | Phase 194 | Complete |
-| ROUTX-02 | Phase 194 | Complete |
-| ROUTX-03 | Phase 194 | Complete |
-| TASK-01 | Phase 195 | Complete |
-| TASK-02 | Phase 195 | Complete |
-| TASK-03 | Phase 195 | Complete |
+| AUD-01 | Phase 196 | Planned |
+| AUD-02 | Phase 196 | Planned |
+| DOC-01 | Phase 197 | Planned |
+| DOC-02 | Phase 197 | Planned |
+| DOC-03 | Phase 197 | Planned |
+| REL-01 | Phase 198 | Planned |
+| REL-02 | Phase 198 | Planned |
+| REL-03 | Phase 198 | Planned |
+| REL-04 | Phase 199 | Planned |
 
 **Coverage:**
-- v1 requirements: 13 total
-- Mapped to phases: 13
+- v1 requirements: 9 total
+- Mapped to phases: 9
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-08*
-*Last updated: 2026-04-08 after initial definition*
+*Last updated: 2026-04-08 after milestone initialization*

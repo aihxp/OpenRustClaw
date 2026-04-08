@@ -2,115 +2,74 @@
 
 ## Milestones
 
-- ✅ **v1.0 through v1.44** - shipped. Full milestone history and archives: `.planning/MILESTONES.md`
-- ✅ **v1.45 Agent Fabric, Routing Console, and Guided Delegation** - shipped 2026-04-08
+- ✅ **v1.0 through v1.45** - shipped. Full milestone history and archives: `.planning/MILESTONES.md`
+- 🚧 **v1.46 Milestone Audit, Deck Convergence, and Release Alignment** - active
 
 ## Overview
 
-`v1.45` builds on the truthful delegated-agent baseline from `v1.44` instead of reopening it. This milestone turns delegated local agents into a richer execution fabric by validating Cursor honestly, adding trusted remote backends, exposing a real routing console, and making the first-task path after onboarding feel intentional instead of generic.
+`v1.46` is a truthfulness and release-integrity milestone. It does not reopen the shipped delegated-agent fabric work from `v1.45`; it audits that shipped stack, closes document-deck drift, and repairs the public release lane so milestone tags, GitHub Releases, and the public crates.io package surface no longer contradict one another.
 
 ## Phases
 
 **Phase Numbering:**
 - Integer phases continue the live sequence from the prior milestone.
-- This milestone starts at Phase 191 because `v1.44` ended at Phase 190.
+- This milestone starts at Phase 196 because `v1.45` ended at Phase 195.
 
-- [x] **Phase 191: Cursor Surface Verification and Backend Expansion** - Confirm Cursor’s programmable surface truthfully and either add a supported backend lane or preserve detection-only behavior with explicit reasons.
-- [x] **Phase 192: Trusted Remote Backend Registry and Fabric Signals** - Add trusted remote hosts and routeable delegated backend inventory beyond one machine.
-- [x] **Phase 193: Delegated Route Policy, Audit, and Recovery** - Extend delegated execution controls so multi-host routes stay bounded, attributable, and recoverable.
-- [x] **Phase 194: Agent Routing Console and Operator Policy UX** - Build a dedicated routing console across Control UI, CLI, and inspect surfaces.
-- [x] **Phase 195: Guided First-Task Orchestration and Fallbacks** - Make the first real task after onboarding or repair choose a coherent route with actionable fallback guidance.
+- [ ] **Phase 196: Shipped Milestone Audit and Residual Blocker Inventory** - Review shipped milestone archives, preserve real residual gaps, and distinguish resolved work from archival markers.
+- [ ] **Phase 197: Canonical Deck Convergence and Product Truthfulness** - Update the live planning and docs deck so delegated-agent fabric, Cursor support, routing-console UX, and release semantics read consistently everywhere.
+- [ ] **Phase 198: Public Release Lane Repair and GitHub Release Alignment** - Repair the public semver release lane, the missing `v1.45` GitHub milestone release entry, and the latest-release metadata.
+- [ ] **Phase 199: Release Evidence Sync and Closeout** - Preserve release evidence, verification commands, and the final milestone outcome in the planning archive.
 
 ## Phase Details
 
-### Phase 191: Cursor Surface Verification and Backend Expansion
-**Goal**: OpenRustClaw can describe Cursor truthfully and, if supported, execute through it without weakening the current delegated-backend contract.
+### Phase 196: Shipped Milestone Audit and Residual Blocker Inventory
+**Goal**: Preserve one truthful blocker and gap inventory after auditing the shipped milestone stack.
 **Depends on**: Nothing (first phase)
-**Requirements**: CURS-01, CURS-02, CURS-03
+**Requirements**: AUD-01, AUD-02
 **Success Criteria** (what must be TRUE):
-  1. Cursor support is explicitly classified as executable or detection-only using documented evidence instead of guesswork.
-  2. If Cursor is execution-capable, it routes through the same bounded audit and policy path as existing delegated backends.
-  3. If Cursor is not execution-capable, every operator surface says so clearly and consistently.
-**Plans**:
-- [191-CONTEXT.md](./phases/191-cursor-surface-verification-and-backend-expansion/191-CONTEXT.md)
-- [191-01-PLAN.md](./phases/191-cursor-surface-verification-and-backend-expansion/191-01-PLAN.md)
-- [191-02-PLAN.md](./phases/191-cursor-surface-verification-and-backend-expansion/191-02-PLAN.md)
-- [191-01-SUMMARY.md](./phases/191-cursor-surface-verification-and-backend-expansion/191-01-SUMMARY.md)
-- [191-02-SUMMARY.md](./phases/191-cursor-surface-verification-and-backend-expansion/191-02-SUMMARY.md)
+  1. The shipped milestone stack is reviewed against its archives instead of assumed from memory.
+  2. Any residual blocker or gap is recorded once in canonical planning docs instead of reappearing as drift.
+  3. Archived requirements and roadmap snapshots exist for `v1.45` before the live deck is overwritten.
 
-### Phase 192: Trusted Remote Backend Registry and Fabric Signals
-**Goal**: Delegated routing can reason about trusted remote agent backends instead of only local CLIs on one machine.
-**Depends on**: Phase 191
-**Requirements**: FABR-01, FABR-02
+### Phase 197: Canonical Deck Convergence and Product Truthfulness
+**Goal**: The canonical docs deck and live planning files describe the current shipped product and release semantics consistently.
+**Depends on**: Phase 196
+**Requirements**: DOC-01, DOC-02, DOC-03
 **Success Criteria** (what must be TRUE):
-  1. Operators can register trusted remote hosts and inspect their delegated backend inventory.
-  2. Route selection can compare local and remote delegated backends using readiness, policy, and compatibility signals.
-  3. Remote backend inventory remains explicit and operator-enrolled instead of ambient or hidden.
-**Plans**:
-- [192-CONTEXT.md](./phases/192-trusted-remote-backend-registry-and-fabric-signals/192-CONTEXT.md)
-- [192-01-PLAN.md](./phases/192-trusted-remote-backend-registry-and-fabric-signals/192-01-PLAN.md)
-- [192-02-PLAN.md](./phases/192-trusted-remote-backend-registry-and-fabric-signals/192-02-PLAN.md)
-- [192-01-SUMMARY.md](./phases/192-trusted-remote-backend-registry-and-fabric-signals/192-01-SUMMARY.md)
-- [192-02-SUMMARY.md](./phases/192-trusted-remote-backend-registry-and-fabric-signals/192-02-SUMMARY.md)
+  1. Delegated-agent fabric, Cursor support, routing-console UX, and guided first-task orchestration are represented truthfully across canonical docs.
+  2. Public semver releases and milestone/archive tags are described as different surfaces with different jobs.
+  3. The docs deck no longer contains stale “gated” or “not shipped” claims for shipped `v1.45` behavior.
 
-### Phase 193: Delegated Route Policy, Audit, and Recovery
-**Goal**: Multi-host delegated execution stays bounded and recoverable under one policy and audit contract.
-**Depends on**: Phase 192
-**Requirements**: FABR-03, FABR-04
+### Phase 198: Public Release Lane Repair and GitHub Release Alignment
+**Goal**: GitHub Releases, milestone tags, and the public crate lane reflect one truthful public release contract.
+**Depends on**: Phase 197
+**Requirements**: REL-01, REL-02, REL-03
 **Success Criteria** (what must be TRUE):
-  1. Remote delegated execution preserves audit evidence, operator attribution, and runtime constraints.
-  2. Route decisions record why a backend was chosen, blocked, or failed.
-  3. Operators get actionable recovery hints and fallback route cues when delegated execution cannot proceed.
-**Plans**:
-- [193-CONTEXT.md](./phases/193-delegated-route-policy-audit-and-recovery/193-CONTEXT.md)
-- [193-01-PLAN.md](./phases/193-delegated-route-policy-audit-and-recovery/193-01-PLAN.md)
-- [193-02-PLAN.md](./phases/193-delegated-route-policy-audit-and-recovery/193-02-PLAN.md)
-- [193-01-SUMMARY.md](./phases/193-delegated-route-policy-audit-and-recovery/193-01-SUMMARY.md)
-- [193-02-SUMMARY.md](./phases/193-delegated-route-policy-audit-and-recovery/193-02-SUMMARY.md)
+  1. The missing `v1.45` milestone tag/release is created as an archive marker with truthful notes.
+  2. The public semver lane for `openrustclaw-core` is either published or preserved at a truthful blocker checkpoint with evidence.
+  3. GitHub’s `Latest` release metadata points at the public semver line instead of the planning-milestone line.
 
-### Phase 194: Agent Routing Console and Operator Policy UX
-**Goal**: Operators have one dedicated routing console for backend inventory, policy, readiness, and receipts instead of stitching that story together manually.
-**Depends on**: Phase 193
-**Requirements**: ROUTX-01, ROUTX-02, ROUTX-03
+### Phase 199: Release Evidence Sync and Closeout
+**Goal**: Preserve the release evidence and milestone closeout in one place.
+**Depends on**: Phase 198
+**Requirements**: REL-04
 **Success Criteria** (what must be TRUE):
-  1. Control UI exposes a dedicated routing console with backend inventory, routeable capacity, and policy state.
-  2. CLI and Control UI can manage delegated backend policy without raw file editing.
-  3. Route decisions and delegated receipts stay legible across Control UI, inspect, and CLI surfaces.
-**Plans**:
-- [194-CONTEXT.md](./phases/194-agent-routing-console-and-operator-policy-ux/194-CONTEXT.md)
-- [194-01-PLAN.md](./phases/194-agent-routing-console-and-operator-policy-ux/194-01-PLAN.md)
-- [194-02-PLAN.md](./phases/194-agent-routing-console-and-operator-policy-ux/194-02-PLAN.md)
-- [194-01-SUMMARY.md](./phases/194-agent-routing-console-and-operator-policy-ux/194-01-SUMMARY.md)
-- [194-02-SUMMARY.md](./phases/194-agent-routing-console-and-operator-policy-ux/194-02-SUMMARY.md)
-
-### Phase 195: Guided First-Task Orchestration and Fallbacks
-**Goal**: The first task after onboarding or repair uses the selected lane and available backend fabric to guide operators into a real execution path instead of generic defaults.
-**Depends on**: Phase 194
-**Requirements**: TASK-01, TASK-02, TASK-03
-**Success Criteria** (what must be TRUE):
-  1. First-task suggestions reflect the selected lane, available backends, and current policy state.
-  2. Orchestration can prefill or recommend a coherent initial route, claw, and profile path.
-  3. Blocked or unsupported preferred lanes produce actionable fallback choices before execution starts.
-**Plans**:
-- [195-CONTEXT.md](./phases/195-guided-first-task-orchestration-and-fallbacks/195-CONTEXT.md)
-- [195-01-PLAN.md](./phases/195-guided-first-task-orchestration-and-fallbacks/195-01-PLAN.md)
-- [195-02-PLAN.md](./phases/195-guided-first-task-orchestration-and-fallbacks/195-02-PLAN.md)
-- [195-01-SUMMARY.md](./phases/195-guided-first-task-orchestration-and-fallbacks/195-01-SUMMARY.md)
-- [195-02-SUMMARY.md](./phases/195-guided-first-task-orchestration-and-fallbacks/195-02-SUMMARY.md)
+  1. Verification commands, release URLs, and publication evidence are recorded in the planning archive.
+  2. The live milestone deck reflects the repaired release contract and its evidence.
+  3. The repo is ready for the next planning cycle without rediscovering this release story.
 
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 191. Cursor Surface Verification and Backend Expansion | 2/2 | Complete | 2026-04-08 |
-| 192. Trusted Remote Backend Registry and Fabric Signals | 2/2 | Complete | 2026-04-08 |
-| 193. Delegated Route Policy, Audit, and Recovery | 2/2 | Complete | 2026-04-08 |
-| 194. Agent Routing Console and Operator Policy UX | 2/2 | Complete | 2026-04-08 |
-| 195. Guided First-Task Orchestration and Fallbacks | 2/2 | Complete | 2026-04-08 |
+| 196. Shipped Milestone Audit and Residual Blocker Inventory | 0/0 | Not started | - |
+| 197. Canonical Deck Convergence and Product Truthfulness | 0/0 | Not started | - |
+| 198. Public Release Lane Repair and GitHub Release Alignment | 0/0 | Not started | - |
+| 199. Release Evidence Sync and Closeout | 0/0 | Not started | - |
 
 ## Current Status
 
-- Active milestone: none
-- Roadmap progress: 5/5 phases complete
-- Current work: v1.45 is complete and shipped
-- Next step: `$gsd-new-milestone`
+- Active milestone: `v1.46 Milestone Audit, Deck Convergence, and Release Alignment`
+- Roadmap progress: 0/4 phases complete
+- Current work: audit the shipped milestone stack, converge the canonical docs deck, and repair public release metadata
+- Next step: `$gsd-plan-phase 196`

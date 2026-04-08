@@ -1,20 +1,20 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.45
-milestone_name: Agent Fabric, Routing Console, and Guided Delegation
+milestone: v1.46
+milestone_name: Milestone Audit, Deck Convergence, and Release Alignment
 current_phase: none
 current_phase_name: none
 current_plan: none
-status: milestone complete
-stopped_at: v1.45 is complete; delegated agent fabric, routing console, and guided first-task launch now ship as one coherent operator journey.
-last_updated: "2026-04-08T15:24:18Z"
+status: milestone started
+stopped_at: v1.46 is active; the immediate focus is milestone audit, document-deck convergence, and public release alignment.
+last_updated: "2026-04-08T20:00:00Z"
 last_activity: 2026-04-08
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 10
-  completed_plans: 10
-  percent: 100
+  total_phases: 4
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-08)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** `v1.45` is complete and shipped. The next planning action is to open a new milestone.
+**Current focus:** `v1.46` is active. Audit shipped milestones, converge the canonical docs deck, and repair public release alignment.
 
 ## Current Position
 
 Current Phase: none
 Current Phase Name: none
-Total Phases: 5
+Total Phases: 4
 Current Plan: none
 Total Plans in Phase: 0
-Status: milestone complete
+Status: milestone started
 Last activity: 2026-04-08
 
-Phase: 5 of 5
-Plan: 2 of 2
-Progress: [##########] 100%
+Phase: 0 of 4
+Plan: 0 of 0
+Progress: [----------] 0%
 
 ## Performance Metrics
 
@@ -81,10 +81,10 @@ Recent decisions affecting current work:
 
 ### Blockers/Concerns
 
-- No active blockers.
+- Public semver publication is currently blocked by crates.io credentials: `cargo publish -p openrustclaw-core` returned `403 Forbidden` because the configured token lacks publish permission.
 
 ## Session Continuity
 
 Last session: 2026-04-08
-Stopped at: v1.45 is complete; delegated agent fabric, routing console, and guided first-task launch now ship as one coherent operator journey.
+Stopped at: v1.46 is active; the immediate focus is milestone audit, document-deck convergence, and public release alignment.
 Resume file: None
