@@ -10589,6 +10589,52 @@ fn build_mcp_server(
                 }),
             },
             McpServerTool {
+                name: "list_model_artifacts".to_string(),
+                description: "Inspect structured model artifacts for a namespace.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "namespace": {"type": "string"},
+                        "include_inactive": {"type": "boolean"},
+                        "limit": {"type": "integer", "minimum": 1}
+                    }
+                }),
+            },
+            McpServerTool {
+                name: "promote_model_artifact".to_string(),
+                description: "Promote a structured model artifact from existing evidence.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "namespace": {"type": "string"},
+                        "kind": {"type": "string"},
+                        "summary": {"type": "string"},
+                        "source_memory_ids": {"type": "array", "items": {"type": "string"}},
+                        "source_archive_ids": {"type": "array", "items": {"type": "string"}},
+                        "source_event_ids": {"type": "array", "items": {"type": "string"}},
+                        "promoted_by": {"type": "string"},
+                        "importance": {"type": "number"},
+                        "confidence": {"type": "number"}
+                    },
+                    "required": ["namespace", "kind", "summary"]
+                }),
+            },
+            McpServerTool {
+                name: "update_model_artifact".to_string(),
+                description: "Correct, deactivate, or remove a structured model artifact.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "summary": {"type": "string"},
+                        "status": {"type": "string"},
+                        "correction_note": {"type": "string"},
+                        "updated_by": {"type": "string"}
+                    },
+                    "required": ["id"]
+                }),
+            },
+            McpServerTool {
                 name: "list_sessions".to_string(),
                 description: "List durable sessions and their statuses.".to_string(),
                 input_schema: serde_json::json!({
@@ -11518,6 +11564,115 @@ fn build_mcp_server(
                     )
                     .await?;
                 Ok(serde_json::json!({ "entries": entries }))
+            })
+        }),
+    );
+
+    let memory_store_for_model_artifacts = memory_store.clone();
+    let core_memory_store_for_model_artifacts = core_memory_store.clone();
+    server.register_handler(
+        "list_model_artifacts",
+        traced_mcp_handler(langsmith.clone(), "list_model_artifacts", move |args| {
+            let request: McpListModelArtifactsArgs = parse_tool_args(args)?;
+            let memory_store = memory_store_for_model_artifacts.clone();
+            let core_memory_store = core_memory_store_for_model_artifacts.clone();
+            block_on_tool(async move {
+                let service = openrustclaw_memory::ModelArtifactService::new(
+                    memory_store.clone(),
+                    core_memory_store.clone(),
+                );
+                let artifacts = service
+                    .list(
+                        request.namespace.as_deref(),
+                        request.include_inactive.unwrap_or(false),
+                        request.limit.unwrap_or(20).max(1),
+                    )
+                    .await
+                    .map_err(|error| mcp_tool_error(error.to_string()))?;
+                let projected_core_entries = if let Some(namespace) = request.namespace.as_deref() {
+                    service
+                        .projected_entries(namespace)
+                        .await
+                        .map_err(|error| mcp_tool_error(error.to_string()))?
+                } else {
+                    Vec::new()
+                };
+                Ok(serde_json::json!({
+                    "namespace": request.namespace,
+                    "artifacts": artifacts,
+                    "projected_core_entries": projected_core_entries,
+                }))
+            })
+        }),
+    );
+
+    let memory_store_for_promote_model_artifact = memory_store.clone();
+    let core_memory_store_for_promote_model_artifact = core_memory_store.clone();
+    server.register_handler(
+        "promote_model_artifact",
+        traced_mcp_handler(langsmith.clone(), "promote_model_artifact", move |args| {
+            let request: McpPromoteModelArtifactArgs = parse_tool_args(args)?;
+            let memory_store = memory_store_for_promote_model_artifact.clone();
+            let core_memory_store = core_memory_store_for_promote_model_artifact.clone();
+            block_on_tool(async move {
+                let service = openrustclaw_memory::ModelArtifactService::new(
+                    memory_store,
+                    core_memory_store,
+                );
+                let artifact = service
+                    .promote(&openrustclaw_core::types::ModelArtifactPromotionRequest {
+                        namespace: request.namespace,
+                        kind: parse_mcp_model_artifact_kind(&request.kind)
+                            .map_err(|error| mcp_tool_error(error.to_string()))?,
+                        summary: request.summary,
+                        importance: request.importance.unwrap_or(0.8).clamp(0.0, 1.0),
+                        confidence: request.confidence.unwrap_or(0.9).clamp(0.0, 1.0),
+                        source_lineage: build_mcp_model_artifact_lineage(
+                            request.source_memory_ids.as_deref().unwrap_or(&[]),
+                            request.source_archive_ids.as_deref().unwrap_or(&[]),
+                            request.source_event_ids.as_deref().unwrap_or(&[]),
+                        ),
+                        promoted_by: request.promoted_by,
+                        correction_note: None,
+                    })
+                    .await
+                    .map_err(|error| mcp_tool_error(error.to_string()))?;
+                Ok(serde_json::json!({ "artifact": artifact }))
+            })
+        }),
+    );
+
+    let memory_store_for_update_model_artifact = memory_store.clone();
+    let core_memory_store_for_update_model_artifact = core_memory_store.clone();
+    server.register_handler(
+        "update_model_artifact",
+        traced_mcp_handler(langsmith.clone(), "update_model_artifact", move |args| {
+            let request: McpUpdateModelArtifactArgs = parse_tool_args(args)?;
+            let memory_store = memory_store_for_update_model_artifact.clone();
+            let core_memory_store = core_memory_store_for_update_model_artifact.clone();
+            block_on_tool(async move {
+                let service = openrustclaw_memory::ModelArtifactService::new(
+                    memory_store,
+                    core_memory_store,
+                );
+                let artifact = service
+                    .update(
+                        &request.id,
+                        &openrustclaw_core::types::ModelArtifactUpdateRequest {
+                            summary: request.summary,
+                            status: request
+                                .status
+                                .as_deref()
+                                .map(parse_mcp_model_artifact_status)
+                                .transpose()
+                                .map_err(|error| mcp_tool_error(error.to_string()))?,
+                            correction_note: request.correction_note,
+                            updated_by: request.updated_by,
+                        },
+                    )
+                    .await
+                    .map_err(|error| mcp_tool_error(error.to_string()))?;
+                Ok(serde_json::json!({ "artifact": artifact }))
             })
         }),
     );
@@ -13108,6 +13263,74 @@ fn parse_mcp_session_status(raw: &str) -> Option<openrustclaw_db::SessionStatus>
     }
 }
 
+fn parse_mcp_model_artifact_kind(
+    raw: &str,
+) -> openrustclaw_core::error::Result<openrustclaw_core::types::ModelArtifactKind> {
+    match raw.to_ascii_lowercase().as_str() {
+        "user" | "user_model" | "user-model" => {
+            Ok(openrustclaw_core::types::ModelArtifactKind::UserModel)
+        }
+        "operator" | "operator_model" | "operator-model" => {
+            Ok(openrustclaw_core::types::ModelArtifactKind::OperatorModel)
+        }
+        "project" | "project_memory" | "project-memory" => {
+            Ok(openrustclaw_core::types::ModelArtifactKind::ProjectMemory)
+        }
+        "archive" | "archive_summary" | "archive-summary" => {
+            Ok(openrustclaw_core::types::ModelArtifactKind::ArchiveSummary)
+        }
+        _ => Err(mcp_tool_error(format!(
+            "Unknown model artifact kind '{}'",
+            raw
+        ))),
+    }
+}
+
+fn parse_mcp_model_artifact_status(
+    raw: &str,
+) -> openrustclaw_core::error::Result<openrustclaw_core::types::ModelArtifactStatus> {
+    match raw.to_ascii_lowercase().as_str() {
+        "active" => Ok(openrustclaw_core::types::ModelArtifactStatus::Active),
+        "inactive" => Ok(openrustclaw_core::types::ModelArtifactStatus::Inactive),
+        "superseded" => Ok(openrustclaw_core::types::ModelArtifactStatus::Superseded),
+        "removed" | "remove" => Ok(openrustclaw_core::types::ModelArtifactStatus::Removed),
+        _ => Err(mcp_tool_error(format!(
+            "Unknown model artifact status '{}'",
+            raw
+        ))),
+    }
+}
+
+fn build_mcp_model_artifact_lineage(
+    source_memory_ids: &[String],
+    source_archive_ids: &[String],
+    source_event_ids: &[String],
+) -> Vec<openrustclaw_core::types::ModelArtifactSourceRef> {
+    let mut lineage = Vec::new();
+    lineage.extend(source_memory_ids.iter().cloned().map(|source_id| {
+        openrustclaw_core::types::ModelArtifactSourceRef {
+            kind: openrustclaw_core::types::ModelArtifactSourceKind::MemoryEntry,
+            source_id,
+            detail: None,
+        }
+    }));
+    lineage.extend(source_archive_ids.iter().cloned().map(|source_id| {
+        openrustclaw_core::types::ModelArtifactSourceRef {
+            kind: openrustclaw_core::types::ModelArtifactSourceKind::ArchiveEntry,
+            source_id,
+            detail: None,
+        }
+    }));
+    lineage.extend(source_event_ids.iter().cloned().map(|source_id| {
+        openrustclaw_core::types::ModelArtifactSourceRef {
+            kind: openrustclaw_core::types::ModelArtifactSourceKind::RuntimeEvent,
+            source_id,
+            detail: None,
+        }
+    }));
+    lineage
+}
+
 fn parse_mcp_platform(raw: &str) -> Platform {
     match raw.to_lowercase().as_str() {
         "telegram" => Platform::Telegram,
@@ -13200,6 +13423,35 @@ struct McpGetMemoryArgs {
 struct McpMemoryTimelineArgs {
     namespace: Option<String>,
     limit: Option<usize>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct McpListModelArtifactsArgs {
+    namespace: Option<String>,
+    include_inactive: Option<bool>,
+    limit: Option<usize>,
+}
+
+#[derive(serde::Deserialize)]
+struct McpPromoteModelArtifactArgs {
+    namespace: String,
+    kind: String,
+    summary: String,
+    source_memory_ids: Option<Vec<String>>,
+    source_archive_ids: Option<Vec<String>>,
+    source_event_ids: Option<Vec<String>>,
+    promoted_by: Option<String>,
+    importance: Option<f32>,
+    confidence: Option<f32>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct McpUpdateModelArtifactArgs {
+    id: String,
+    summary: Option<String>,
+    status: Option<String>,
+    correction_note: Option<String>,
+    updated_by: Option<String>,
 }
 
 #[derive(serde::Deserialize, Default)]
@@ -15256,6 +15508,81 @@ background_services:
         assert_eq!(search_event_payload["query"], "Rust");
         assert_eq!(search_event_payload["namespace"], "user-1");
         assert!(search_event_payload["recall_pack"]["items"].is_array());
+
+        let promote_model_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 5,
+            "method": "tools/call",
+            "params": {
+                "name": "promote_model_artifact",
+                "arguments": {
+                    "namespace": "user-1",
+                    "kind": "user_model",
+                    "summary": "User prefers concise Rust answers",
+                    "source_memory_ids": [search_payload["memories"][0]["id"].as_str().unwrap()],
+                    "promoted_by": "test"
+                }
+            }
+        });
+        let promote_model_resp = server.handle_request(&promote_model_req);
+        let promote_model_text = promote_model_resp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap();
+        let promote_model_payload: serde_json::Value =
+            serde_json::from_str(promote_model_text).unwrap();
+        assert_eq!(
+            promote_model_payload["artifact"]["kind"].as_str(),
+            Some("user_model")
+        );
+
+        let list_model_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 6,
+            "method": "tools/call",
+            "params": {
+                "name": "list_model_artifacts",
+                "arguments": {
+                    "namespace": "user-1",
+                    "include_inactive": true,
+                    "limit": 10
+                }
+            }
+        });
+        let list_model_resp = server.handle_request(&list_model_req);
+        let list_model_text = list_model_resp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap();
+        let list_model_payload: serde_json::Value =
+            serde_json::from_str(list_model_text).unwrap();
+        assert_eq!(list_model_payload["artifacts"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            list_model_payload["projected_core_entries"][0]["key"].as_str(),
+            Some("model.user")
+        );
+
+        let update_model_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "tools/call",
+            "params": {
+                "name": "update_model_artifact",
+                "arguments": {
+                    "id": promote_model_payload["artifact"]["id"].as_str().unwrap(),
+                    "status": "removed",
+                    "correction_note": "No longer applicable"
+                }
+            }
+        });
+        let update_model_resp = server.handle_request(&update_model_req);
+        let update_model_text = update_model_resp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap();
+        let update_model_payload: serde_json::Value =
+            serde_json::from_str(update_model_text).unwrap();
+        assert_eq!(
+            update_model_payload["artifact"]["status"].as_str(),
+            Some("removed")
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]

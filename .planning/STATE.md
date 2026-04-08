@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.43
 milestone_name: Learning Loop, Memory Depth, and God Mode
-current_phase: 182
-current_phase_name: Structured Memory Artifacts and Model Control
+current_phase: 183
+current_phase_name: Learning Candidate Review and Lesson Promotion
 current_plan: none
 status: phase complete
-stopped_at: Phase 181 completed with bounded recall packs, durable retrieval telemetry, and green retrieval inspection tests; Phase 182 is ready for discuss/planning.
-last_updated: "2026-04-08T05:24:04Z"
+stopped_at: Phase 182 completed with typed structured model artifacts, bounded core-memory projection, and green CLI/MCP inspection coverage; Phase 183 is ready for discuss/planning.
+last_updated: "2026-04-08T05:41:47Z"
 last_activity: 2026-04-08
 progress:
   total_phases: 5
-  completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
-  percent: 20
+  completed_phases: 2
+  total_plans: 4
+  completed_plans: 4
+  percent: 40
 ---
 
 # Project State
@@ -28,17 +28,17 @@ See: .planning/PROJECT.md (updated 2026-04-07)
 
 ## Current Position
 
-Current Phase: 182
-Current Phase Name: Structured Memory Artifacts and Model Control
+Current Phase: 183
+Current Phase Name: Learning Candidate Review and Lesson Promotion
 Total Phases: 5
 Current Plan: none
 Total Plans in Phase: 2
 Status: phase complete
 Last activity: 2026-04-08
 
-Phase: 2 of 5
+Phase: 3 of 5
 Plan: 2 of 2
-Progress: [##--------] 20%
+Progress: [####------] 40%
 
 ## Performance Metrics
 
@@ -62,6 +62,7 @@ Recent decisions affecting current work:
 - Phase 181 now uses a shared bounded recall-pack contract across the agent, gateway, recall views, and durable `memory.searched` runtime events.
 - Retrieval inspection remains phase-scoped: recall stays tool-driven, bounded, and provenance-rich instead of widening prompt injection or introducing Phase 182 artifact stores.
 - Local verification now includes `openrustclaw-cli` retrieval inspection tests after installing `protobuf` to provide `protoc` for `openrustclaw-langbridge`.
+- Phase 182 now stores structured user/operator/project/archive artifacts durably, projects only reserved typed slots into core memory, and exposes correction/deactivation/removal through CLI and MCP surfaces.
 
 ### Pending Todos
 
@@ -70,10 +71,10 @@ Recent decisions affecting current work:
 ### Blockers/Concerns
 
 - v1.0 archive notes missing phase verification artifacts as lifecycle debt already captured in the archive.
-- Phase 182 should preserve the bounded recall-pack and runtime-event inspection contracts rather than fork new artifact-specific explainability payloads.
+- Phase 183 should build learning-candidate review on top of structured artifacts and retained lineage rather than bypassing Phase 182 artifact control.
 
 ## Session Continuity
 
 Last session: 2026-04-08
-Stopped at: Phase 181 completed with bounded recall packs, durable retrieval telemetry, and green retrieval inspection tests; Phase 182 is ready for discuss/planning.
+Stopped at: Phase 182 completed with typed structured model artifacts, bounded core-memory projection, and green CLI/MCP inspection coverage; Phase 183 is ready for discuss/planning.
 Resume file: None

@@ -16,7 +16,7 @@
 - This milestone starts at Phase 181 because `v1.42` ended at Phase 180.
 
 - [x] **Phase 181: Hybrid Retrieval and Recall Inspection** - Make recall retrieval, assembly, and inspection reliable and explainable across sessions.
-- [ ] **Phase 182: Structured Memory Artifacts and Model Control** - Promote durable user, operator, project, and archive artifacts through bounded policy-gated memory flows.
+- [x] **Phase 182: Structured Memory Artifacts and Model Control** - Promote durable user, operator, project, and archive artifacts through bounded policy-gated memory flows.
 - [ ] **Phase 183: Learning Candidate Review and Lesson Promotion** - Turn successful work and reflections into reviewable candidates that can become bounded active lessons.
 - [ ] **Phase 184: Skill Proposal Verification and Reuse** - Generate reviewable reusable-skill proposals and route approved ones through the existing compile and install path.
 - [ ] **Phase 185: God Mode Overlay, Audit, and Recovery** - Add a distinct full-power operator lane that remains explicit, auditable, and reversible.
@@ -82,7 +82,7 @@
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 181. Hybrid Retrieval and Recall Inspection | 2/2 | Complete | 2026-04-08 |
-| 182. Structured Memory Artifacts and Model Control | 0/0 | Not started | - |
+| 182. Structured Memory Artifacts and Model Control | 2/2 | Complete | 2026-04-08 |
 | 183. Learning Candidate Review and Lesson Promotion | 0/0 | Not started | - |
 | 184. Skill Proposal Verification and Reuse | 0/0 | Not started | - |
 | 185. God Mode Overlay, Audit, and Recovery | 0/0 | Not started | - |
@@ -90,6 +90,6 @@
 ## Current Status
 
 - Active milestone: v1.43 Learning Loop, Memory Depth, and God Mode
-- Roadmap progress: 1/5 phases complete
-- Current work: Phase 181 is complete across retrieval scoring, bounded recall packs, recall views, and durable `memory.searched` telemetry
-- Next step: `$gsd-discuss-phase 182 --auto`
+- Roadmap progress: 2/5 phases complete
+- Current work: Phase 182 is complete across structured artifact storage, policy-gated promotion, bounded projection, and operator control surfaces
+- Next step: `$gsd-discuss-phase 183 --auto`

@@ -5,11 +5,12 @@ use chrono::Utc;
 use openrustclaw_app::memory_views as app_memory_views;
 use openrustclaw_core::traits::{CoreMemoryStore, MemoryStore};
 use openrustclaw_core::types::{
-    CoreEntry, MemoryEntry, MemoryQuery, MemoryType, RetrievalArtifactKind, RetrievalExplanation,
-    RetrievalVectorLane, SourceType,
+    CoreEntry, MemoryEntry, MemoryQuery, MemoryType, ModelArtifactKind, ModelArtifactSourceKind,
+    ModelArtifactSourceRef, ModelArtifactStatus, ModelArtifactUpdateRequest,
+    RetrievalArtifactKind, RetrievalExplanation, RetrievalVectorLane, SourceType,
 };
 use openrustclaw_db::{SqliteCoreMemoryStore, SqliteMemoryStore};
-use openrustclaw_memory::WorkspaceArtifactRegistry;
+use openrustclaw_memory::{ModelArtifactService, WorkspaceArtifactRegistry};
 use sqlx::Row;
 use std::path::{Path, PathBuf};
 
@@ -625,6 +626,136 @@ pub async fn views_import(root: &str, user_id: &str) -> Result<()> {
     Ok(())
 }
 
+/// List structured model artifacts.
+pub async fn model_artifacts_list(
+    namespace: Option<&str>,
+    include_inactive: bool,
+    limit: usize,
+) -> Result<()> {
+    let (store, core_store, _pool) = open_stores().await?;
+    let service = ModelArtifactService::new(store, core_store);
+    let artifacts = service.list(namespace, include_inactive, limit.max(1)).await?;
+
+    if artifacts.is_empty() {
+        println!("No structured model artifacts found.");
+        return Ok(());
+    }
+
+    for artifact in &artifacts {
+        println!(
+            "{}  {}  {}  {:.2}/{:.2}",
+            artifact.id,
+            model_artifact_kind_label(artifact.kind),
+            model_artifact_status_label(artifact.status),
+            artifact.importance,
+            artifact.confidence
+        );
+        println!("  namespace: {}", artifact.namespace);
+        println!("  summary: {}", artifact.summary);
+        println!("  lineage: {}", artifact.source_lineage.len());
+        if let Some(promoted_by) = artifact.promoted_by.as_deref() {
+            println!("  promoted_by: {}", promoted_by);
+        }
+        if let Some(note) = artifact.correction_note.as_deref() {
+            println!("  correction_note: {}", note);
+        }
+        println!();
+    }
+
+    if let Some(namespace) = namespace {
+        let projections = service.projected_entries(namespace).await?;
+        if !projections.is_empty() {
+            println!("Projected core-memory slots:");
+            for projection in projections {
+                println!("  {} -> {}", projection.key, projection.value);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Promote a new structured model artifact from existing evidence.
+pub async fn model_artifacts_promote(
+    namespace: &str,
+    kind: &str,
+    summary: &str,
+    source_memory_ids: &[String],
+    source_archive_ids: &[String],
+    source_event_ids: &[String],
+    promoted_by: Option<&str>,
+    importance: f32,
+    confidence: f32,
+) -> Result<()> {
+    let (store, core_store, _pool) = open_stores().await?;
+    let service = ModelArtifactService::new(store, core_store);
+    let artifact = service
+        .promote(&openrustclaw_core::types::ModelArtifactPromotionRequest {
+            namespace: namespace.to_string(),
+            kind: parse_model_artifact_kind(kind)?,
+            summary: summary.to_string(),
+            importance: importance.clamp(0.0, 1.0),
+            confidence: confidence.clamp(0.0, 1.0),
+            source_lineage: build_model_artifact_lineage(
+                source_memory_ids,
+                source_archive_ids,
+                source_event_ids,
+            ),
+            promoted_by: promoted_by.map(str::to_string),
+            correction_note: None,
+        })
+        .await?;
+    println!(
+        "✓ Promoted {} artifact {} for namespace {}",
+        model_artifact_kind_label(artifact.kind),
+        artifact.id,
+        artifact.namespace
+    );
+    Ok(())
+}
+
+/// Correct the summary for a structured model artifact.
+pub async fn model_artifacts_correct(
+    id: &str,
+    summary: &str,
+    note: Option<&str>,
+    updated_by: Option<&str>,
+) -> Result<()> {
+    let (store, core_store, _pool) = open_stores().await?;
+    let service = ModelArtifactService::new(store, core_store);
+    let artifact = service
+        .update(
+            id,
+            &ModelArtifactUpdateRequest {
+                summary: Some(summary.to_string()),
+                correction_note: note.map(str::to_string),
+                updated_by: updated_by.map(str::to_string),
+                ..Default::default()
+            },
+        )
+        .await?;
+    println!("✓ Corrected artifact {}", artifact.id);
+    Ok(())
+}
+
+/// Deactivate a structured model artifact.
+pub async fn model_artifacts_deactivate(
+    id: &str,
+    note: Option<&str>,
+    updated_by: Option<&str>,
+) -> Result<()> {
+    update_model_artifact_status(id, ModelArtifactStatus::Inactive, note, updated_by).await
+}
+
+/// Remove a structured model artifact from active use.
+pub async fn model_artifacts_remove(
+    id: &str,
+    note: Option<&str>,
+    updated_by: Option<&str>,
+) -> Result<()> {
+    update_model_artifact_status(id, ModelArtifactStatus::Removed, note, updated_by).await
+}
+
 /// Scan workspace artifacts.
 pub async fn artifacts_scan(root: &str) -> Result<()> {
     let artifacts = WorkspaceArtifactRegistry::scan(Path::new(root))?;
@@ -794,6 +925,24 @@ fn assistant_write_policy_summary(entry: &MemoryEntry) -> Option<String> {
     app_memory_views::MemoryViewsService::new().assistant_write_policy_summary(&entry.metadata)
 }
 
+fn model_artifact_kind_label(value: ModelArtifactKind) -> &'static str {
+    match value {
+        ModelArtifactKind::UserModel => "user_model",
+        ModelArtifactKind::OperatorModel => "operator_model",
+        ModelArtifactKind::ProjectMemory => "project_memory",
+        ModelArtifactKind::ArchiveSummary => "archive_summary",
+    }
+}
+
+fn model_artifact_status_label(value: ModelArtifactStatus) -> &'static str {
+    match value {
+        ModelArtifactStatus::Active => "active",
+        ModelArtifactStatus::Inactive => "inactive",
+        ModelArtifactStatus::Superseded => "superseded",
+        ModelArtifactStatus::Removed => "removed",
+    }
+}
+
 fn parse_memory_type(value: &str) -> Result<MemoryType> {
     match app_memory_views::MemoryViewsService::new().parse_memory_type(value) {
         Some("episodic") => Ok(MemoryType::Episodic),
@@ -823,6 +972,19 @@ fn parse_source_type(value: &str) -> Result<SourceType> {
 
 fn parse_source_type_optional(value: &str) -> Option<SourceType> {
     parse_source_type(value).ok()
+}
+
+fn parse_model_artifact_kind(value: &str) -> Result<ModelArtifactKind> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "user_model" | "user-model" | "user" => Ok(ModelArtifactKind::UserModel),
+        "operator_model" | "operator-model" | "operator" => Ok(ModelArtifactKind::OperatorModel),
+        "project_memory" | "project-memory" | "project" => Ok(ModelArtifactKind::ProjectMemory),
+        "archive_summary" | "archive-summary" | "archive" => Ok(ModelArtifactKind::ArchiveSummary),
+        _ => anyhow::bail!(
+            "Unknown model artifact kind '{}'. Available: user_model, operator_model, project_memory, archive_summary",
+            value
+        ),
+    }
 }
 
 fn source_type_label(value: SourceType) -> &'static str {
@@ -927,6 +1089,57 @@ fn sha256_hex(input: &str) -> String {
     let mut hasher = DefaultHasher::new();
     input.hash(&mut hasher);
     format!("{:016x}", hasher.finish())
+}
+
+fn build_model_artifact_lineage(
+    source_memory_ids: &[String],
+    source_archive_ids: &[String],
+    source_event_ids: &[String],
+) -> Vec<ModelArtifactSourceRef> {
+    let mut lineage = Vec::new();
+    lineage.extend(source_memory_ids.iter().cloned().map(|source_id| ModelArtifactSourceRef {
+        kind: ModelArtifactSourceKind::MemoryEntry,
+        source_id,
+        detail: None,
+    }));
+    lineage.extend(source_archive_ids.iter().cloned().map(|source_id| ModelArtifactSourceRef {
+        kind: ModelArtifactSourceKind::ArchiveEntry,
+        source_id,
+        detail: None,
+    }));
+    lineage.extend(source_event_ids.iter().cloned().map(|source_id| ModelArtifactSourceRef {
+        kind: ModelArtifactSourceKind::RuntimeEvent,
+        source_id,
+        detail: None,
+    }));
+    lineage
+}
+
+async fn update_model_artifact_status(
+    id: &str,
+    status: ModelArtifactStatus,
+    note: Option<&str>,
+    updated_by: Option<&str>,
+) -> Result<()> {
+    let (store, core_store, _pool) = open_stores().await?;
+    let service = ModelArtifactService::new(store, core_store);
+    let artifact = service
+        .update(
+            id,
+            &ModelArtifactUpdateRequest {
+                status: Some(status),
+                correction_note: note.map(str::to_string),
+                updated_by: updated_by.map(str::to_string),
+                ..Default::default()
+            },
+        )
+        .await?;
+    println!(
+        "✓ {} artifact {}",
+        model_artifact_status_label(artifact.status),
+        artifact.id
+    );
+    Ok(())
 }
 
 #[cfg(test)]

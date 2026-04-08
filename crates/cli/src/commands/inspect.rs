@@ -24,11 +24,15 @@ use openrustclaw_app::setup_handoff::{
 use openrustclaw_app::tool_execution_audit::ToolExecutionAuditService;
 use openrustclaw_core::config::AppConfig;
 use openrustclaw_core::error::Error as CoreError;
-use openrustclaw_core::types::{MemoryEntry, Message, RecallPack};
+use openrustclaw_core::types::{
+    MemoryEntry, Message, ModelArtifact, ModelArtifactProjection, RecallPack,
+};
 use openrustclaw_db::models::MemoryArchiveRow;
 use openrustclaw_db::{
-    PersistedSession, SessionStatus, SqliteMemoryStore, SqlitePool, SqliteSessionStore,
+    PersistedSession, SessionStatus, SqliteCoreMemoryStore, SqliteMemoryStore, SqlitePool,
+    SqliteSessionStore,
 };
+use openrustclaw_memory::ModelArtifactService;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use std::fs::{self, OpenOptions};
@@ -68,6 +72,14 @@ pub struct MemoryTimelineReport {
 pub struct MemoryArchiveReport {
     pub namespace: Option<String>,
     pub entries: Vec<MemoryArchiveRow>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ModelArtifactInspectionReport {
+    pub namespace: Option<String>,
+    pub artifacts: Vec<ModelArtifact>,
+    #[serde(default)]
+    pub projected_core_entries: Vec<ModelArtifactProjection>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -510,6 +522,30 @@ pub async fn memory_timeline(
         namespace: namespace_value,
         entries,
         recent_searches,
+    })
+}
+
+pub async fn memory_model_artifacts(
+    store: &SqliteMemoryStore,
+    core_store: &SqliteCoreMemoryStore,
+    namespace: Option<&str>,
+    include_inactive: bool,
+    limit: usize,
+) -> Result<ModelArtifactInspectionReport> {
+    let service = ModelArtifactService::new(store.clone(), core_store.clone());
+    let artifacts = service
+        .list(namespace, include_inactive, limit.max(1))
+        .await?;
+    let projected_core_entries = if let Some(namespace) = namespace {
+        service.projected_entries(namespace).await?
+    } else {
+        Vec::new()
+    };
+
+    Ok(ModelArtifactInspectionReport {
+        namespace: namespace.map(str::to_string),
+        artifacts,
+        projected_core_entries,
     })
 }
 
@@ -1862,9 +1898,9 @@ fn build_voice_operator_recent_activity(
 mod tests {
     use super::{
         enterprise_access_summary, enterprise_admin_summary, enterprise_foundations_summary,
-        greenfield_progress_summary, memory_timeline, new_tool_execution_record,
-        self_hosted_product_mode_summary, setup_handoff_summary, tool_execution_log_path,
-        transition_self_hosted_product_mode_summary,
+        greenfield_progress_summary, memory_model_artifacts, memory_timeline,
+        new_tool_execution_record, self_hosted_product_mode_summary, setup_handoff_summary,
+        tool_execution_log_path, transition_self_hosted_product_mode_summary,
     };
     use anyhow::Result;
     use chrono::{DateTime, Utc};
@@ -1872,7 +1908,8 @@ mod tests {
     use openrustclaw_core::types::{
         MemoryEntry, MemoryType, RetrievalArtifactKind, RetrievalExplanation, SourceType,
     };
-    use openrustclaw_db::{SqliteMemoryStore, init_pool, run_migrations};
+    use openrustclaw_db::{SqliteCoreMemoryStore, SqliteMemoryStore, init_pool, run_migrations};
+    use openrustclaw_memory::ModelArtifactService;
     use openrustclaw_mobile::protocol::{DeviceCommandKind, MobileCommandRecord};
     use sqlx::query;
     use std::fs;
@@ -2334,6 +2371,43 @@ mod tests {
                 .artifact_kind,
             RetrievalArtifactKind::ConversationMemory
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn memory_model_artifacts_report_includes_projection() -> Result<()> {
+        let workspace = tempdir().expect("tempdir");
+        let db_path = workspace.path().join("inspect-model-artifacts.db");
+        let db_url = format!("sqlite://{}", db_path.display());
+        let pool = init_pool(&db_url, 1).await?;
+        run_migrations(&pool).await?;
+
+        let memory_store = SqliteMemoryStore::new(pool.clone());
+        let core_store = SqliteCoreMemoryStore::new(pool.clone());
+        let service = ModelArtifactService::new(memory_store.clone(), core_store.clone());
+
+        service
+            .promote(&openrustclaw_core::types::ModelArtifactPromotionRequest {
+                namespace: "user-1".to_string(),
+                kind: openrustclaw_core::types::ModelArtifactKind::UserModel,
+                summary: "User prefers concise Rust answers.".to_string(),
+                importance: 0.9,
+                confidence: 0.95,
+                source_lineage: vec![openrustclaw_core::types::ModelArtifactSourceRef {
+                    kind: openrustclaw_core::types::ModelArtifactSourceKind::MemoryEntry,
+                    source_id: Uuid::new_v4().to_string(),
+                    detail: None,
+                }],
+                promoted_by: Some("test".to_string()),
+                correction_note: None,
+            })
+            .await?;
+
+        let report = memory_model_artifacts(&memory_store, &core_store, Some("user-1"), true, 10)
+            .await?;
+        assert_eq!(report.artifacts.len(), 1);
+        assert_eq!(report.projected_core_entries.len(), 1);
+        assert_eq!(report.projected_core_entries[0].key, "model.user");
         Ok(())
     }
 

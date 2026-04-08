@@ -386,6 +386,28 @@ CREATE TABLE IF NOT EXISTS task_manifests (
 CREATE INDEX IF NOT EXISTS idx_task_manifests_path ON task_manifests(manifest_path);
 "#,
     },
+    Migration {
+        name: "018_memory_model_artifacts",
+        sql: r#"
+CREATE TABLE IF NOT EXISTS memory_model_artifacts (
+    id TEXT PRIMARY KEY,
+    namespace TEXT NOT NULL DEFAULT 'global',
+    kind TEXT NOT NULL CHECK(kind IN ('user_model', 'operator_model', 'project_memory', 'archive_summary')),
+    summary TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive', 'superseded', 'removed')),
+    importance REAL NOT NULL DEFAULT 0.8,
+    confidence REAL NOT NULL DEFAULT 1.0,
+    source_lineage TEXT NOT NULL DEFAULT '[]',
+    promoted_by TEXT,
+    correction_note TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    deactivated_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_memory_model_artifacts_namespace
+    ON memory_model_artifacts(namespace, kind, status, created_at);
+"#,
+    },
 ];
 
 /// Run all embedded database migrations in order.

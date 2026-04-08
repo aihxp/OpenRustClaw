@@ -2348,6 +2348,74 @@ enum MemoryAction {
         #[arg(long)]
         model: String,
     },
+    /// Manage structured durable model artifacts
+    ModelArtifacts {
+        #[command(subcommand)]
+        action: MemoryModelArtifactAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum MemoryModelArtifactAction {
+    /// List structured model artifacts
+    List {
+        #[arg(long)]
+        namespace: Option<String>,
+        #[arg(long, default_value_t = false)]
+        include_inactive: bool,
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// Promote a structured model artifact from existing evidence
+    Promote {
+        #[arg(long)]
+        namespace: String,
+        #[arg(long)]
+        kind: String,
+        #[arg(long)]
+        summary: String,
+        #[arg(long = "source-memory-id")]
+        source_memory_ids: Vec<String>,
+        #[arg(long = "source-archive-id")]
+        source_archive_ids: Vec<String>,
+        #[arg(long = "source-event-id")]
+        source_event_ids: Vec<String>,
+        #[arg(long)]
+        promoted_by: Option<String>,
+        #[arg(long, default_value_t = 0.8)]
+        importance: f32,
+        #[arg(long, default_value_t = 0.9)]
+        confidence: f32,
+    },
+    /// Correct the summary for an existing structured model artifact
+    Correct {
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        summary: String,
+        #[arg(long)]
+        note: Option<String>,
+        #[arg(long)]
+        updated_by: Option<String>,
+    },
+    /// Deactivate a structured model artifact
+    Deactivate {
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        note: Option<String>,
+        #[arg(long)]
+        updated_by: Option<String>,
+    },
+    /// Remove a structured model artifact from active use
+    Remove {
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        note: Option<String>,
+        #[arg(long)]
+        updated_by: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -5118,6 +5186,82 @@ async fn main() -> Result<()> {
             MemoryAction::ArtifactsSync { root, model } => {
                 commands::memory::artifacts_sync(&root, &model).await
             }
+            MemoryAction::ModelArtifacts { action } => match action {
+                MemoryModelArtifactAction::List {
+                    namespace,
+                    include_inactive,
+                    limit,
+                } => {
+                    commands::memory::model_artifacts_list(
+                        namespace.as_deref(),
+                        include_inactive,
+                        limit,
+                    )
+                    .await
+                }
+                MemoryModelArtifactAction::Promote {
+                    namespace,
+                    kind,
+                    summary,
+                    source_memory_ids,
+                    source_archive_ids,
+                    source_event_ids,
+                    promoted_by,
+                    importance,
+                    confidence,
+                } => {
+                    commands::memory::model_artifacts_promote(
+                        &namespace,
+                        &kind,
+                        &summary,
+                        &source_memory_ids,
+                        &source_archive_ids,
+                        &source_event_ids,
+                        promoted_by.as_deref(),
+                        importance,
+                        confidence,
+                    )
+                    .await
+                }
+                MemoryModelArtifactAction::Correct {
+                    id,
+                    summary,
+                    note,
+                    updated_by,
+                } => {
+                    commands::memory::model_artifacts_correct(
+                        &id,
+                        &summary,
+                        note.as_deref(),
+                        updated_by.as_deref(),
+                    )
+                    .await
+                }
+                MemoryModelArtifactAction::Deactivate {
+                    id,
+                    note,
+                    updated_by,
+                } => {
+                    commands::memory::model_artifacts_deactivate(
+                        &id,
+                        note.as_deref(),
+                        updated_by.as_deref(),
+                    )
+                    .await
+                }
+                MemoryModelArtifactAction::Remove {
+                    id,
+                    note,
+                    updated_by,
+                } => {
+                    commands::memory::model_artifacts_remove(
+                        &id,
+                        note.as_deref(),
+                        updated_by.as_deref(),
+                    )
+                    .await
+                }
+            },
         },
         Commands::Session { action } => match action {
             SessionAction::List { status, limit } => {

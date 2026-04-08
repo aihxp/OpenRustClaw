@@ -2,7 +2,9 @@
 //!
 //! Every memory write goes through policy enforcement before storage.
 
-use openrustclaw_core::types::MemorySource;
+use openrustclaw_core::types::{
+    MemorySource, ModelArtifactKind, ModelArtifactPromotionRequest, ModelArtifactSourceKind,
+};
 use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -18,6 +20,12 @@ pub enum AssistantMemoryWriteBasis {
 pub struct AssistantMemoryWriteDecision {
     pub allowed: bool,
     pub basis: AssistantMemoryWriteBasis,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModelArtifactPromotionDecision {
+    pub allowed: bool,
     pub reason: String,
 }
 
@@ -210,6 +218,53 @@ impl MemoryPolicies {
         ];
 
         stable_markers.iter().any(|marker| lower.contains(marker))
+    }
+
+    /// Evaluate whether a structured model artifact may be promoted.
+    pub fn evaluate_model_artifact_promotion(
+        &self,
+        request: &ModelArtifactPromotionRequest,
+    ) -> ModelArtifactPromotionDecision {
+        let summary = request.summary.trim();
+        if summary.len() < 8 {
+            return ModelArtifactPromotionDecision {
+                allowed: false,
+                reason: "Structured model artifacts require a concrete summary, not an empty or trivial value.".to_string(),
+            };
+        }
+
+        if request.source_lineage.is_empty() {
+            return ModelArtifactPromotionDecision {
+                allowed: false,
+                reason: "Structured model artifact promotion requires at least one lineage source.".to_string(),
+            };
+        }
+
+        let lineage_is_manual_only = request
+            .source_lineage
+            .iter()
+            .all(|source| matches!(source.kind, ModelArtifactSourceKind::ManualCorrection));
+        if lineage_is_manual_only {
+            return ModelArtifactPromotionDecision {
+                allowed: false,
+                reason: "Structured model artifact promotion cannot start from manual correction alone; it must cite prior memory, archive, or runtime evidence.".to_string(),
+            };
+        }
+
+        let kind_label = match request.kind {
+            ModelArtifactKind::UserModel => "user model",
+            ModelArtifactKind::OperatorModel => "operator model",
+            ModelArtifactKind::ProjectMemory => "project memory",
+            ModelArtifactKind::ArchiveSummary => "archive summary",
+        };
+
+        ModelArtifactPromotionDecision {
+            allowed: true,
+            reason: format!(
+                "Allowed because the {} promotion includes concrete summary content and evidence lineage.",
+                kind_label
+            ),
+        }
     }
 }
 

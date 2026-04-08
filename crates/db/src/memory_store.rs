@@ -15,13 +15,16 @@ use uuid::Uuid;
 use openrustclaw_core::error::{DatabaseError, Error, MemoryError, Result};
 use openrustclaw_core::traits::MemoryStore as MemoryStoreTrait;
 use openrustclaw_core::types::{
-    MemoryEntry, MemoryQuery, MemoryType, RetrievalArtifactKind, RetrievalArtifactRef,
-    RetrievalDegradedCode, RetrievalDegradedState, RetrievalExplanation, RetrievalFreshness,
-    RetrievalScoreFactors, RetrievalVectorLane, ScoredMemory, SourceType,
+    MemoryEntry, MemoryQuery, MemoryType, ModelArtifact, ModelArtifactKind,
+    ModelArtifactPromotionRequest, ModelArtifactStatus, ModelArtifactUpdateRequest,
+    RetrievalArtifactKind, RetrievalArtifactRef, RetrievalDegradedCode, RetrievalDegradedState,
+    RetrievalExplanation, RetrievalFreshness, RetrievalScoreFactors, RetrievalVectorLane,
+    ScoredMemory, SourceType,
 };
 
 use crate::models::MemoryArchiveRow;
 use crate::models::MemoryEntryRow;
+use crate::models::MemoryModelArtifactRow;
 
 #[derive(Debug, FromRow)]
 struct MemorySearchRow {
@@ -378,6 +381,246 @@ impl SqliteMemoryStore {
         Ok(rows)
     }
 
+    /// List stored structured model artifacts.
+    #[instrument(skip(self))]
+    pub async fn list_model_artifacts(
+        &self,
+        namespace: Option<&str>,
+        include_inactive: bool,
+        limit: usize,
+    ) -> Result<Vec<ModelArtifact>> {
+        let mut sql = String::from(
+            r#"
+            SELECT * FROM memory_model_artifacts
+            WHERE 1 = 1
+            "#,
+        );
+        if namespace.is_some() {
+            sql.push_str(" AND namespace = ?");
+        }
+        if !include_inactive {
+            sql.push_str(" AND status = 'active'");
+        }
+        sql.push_str(" ORDER BY created_at DESC LIMIT ?");
+
+        let mut query = sqlx::query_as::<_, MemoryModelArtifactRow>(&sql);
+        if let Some(namespace) = namespace {
+            query = query.bind(namespace);
+        }
+        query = query.bind(limit.max(1) as i64);
+
+        let rows = query.fetch_all(&self.pool).await.map_err(|e| {
+            Error::Database(DatabaseError::Query(format!(
+                "Failed to list model artifacts: {}",
+                e
+            )))
+        })?;
+
+        rows.iter().map(Self::row_to_model_artifact).collect()
+    }
+
+    /// Fetch one structured model artifact by id.
+    #[instrument(skip(self))]
+    pub async fn get_model_artifact(&self, id: &str) -> Result<Option<ModelArtifact>> {
+        let row = sqlx::query_as::<_, MemoryModelArtifactRow>(
+            r#"
+            SELECT * FROM memory_model_artifacts
+            WHERE id = ?
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| {
+            Error::Database(DatabaseError::Query(format!(
+                "Failed to fetch model artifact: {}",
+                e
+            )))
+        })?;
+
+        row.map(|row| Self::row_to_model_artifact(&row)).transpose()
+    }
+
+    /// Promote a new structured model artifact, superseding any active sibling.
+    #[instrument(skip(self, request))]
+    pub async fn promote_model_artifact(
+        &self,
+        request: &ModelArtifactPromotionRequest,
+    ) -> Result<ModelArtifact> {
+        let id = Uuid::new_v4().to_string();
+        let now = Utc::now().to_rfc3339();
+        let kind = Self::model_artifact_kind_to_string(request.kind);
+        let source_lineage = serde_json::to_string(&request.source_lineage).map_err(|e| {
+            Error::Database(DatabaseError::Query(format!(
+                "Failed to serialize model artifact lineage: {}",
+                e
+            )))
+        })?;
+
+        sqlx::query(
+            r#"
+            UPDATE memory_model_artifacts
+            SET status = 'superseded',
+                updated_at = ?,
+                deactivated_at = ?
+            WHERE namespace = ?
+              AND kind = ?
+              AND status = 'active'
+            "#,
+        )
+        .bind(&now)
+        .bind(&now)
+        .bind(&request.namespace)
+        .bind(kind)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            Error::Database(DatabaseError::Query(format!(
+                "Failed to supersede active model artifacts: {}",
+                e
+            )))
+        })?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO memory_model_artifacts (
+                id, namespace, kind, summary, status, importance, confidence, source_lineage,
+                promoted_by, correction_note, created_at, updated_at, deactivated_at
+            )
+            VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, NULL)
+            "#,
+        )
+        .bind(&id)
+        .bind(&request.namespace)
+        .bind(kind)
+        .bind(request.summary.trim())
+        .bind(request.importance as f64)
+        .bind(request.confidence as f64)
+        .bind(source_lineage)
+        .bind(request.promoted_by.as_deref())
+        .bind(request.correction_note.as_deref())
+        .bind(&now)
+        .bind(&now)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            Error::Database(DatabaseError::Query(format!(
+                "Failed to insert model artifact: {}",
+                e
+            )))
+        })?;
+
+        self.get_model_artifact(&id).await?.ok_or_else(|| {
+            Error::Database(DatabaseError::NotFound {
+                entity: "ModelArtifact".to_string(),
+                id,
+            })
+        })
+    }
+
+    /// Update a structured model artifact in place.
+    #[instrument(skip(self, request))]
+    pub async fn update_model_artifact(
+        &self,
+        id: &str,
+        request: &ModelArtifactUpdateRequest,
+    ) -> Result<ModelArtifact> {
+        let Some(existing) = self.get_model_artifact(id).await? else {
+            return Err(Error::Database(DatabaseError::NotFound {
+                entity: "ModelArtifact".to_string(),
+                id: id.to_string(),
+            }));
+        };
+
+        let now = Utc::now().to_rfc3339();
+        let summary = request
+            .summary
+            .as_deref()
+            .unwrap_or(existing.summary.as_str())
+            .trim()
+            .to_string();
+        let status = request.status.unwrap_or(existing.status);
+
+        if status.is_active() {
+            sqlx::query(
+                r#"
+                UPDATE memory_model_artifacts
+                SET status = 'superseded',
+                    updated_at = ?,
+                    deactivated_at = ?
+                WHERE namespace = ?
+                  AND kind = ?
+                  AND status = 'active'
+                  AND id != ?
+                "#,
+            )
+            .bind(&now)
+            .bind(&now)
+            .bind(&existing.namespace)
+            .bind(Self::model_artifact_kind_to_string(existing.kind))
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| {
+                Error::Database(DatabaseError::Query(format!(
+                    "Failed to supersede sibling model artifacts: {}",
+                    e
+                )))
+            })?;
+        }
+
+        let deactivated_at = if status.is_active() {
+            None
+        } else {
+            Some(now.as_str())
+        };
+
+        sqlx::query(
+            r#"
+            UPDATE memory_model_artifacts
+            SET summary = ?,
+                status = ?,
+                correction_note = ?,
+                promoted_by = ?,
+                updated_at = ?,
+                deactivated_at = ?
+            WHERE id = ?
+            "#,
+        )
+        .bind(summary)
+        .bind(Self::model_artifact_status_to_string(status))
+        .bind(
+            request
+                .correction_note
+                .as_deref()
+                .or(existing.correction_note.as_deref()),
+        )
+        .bind(
+            request
+                .updated_by
+                .as_deref()
+                .or(existing.promoted_by.as_deref()),
+        )
+        .bind(&now)
+        .bind(deactivated_at)
+        .bind(id)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            Error::Database(DatabaseError::Query(format!(
+                "Failed to update model artifact: {}",
+                e
+            )))
+        })?;
+
+        self.get_model_artifact(id).await?.ok_or_else(|| {
+            Error::Database(DatabaseError::NotFound {
+                entity: "ModelArtifact".to_string(),
+                id: id.to_string(),
+            })
+        })
+    }
+
     /// Delete a set of memories by id and return the number removed.
     #[instrument(skip(self, ids))]
     pub async fn delete_many(&self, ids: &[String]) -> Result<u64> {
@@ -457,6 +700,103 @@ impl SqliteMemoryStore {
         }
         let distance = rank.abs() as f32;
         1.0 / (1.0 + distance)
+    }
+
+    fn row_to_model_artifact(row: &MemoryModelArtifactRow) -> Result<ModelArtifact> {
+        let created_at = DateTime::parse_from_rfc3339(&row.created_at)
+            .map_err(|e| {
+                Error::Database(DatabaseError::Query(format!(
+                    "Invalid model artifact created_at: {}",
+                    e
+                )))
+            })?
+            .with_timezone(&Utc);
+        let updated_at = DateTime::parse_from_rfc3339(&row.updated_at)
+            .map_err(|e| {
+                Error::Database(DatabaseError::Query(format!(
+                    "Invalid model artifact updated_at: {}",
+                    e
+                )))
+            })?
+            .with_timezone(&Utc);
+        let deactivated_at = row
+            .deactivated_at
+            .as_deref()
+            .map(DateTime::parse_from_rfc3339)
+            .transpose()
+            .map_err(|e| {
+                Error::Database(DatabaseError::Query(format!(
+                    "Invalid model artifact deactivated_at: {}",
+                    e
+                )))
+            })?
+            .map(|value| value.with_timezone(&Utc));
+        let source_lineage = serde_json::from_str(&row.source_lineage).map_err(|e| {
+            Error::Database(DatabaseError::Query(format!(
+                "Invalid model artifact lineage payload: {}",
+                e
+            )))
+        })?;
+
+        Ok(ModelArtifact {
+            id: row.id.clone(),
+            namespace: row.namespace.clone(),
+            kind: Self::parse_model_artifact_kind(&row.kind)?,
+            summary: row.summary.clone(),
+            status: Self::parse_model_artifact_status(&row.status)?,
+            importance: row.importance as f32,
+            confidence: row.confidence as f32,
+            source_lineage,
+            promoted_by: row.promoted_by.clone(),
+            correction_note: row.correction_note.clone(),
+            created_at,
+            updated_at,
+            deactivated_at,
+        })
+    }
+
+    fn parse_model_artifact_kind(value: &str) -> Result<ModelArtifactKind> {
+        match value {
+            "user_model" => Ok(ModelArtifactKind::UserModel),
+            "operator_model" => Ok(ModelArtifactKind::OperatorModel),
+            "project_memory" => Ok(ModelArtifactKind::ProjectMemory),
+            "archive_summary" => Ok(ModelArtifactKind::ArchiveSummary),
+            other => Err(Error::Database(DatabaseError::Query(format!(
+                "Unknown model artifact kind '{}'",
+                other
+            )))),
+        }
+    }
+
+    fn parse_model_artifact_status(value: &str) -> Result<ModelArtifactStatus> {
+        match value {
+            "active" => Ok(ModelArtifactStatus::Active),
+            "inactive" => Ok(ModelArtifactStatus::Inactive),
+            "superseded" => Ok(ModelArtifactStatus::Superseded),
+            "removed" => Ok(ModelArtifactStatus::Removed),
+            other => Err(Error::Database(DatabaseError::Query(format!(
+                "Unknown model artifact status '{}'",
+                other
+            )))),
+        }
+    }
+
+    fn model_artifact_kind_to_string(kind: ModelArtifactKind) -> &'static str {
+        match kind {
+            ModelArtifactKind::UserModel => "user_model",
+            ModelArtifactKind::OperatorModel => "operator_model",
+            ModelArtifactKind::ProjectMemory => "project_memory",
+            ModelArtifactKind::ArchiveSummary => "archive_summary",
+        }
+    }
+
+    fn model_artifact_status_to_string(status: ModelArtifactStatus) -> &'static str {
+        match status {
+            ModelArtifactStatus::Active => "active",
+            ModelArtifactStatus::Inactive => "inactive",
+            ModelArtifactStatus::Superseded => "superseded",
+            ModelArtifactStatus::Removed => "removed",
+        }
     }
 
     fn lexical_scores(rows: &[MemorySearchRow]) -> HashMap<String, f32> {
@@ -1344,6 +1684,21 @@ mod tests {
                 model_id TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
+            CREATE TABLE IF NOT EXISTS memory_model_artifacts (
+                id TEXT PRIMARY KEY,
+                namespace TEXT NOT NULL DEFAULT 'global',
+                kind TEXT NOT NULL,
+                summary TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                importance REAL NOT NULL DEFAULT 0.8,
+                confidence REAL NOT NULL DEFAULT 1.0,
+                source_lineage TEXT NOT NULL DEFAULT '[]',
+                promoted_by TEXT,
+                correction_note TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                deactivated_at TEXT
+            );
         "#;
 
         for statement in schema.split(';') {
@@ -1404,6 +1759,83 @@ mod tests {
         assert_eq!(retrieved.content, "Rust is a systems programming language.");
         assert_eq!(retrieved.memory_type, MemoryType::Semantic);
         assert_eq!(retrieved.namespace, "global");
+    }
+
+    #[tokio::test]
+    async fn integration_promote_model_artifact_supersedes_previous_active() {
+        let store = setup_in_memory_store().await;
+
+        let first = store
+            .promote_model_artifact(&ModelArtifactPromotionRequest {
+                namespace: "user-1".to_string(),
+                kind: ModelArtifactKind::UserModel,
+                summary: "User prefers concise technical explanations.".to_string(),
+                importance: 0.9,
+                confidence: 0.95,
+                source_lineage: vec![],
+                promoted_by: Some("test".to_string()),
+                correction_note: None,
+            })
+            .await
+            .expect("first promote failed");
+
+        let second = store
+            .promote_model_artifact(&ModelArtifactPromotionRequest {
+                namespace: "user-1".to_string(),
+                kind: ModelArtifactKind::UserModel,
+                summary: "User prefers terse, high-signal answers.".to_string(),
+                importance: 0.9,
+                confidence: 0.95,
+                source_lineage: vec![],
+                promoted_by: Some("test".to_string()),
+                correction_note: None,
+            })
+            .await
+            .expect("second promote failed");
+
+        let artifacts = store
+            .list_model_artifacts(Some("user-1"), true, 10)
+            .await
+            .expect("list_model_artifacts failed");
+
+        assert_eq!(artifacts.len(), 2);
+        assert_eq!(second.status, ModelArtifactStatus::Active);
+        assert!(artifacts
+            .iter()
+            .any(|artifact| artifact.id == first.id
+                && artifact.status == ModelArtifactStatus::Superseded));
+    }
+
+    #[tokio::test]
+    async fn integration_update_model_artifact_can_deactivate() {
+        let store = setup_in_memory_store().await;
+        let artifact = store
+            .promote_model_artifact(&ModelArtifactPromotionRequest {
+                namespace: "user-1".to_string(),
+                kind: ModelArtifactKind::ProjectMemory,
+                summary: "This repo is a Rust-first assistant runtime.".to_string(),
+                importance: 0.8,
+                confidence: 0.9,
+                source_lineage: vec![],
+                promoted_by: Some("test".to_string()),
+                correction_note: None,
+            })
+            .await
+            .expect("promote failed");
+
+        let updated = store
+            .update_model_artifact(
+                &artifact.id,
+                &ModelArtifactUpdateRequest {
+                    status: Some(ModelArtifactStatus::Inactive),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("update_model_artifact failed");
+
+        assert_eq!(updated.status, ModelArtifactStatus::Inactive);
+        assert!(updated.deactivated_at.is_some());
     }
 
     #[tokio::test]

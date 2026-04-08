@@ -664,6 +664,125 @@ pub struct CoreEntry {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Distinct durable structured memory artifact classes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelArtifactKind {
+    UserModel,
+    OperatorModel,
+    ProjectMemory,
+    ArchiveSummary,
+}
+
+impl ModelArtifactKind {
+    /// Reserved core-memory projection key for this structured artifact kind.
+    pub fn reserved_core_key(self) -> &'static str {
+        match self {
+            Self::UserModel => "model.user",
+            Self::OperatorModel => "model.operator",
+            Self::ProjectMemory => "model.project",
+            Self::ArchiveSummary => "model.archive",
+        }
+    }
+}
+
+/// Lifecycle state for a durable model artifact.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelArtifactStatus {
+    Active,
+    Inactive,
+    Superseded,
+    Removed,
+}
+
+impl ModelArtifactStatus {
+    pub fn is_active(self) -> bool {
+        matches!(self, Self::Active)
+    }
+}
+
+/// Lineage source kinds for structured model artifacts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelArtifactSourceKind {
+    MemoryEntry,
+    ArchiveEntry,
+    RuntimeEvent,
+    ManualCorrection,
+}
+
+/// A durable provenance reference for a structured model artifact.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ModelArtifactSourceRef {
+    pub kind: ModelArtifactSourceKind,
+    pub source_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+/// A durable structured memory artifact stored by the runtime.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ModelArtifact {
+    pub id: String,
+    pub namespace: String,
+    pub kind: ModelArtifactKind,
+    pub summary: String,
+    pub status: ModelArtifactStatus,
+    pub importance: f32,
+    pub confidence: f32,
+    #[serde(default)]
+    pub source_lineage: Vec<ModelArtifactSourceRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoted_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub correction_note: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deactivated_at: Option<DateTime<Utc>>,
+}
+
+/// Input contract for promoting a durable model artifact.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ModelArtifactPromotionRequest {
+    pub namespace: String,
+    pub kind: ModelArtifactKind,
+    pub summary: String,
+    pub importance: f32,
+    pub confidence: f32,
+    #[serde(default)]
+    pub source_lineage: Vec<ModelArtifactSourceRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoted_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub correction_note: Option<String>,
+}
+
+/// Input contract for correcting or changing model-artifact state.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct ModelArtifactUpdateRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<ModelArtifactStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub correction_note: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_by: Option<String>,
+}
+
+/// A bounded structured-artifact projection materialized into active context.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ModelArtifactProjection {
+    pub artifact_id: String,
+    pub namespace: String,
+    pub kind: ModelArtifactKind,
+    pub key: String,
+    pub value: String,
+    pub token_count: usize,
+}
+
 /// How a memory entry was produced.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

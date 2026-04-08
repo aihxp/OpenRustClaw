@@ -232,3 +232,21 @@ pub struct MemoryArchiveRow {
     pub importance: Option<f64>,
     pub created_at: String,
 }
+
+/// A row from the `memory_model_artifacts` table.
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct MemoryModelArtifactRow {
+    pub id: String,
+    pub namespace: String,
+    pub kind: String,
+    pub summary: String,
+    pub status: String,
+    pub importance: f64,
+    pub confidence: f64,
+    pub source_lineage: String,
+    pub promoted_by: Option<String>,
+    pub correction_note: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub deactivated_at: Option<String>,
+}
