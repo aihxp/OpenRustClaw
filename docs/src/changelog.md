@@ -9,6 +9,14 @@ This changelog tracks the public semver release line. Planning milestone tags su
 
 ---
 
+## [1.4.4] - 2026-04-08
+
+### Fixed
+
+- Onboarding now scaffolds a workspace `config/default.toml` automatically when the CLI is run from a fresh directory such as `~`, instead of failing later during provider or channel setup.
+- Runtime config reads and writes now resolve relative config paths against the onboarding workspace root instead of the shell's current directory.
+- Onboarding repair and post-setup health checks no longer block on the deep Ollama probe when Ollama is not the chosen provider path.
+
 ## [1.4.3] - 2026-04-08
 
 ### Added
