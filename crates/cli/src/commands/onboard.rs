@@ -17,6 +17,7 @@ use openrustclaw_channels::WhatsAppChannel;
 use openrustclaw_core::config::AppConfig;
 use openrustclaw_core::traits::Channel;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -250,24 +251,6 @@ impl OnboardingProviderAccessMode {
         }
     }
 
-    fn label(self) -> &'static str {
-        match self {
-            Self::ApiKey => "API key",
-            Self::LocalRuntime => "Local runtime",
-            Self::SubscriptionManaged => "Subscription-managed account",
-        }
-    }
-
-    fn detail(self) -> &'static str {
-        match self {
-            Self::ApiKey => "Use a provider API key stored in `.env`.",
-            Self::LocalRuntime => "Use a local runtime already running on this machine.",
-            Self::SubscriptionManaged => {
-                "Use a subscription-managed provider path without a direct API key."
-            }
-        }
-    }
-
     fn from_id(value: &str) -> Option<Self> {
         match value {
             "api_key" => Some(Self::ApiKey),
@@ -329,6 +312,278 @@ async fn onboarding_lane_catalog() -> Result<Vec<OnboardingLaneDescriptor>> {
     Ok(OnboardingLaneCatalogService::new().catalog(&direct_statuses, &delegated_contracts))
 }
 
+#[derive(Debug, Clone)]
+struct ProviderAccessPath {
+    mode: OnboardingProviderAccessMode,
+    descriptor: OnboardingLaneDescriptor,
+    label: String,
+    detail: String,
+}
+
+#[derive(Debug, Clone)]
+struct ProviderChoice {
+    provider_id: String,
+    label: String,
+    selection_label: String,
+    access_paths: Vec<ProviderAccessPath>,
+}
+
+fn build_provider_choices(lanes: &[OnboardingLaneDescriptor]) -> Vec<ProviderChoice> {
+    #[derive(Default)]
+    struct ProviderChoiceBuilder {
+        label: Option<String>,
+        direct: Option<OnboardingLaneDescriptor>,
+        delegated: Option<OnboardingLaneDescriptor>,
+    }
+
+    let mut order = Vec::new();
+    let mut builders = BTreeMap::<String, ProviderChoiceBuilder>::new();
+
+    for lane in lanes {
+        let provider_id = lane.provider_id.clone();
+        if !order.iter().any(|entry| entry == &provider_id) {
+            order.push(provider_id.clone());
+        }
+
+        let builder = builders.entry(provider_id.clone()).or_default();
+        if builder.label.is_none() || lane.backend_id.is_none() {
+            builder.label = Some(provider_family_label(lane).to_string());
+        }
+        if lane.backend_id.is_some() {
+            builder.delegated = Some(lane.clone());
+        } else {
+            builder.direct = Some(lane.clone());
+        }
+    }
+
+    order
+        .into_iter()
+        .filter_map(|provider_id| {
+            let builder = builders.remove(&provider_id)?;
+            let label = builder
+                .label
+                .unwrap_or_else(|| provider_id.replace('_', " "));
+            let mut access_paths = Vec::new();
+
+            if let Some(delegated) = builder.delegated.clone() {
+                access_paths.push(ProviderAccessPath {
+                    mode: OnboardingProviderAccessMode::SubscriptionManaged,
+                    label: delegated_local_agent_label(&delegated),
+                    detail: delegated_local_agent_detail(&delegated),
+                    descriptor: delegated,
+                });
+            }
+
+            if let Some(direct) = builder.direct.clone() {
+                if direct
+                    .supported_access_modes
+                    .iter()
+                    .any(|mode| mode == OnboardingProviderAccessMode::LocalRuntime.id())
+                {
+                    access_paths.push(ProviderAccessPath {
+                        mode: OnboardingProviderAccessMode::LocalRuntime,
+                        label: local_runtime_label(&direct),
+                        detail: local_runtime_detail(&direct),
+                        descriptor: direct.clone(),
+                    });
+                }
+                if direct
+                    .supported_access_modes
+                    .iter()
+                    .any(|mode| mode == OnboardingProviderAccessMode::ApiKey.id())
+                {
+                    access_paths.push(ProviderAccessPath {
+                        mode: OnboardingProviderAccessMode::ApiKey,
+                        label: api_provider_label(&direct),
+                        detail: api_provider_detail(&direct),
+                        descriptor: direct,
+                    });
+                }
+            }
+
+            access_paths.sort_by_key(|path| -(access_path_priority(path) as isize));
+            let selection_label = format!(
+                "{label} - {}",
+                provider_choice_status_summary(&access_paths)
+            );
+            Some(ProviderChoice {
+                provider_id,
+                label,
+                selection_label,
+                access_paths,
+            })
+        })
+        .collect()
+}
+
+fn provider_family_label(descriptor: &OnboardingLaneDescriptor) -> &str {
+    match descriptor.provider_id.as_str() {
+        "anthropic" => "Anthropic (Claude)",
+        "openai" => "OpenAI (GPT)",
+        "openrouter" => "OpenRouter (Multiple models)",
+        "gemini" => "Google Gemini",
+        "ollama" => "Ollama (Local models)",
+        _ => descriptor.label.as_str(),
+    }
+}
+
+fn delegated_local_agent_label(descriptor: &OnboardingLaneDescriptor) -> String {
+    descriptor
+        .label
+        .replace(" (Delegated local agent)", " local agent")
+}
+
+fn delegated_local_agent_detail(descriptor: &OnboardingLaneDescriptor) -> String {
+    let backend = descriptor.backend_id.as_deref().unwrap_or("local agent");
+    match descriptor.provider_id.as_str() {
+        "anthropic" => format!(
+            "Use your existing Claude Code login on this machine via `{backend}`. No API key is required."
+        ),
+        "openai" => format!(
+            "Use your existing Codex login on this machine via `{backend}`. No API key is required."
+        ),
+        "gemini" => format!(
+            "Use your existing Gemini CLI login on this machine via `{backend}`. No API key is required."
+        ),
+        _ => format!("Use the detected delegated local agent backend `{backend}` on this machine."),
+    }
+}
+
+fn local_runtime_label(descriptor: &OnboardingLaneDescriptor) -> String {
+    format!("{} local runtime", provider_family_label(descriptor))
+}
+
+fn local_runtime_detail(descriptor: &OnboardingLaneDescriptor) -> String {
+    match descriptor.provider_id.as_str() {
+        "ollama" => "Use the Ollama runtime already running on this machine. You will choose the default local model next.".to_string(),
+        _ => "Use a local runtime already running on this machine.".to_string(),
+    }
+}
+
+fn api_provider_label(descriptor: &OnboardingLaneDescriptor) -> String {
+    match descriptor.provider_id.as_str() {
+        "anthropic" => "Anthropic API".to_string(),
+        "openai" => "OpenAI API".to_string(),
+        "openrouter" => "OpenRouter API".to_string(),
+        "gemini" => "Gemini API".to_string(),
+        _ => format!("{} API", provider_family_label(descriptor)),
+    }
+}
+
+fn api_provider_detail(descriptor: &OnboardingLaneDescriptor) -> String {
+    match descriptor.provider_id.as_str() {
+        "anthropic" => "Store `ANTHROPIC_API_KEY` in `.env`. Use this if you want direct Anthropic API access instead of Claude Code.".to_string(),
+        "openai" => "Store `OPENAI_API_KEY` in `.env`. Use this if you want direct OpenAI API access instead of Codex.".to_string(),
+        "openrouter" => "Store `OPENROUTER_API_KEY` in `.env`. Use this if you want OpenRouter routing across multiple hosted models.".to_string(),
+        "gemini" => "Store `GEMINI_API_KEY` or `GOOGLE_API_KEY` in `.env`. Use this if you want direct Gemini API access instead of Gemini CLI.".to_string(),
+        _ => descriptor.detail.clone(),
+    }
+}
+
+fn access_path_priority(path: &ProviderAccessPath) -> i32 {
+    let status = path.descriptor.status_label.as_str();
+    match path.mode {
+        OnboardingProviderAccessMode::SubscriptionManaged if status == "ready locally" => 60,
+        OnboardingProviderAccessMode::LocalRuntime if status == "available" => 50,
+        OnboardingProviderAccessMode::ApiKey if status == "configured" => 40,
+        OnboardingProviderAccessMode::SubscriptionManaged if status == "available locally" => 30,
+        OnboardingProviderAccessMode::SubscriptionManaged => 20,
+        OnboardingProviderAccessMode::LocalRuntime => 15,
+        OnboardingProviderAccessMode::ApiKey => 10,
+    }
+}
+
+fn provider_choice_status_summary(access_paths: &[ProviderAccessPath]) -> String {
+    let mut parts = Vec::new();
+    for path in access_paths {
+        let fragment = match path.mode {
+            OnboardingProviderAccessMode::SubscriptionManaged => {
+                match path.descriptor.status_label.as_str() {
+                    "ready locally" => format!("{} ready locally", path.label),
+                    other => format!("{} {}", path.label, other),
+                }
+            }
+            OnboardingProviderAccessMode::LocalRuntime => {
+                match path.descriptor.status_label.as_str() {
+                    "available" => "local runtime available".to_string(),
+                    other => format!("local runtime {other}"),
+                }
+            }
+            OnboardingProviderAccessMode::ApiKey => match path.descriptor.status_label.as_str() {
+                "configured" => "API configured".to_string(),
+                other => format!("API {other}"),
+            },
+        };
+        if !parts.iter().any(|entry| entry == &fragment) {
+            parts.push(fragment);
+        }
+    }
+    if parts.is_empty() {
+        "not configured".to_string()
+    } else {
+        parts.join(", ")
+    }
+}
+
+fn default_provider_choice_index(wizard: &OnboardingWizard, choices: &[ProviderChoice]) -> usize {
+    wizard
+        .state
+        .selected_lane_id
+        .as_deref()
+        .or(wizard.state.preferred_provider.as_deref())
+        .and_then(|selected| {
+            choices.iter().position(|choice| {
+                choice.provider_id == selected
+                    || choice
+                        .access_paths
+                        .iter()
+                        .any(|path| path.descriptor.lane_id == selected)
+                    || choice
+                        .access_paths
+                        .iter()
+                        .any(|path| path.descriptor.backend_id.as_deref() == Some(selected))
+            })
+        })
+        .unwrap_or_else(|| {
+            choices
+                .iter()
+                .enumerate()
+                .max_by_key(|(_, choice)| {
+                    choice
+                        .access_paths
+                        .iter()
+                        .map(access_path_priority)
+                        .max()
+                        .unwrap_or(0)
+                })
+                .map(|(index, _)| index)
+                .unwrap_or(0)
+        })
+}
+
+fn default_access_path_index(wizard: &OnboardingWizard, choice: &ProviderChoice) -> usize {
+    wizard
+        .state
+        .selected_access_mode
+        .as_deref()
+        .and_then(OnboardingProviderAccessMode::from_id)
+        .and_then(|current| {
+            choice
+                .access_paths
+                .iter()
+                .position(|path| path.mode == current)
+        })
+        .unwrap_or_else(|| {
+            choice
+                .access_paths
+                .iter()
+                .enumerate()
+                .max_by_key(|(_, path)| access_path_priority(path))
+                .map(|(index, _)| index)
+                .unwrap_or(0)
+        })
+}
+
 fn print_onboarding_agent_backend_hints(lanes: &[OnboardingLaneDescriptor]) {
     let delegated = lanes
         .iter()
@@ -336,10 +591,9 @@ fn print_onboarding_agent_backend_hints(lanes: &[OnboardingLaneDescriptor]) {
         .collect::<Vec<_>>();
 
     if !delegated.is_empty() {
-        println!("Detected delegated local agent lanes:");
-        println!(
-            "  OpenRustClaw keeps these lanes visible, but later delegated runs use the installed CLI directly instead of importing vendor tokens."
-        );
+        println!("Detected local agent integrations:");
+        println!("  You can choose these directly as your default path in the next step.");
+        println!("  API keys remain optional when a local agent is already signed in.");
         for lane in delegated {
             println!("  - {}: {}", lane.label, lane.status_label);
             if let Some(note) = lane.compatibility_note.as_deref() {
@@ -350,35 +604,28 @@ fn print_onboarding_agent_backend_hints(lanes: &[OnboardingLaneDescriptor]) {
     }
 }
 
-fn print_selected_provider_backend_hint(descriptor: &OnboardingLaneDescriptor) {
-    if descriptor.backend_id.is_some() {
-        println!(
-            "  {} stays visible as a delegated local agent lane backed by `{}`.",
-            descriptor.label, descriptor.provider_id
-        );
-        println!("  Local agent status: {}.", descriptor.detail);
-        if let Some(note) = descriptor.compatibility_note.as_deref() {
-            println!("  Compatibility note: {note}");
-        }
-        println!(
-            "  First-run onboarding still bootstraps through the documented `{}` provider path today, and later delegated execution stays bounded and audited.",
-            descriptor.provider_id
-        );
+fn print_provider_choice_hint(choice: &ProviderChoice) {
+    println!("  Available paths for {}:", choice.label);
+    for path in &choice.access_paths {
+        println!("  - {}: {}", path.label, path.detail);
     }
+    println!();
 }
 
 fn persist_provider_path_selection(
     workspace_root: &Path,
     descriptor: &OnboardingLaneDescriptor,
+    selected_label: &str,
+    selected_detail: &str,
     access_mode: Option<&str>,
 ) -> Result<()> {
     with_setup_state_mut(workspace_root, |setup| {
         setup.selected_provider = Some(descriptor.provider_id.clone());
         setup.selected_lane_id = Some(descriptor.lane_id.clone());
-        setup.selected_lane_label = Some(descriptor.label.clone());
+        setup.selected_lane_label = Some(selected_label.to_string());
         setup.selected_lane_kind = Some(lane_kind_id(&descriptor.kind).to_string());
         setup.selected_backend_id = descriptor.backend_id.clone();
-        setup.selected_lane_detail = Some(descriptor.detail.clone());
+        setup.selected_lane_detail = Some(selected_detail.to_string());
         setup.selected_lane_compatibility_note = descriptor.compatibility_note.clone();
         setup.selected_access_mode = access_mode.map(ToString::to_string);
         setup.selected_primary_model = None;
@@ -386,68 +633,40 @@ fn persist_provider_path_selection(
     })
 }
 
-fn select_provider_access_mode(
+fn select_provider_access_path(
     wizard: &OnboardingWizard,
-    descriptor: &OnboardingLaneDescriptor,
-) -> Result<OnboardingProviderAccessMode> {
-    let access_modes = descriptor
-        .supported_access_modes
-        .iter()
-        .filter_map(|mode| OnboardingProviderAccessMode::from_id(mode))
-        .collect::<Vec<_>>();
-
-    if access_modes.is_empty() {
+    choice: &ProviderChoice,
+) -> Result<ProviderAccessPath> {
+    if choice.access_paths.is_empty() {
         return Err(anyhow!(
             "{} does not yet expose a supported onboarding path",
-            descriptor.label
+            choice.label
         ));
     }
 
-    if access_modes.len() == 1 {
-        let mode = access_modes[0];
-        if descriptor.backend_id.is_some() {
-            println!(
-                "  {} stays selected as a delegated local agent lane.",
-                descriptor.label
-            );
-            println!(
-                "  Onboarding will validate the backing `{}` provider path via {}.",
-                descriptor.provider_id,
-                mode.label()
-            );
-        } else {
-            println!(
-                "  {} uses the {} onboarding path.",
-                descriptor.label,
-                mode.label()
-            );
-        }
-        return Ok(mode);
+    if choice.access_paths.len() == 1 {
+        let path = choice.access_paths[0].clone();
+        println!("  {} will use {}.", choice.label, path.label);
+        println!("  {}", path.detail);
+        return Ok(path);
     }
 
-    let labels = access_modes
+    let labels = choice
+        .access_paths
         .iter()
-        .map(|mode| format!("{} - {}", mode.label(), mode.detail()))
+        .map(|path| format!("{} - {}", path.label, path.detail))
         .collect::<Vec<_>>();
-    let default = wizard
-        .state
-        .selected_access_mode
-        .as_deref()
-        .and_then(OnboardingProviderAccessMode::from_id)
-        .and_then(|current| access_modes.iter().position(|mode| *mode == current))
-        .unwrap_or(0);
+    let default = default_access_path_index(wizard, choice);
     let selection = Select::with_theme(&wizard.theme)
-        .with_prompt(format!(
-            "Choose how onboarding should access {}",
-            descriptor.label
-        ))
+        .with_prompt(format!("Choose how you want to use {}", choice.label))
         .items(&labels)
         .default(default)
         .interact()?;
-    access_modes
+    choice
+        .access_paths
         .get(selection)
-        .copied()
-        .ok_or_else(|| anyhow!("invalid provider access-mode selection"))
+        .cloned()
+        .ok_or_else(|| anyhow!("invalid provider access-path selection"))
 }
 
 fn lane_kind_id(kind: &OnboardingLaneKind) -> &'static str {
@@ -1319,44 +1538,37 @@ async fn setup_whatsapp(wizard: &mut OnboardingWizard) -> Result<&'static str> {
 // ============================================================================
 
 async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
-    let providers = onboarding_lane_catalog().await?;
-    print_onboarding_agent_backend_hints(&providers);
+    let lanes = onboarding_lane_catalog().await?;
+    print_onboarding_agent_backend_hints(&lanes);
+    let providers = build_provider_choices(&lanes);
     let provider_labels = providers
         .iter()
-        .map(OnboardingLaneDescriptor::selection_label)
+        .map(|choice| choice.selection_label.clone())
         .collect::<Vec<_>>();
-    let default_provider_index = wizard
-        .state
-        .selected_lane_id
-        .as_deref()
-        .or(wizard.state.preferred_provider.as_deref())
-        .and_then(|provider| {
-            providers.iter().position(|descriptor| {
-                descriptor.provider_id == provider || descriptor.lane_id == provider
-            })
-        })
-        .unwrap_or(0);
+    let default_provider_index = default_provider_choice_index(wizard, &providers);
 
     let selection = Select::with_theme(&wizard.theme)
-        .with_prompt("Choose your first provider or delegated agent lane")
+        .with_prompt("Choose your default AI provider")
         .items(&provider_labels)
         .default(default_provider_index)
         .interact()?;
-    let descriptor = providers
+    let provider_choice = providers
         .get(selection)
         .cloned()
         .ok_or_else(|| anyhow!("invalid provider selection"))?;
-    print_selected_provider_backend_hint(&descriptor);
+    print_provider_choice_hint(&provider_choice);
+    let access_path = select_provider_access_path(wizard, &provider_choice)?;
+    let descriptor = access_path.descriptor.clone();
 
     wizard.state.preferred_provider = Some(descriptor.provider_id.clone());
     wizard.state.selected_lane_id = Some(descriptor.lane_id.clone());
-    wizard.state.selected_lane_label = Some(descriptor.label.clone());
+    wizard.state.selected_lane_label = Some(provider_choice.label.clone());
     wizard.state.selected_lane_kind = Some(lane_kind_id(&descriptor.kind).to_string());
     wizard.state.selected_backend_id = descriptor.backend_id.clone();
-    wizard.state.selected_lane_detail = Some(descriptor.detail.clone());
+    wizard.state.selected_lane_detail = Some(access_path.detail.clone());
     wizard.state.selected_lane_compatibility_note = descriptor.compatibility_note.clone();
 
-    let access_mode = select_provider_access_mode(wizard, &descriptor)?;
+    let access_mode = access_path.mode;
     wizard.state.selected_access_mode = Some(access_mode.id().to_string());
     wizard.state.selected_primary_model = None;
     wizard.state.selected_primary_model_source = None;
@@ -1365,13 +1577,15 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
     persist_provider_path_selection(
         &workspace_root,
         &descriptor,
+        &provider_choice.label,
+        &access_path.detail,
         wizard.state.selected_access_mode.as_deref(),
     )?;
 
     match access_mode {
         OnboardingProviderAccessMode::LocalRuntime => {
-            println!("Using {} via {}.", descriptor.label, access_mode.label());
-            println!("  {}", access_mode.detail());
+            println!("Using {} via {}.", provider_choice.label, access_path.label);
+            println!("  {}", access_path.detail);
             println!("  Make sure Ollama is running locally (http://localhost:11434)");
             runtime::switch_provider(
                 "config/default.toml",
@@ -1383,8 +1597,8 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
             )?;
         }
         OnboardingProviderAccessMode::ApiKey => {
-            println!("Using {} via {}.", descriptor.label, access_mode.label());
-            println!("  {}", access_mode.detail());
+            println!("Using {} via {}.", provider_choice.label, access_path.label);
+            println!("  {}", access_path.detail);
             let api_key_prompt = descriptor
                 .api_key_prompt
                 .as_deref()
@@ -1410,11 +1624,11 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
             if descriptor.backend_id.is_none() {
                 return Err(anyhow!(
                     "{} does not yet expose a subscription-managed onboarding path",
-                    descriptor.label
+                    provider_choice.label
                 ));
             }
-            println!("Using {} via {}.", descriptor.label, access_mode.label());
-            println!("  {}", access_mode.detail());
+            println!("Using {} via {}.", provider_choice.label, access_path.label);
+            println!("  {}", access_path.detail);
             runtime::switch_provider(
                 "config/default.toml",
                 &workspace_root,
@@ -1522,9 +1736,7 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
     if descriptor.backend_id.is_some() {
         println!(
             "✓ Lane configured ({} via {} / {})",
-            descriptor.label,
-            access_mode.label(),
-            primary_model.model
+            provider_choice.label, access_path.label, primary_model.model
         );
         if let Some(backend_id) = descriptor.backend_id.as_deref() {
             println!(
@@ -1534,9 +1746,7 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
     } else {
         println!(
             "✓ Model configured ({} via {} / {})",
-            descriptor.label,
-            access_mode.label(),
-            primary_model.model
+            provider_choice.label, access_path.label, primary_model.model
         );
     }
     println!(
@@ -2416,11 +2626,11 @@ struct PrimaryModelSelection {
 
 fn configured_model_for_provider(config: &AppConfig, provider: &str) -> String {
     match provider {
-        "anthropic" => config.providers.anthropic.model.clone(),
+        "anthropic" | "claude_code" => config.providers.anthropic.model.clone(),
         "openai" => config.providers.openai.model.clone(),
         "codex" => config.providers.openai.codex_model.clone(),
         "openrouter" => config.providers.openrouter.model.clone(),
-        "gemini" => config.providers.gemini.model.clone(),
+        "gemini" | "gemini_cli" => config.providers.gemini.model.clone(),
         "ollama" => config.providers.ollama.model.clone(),
         "cursor" => "auto".to_string(),
         _ => String::new(),
@@ -2666,6 +2876,12 @@ async fn select_primary_model(
             );
             println!("  Falling back to manual model entry.");
         }
+    }
+
+    if matches!(provider, "claude_code" | "codex" | "gemini_cli") {
+        println!(
+            "  This local agent does not expose a live model catalog here. Press Enter to keep the recommended default, or type a model override if your local agent supports it."
+        );
     }
 
     let selected: String = Input::with_theme(&wizard.theme)
@@ -3388,6 +3604,135 @@ mod tests {
     }
 
     #[test]
+    fn test_build_provider_choices_merges_api_and_local_agent_paths() {
+        let choices = build_provider_choices(&[
+            OnboardingLaneDescriptor {
+                lane_id: "anthropic".to_string(),
+                provider_id: "anthropic".to_string(),
+                backend_id: None,
+                label: "Anthropic (Claude)".to_string(),
+                kind: OnboardingLaneKind::DirectApi,
+                supported_access_modes: vec!["api_key".to_string()],
+                api_key_prompt: Some("Anthropic API key".to_string()),
+                recommended: false,
+                status_label: "not configured".to_string(),
+                detail: "Use a provider API key stored in `.env`.".to_string(),
+                compatibility_note: None,
+                model_catalog_label: None,
+            },
+            OnboardingLaneDescriptor {
+                lane_id: "claude_code".to_string(),
+                provider_id: "anthropic".to_string(),
+                backend_id: Some("claude_code".to_string()),
+                label: "Claude Code (Delegated local agent)".to_string(),
+                kind: OnboardingLaneKind::DelegatedAgent,
+                supported_access_modes: vec!["subscription_managed".to_string()],
+                api_key_prompt: Some("Anthropic API key".to_string()),
+                recommended: false,
+                status_label: "ready locally".to_string(),
+                detail: "ready locally".to_string(),
+                compatibility_note: None,
+                model_catalog_label: None,
+            },
+        ]);
+
+        assert_eq!(choices.len(), 1);
+        assert_eq!(choices[0].provider_id, "anthropic");
+        assert_eq!(choices[0].label, "Anthropic (Claude)");
+        assert_eq!(choices[0].access_paths.len(), 2);
+        assert_eq!(
+            choices[0].access_paths[0].mode,
+            OnboardingProviderAccessMode::SubscriptionManaged
+        );
+        assert_eq!(
+            choices[0].access_paths[1].mode,
+            OnboardingProviderAccessMode::ApiKey
+        );
+    }
+
+    #[test]
+    fn test_default_provider_choice_prefers_ready_local_agent() {
+        let choices = vec![
+            ProviderChoice {
+                provider_id: "anthropic".to_string(),
+                label: "Anthropic (Claude)".to_string(),
+                selection_label:
+                    "Anthropic (Claude) - Claude Code local agent ready locally, API not configured"
+                        .to_string(),
+                access_paths: vec![
+                    ProviderAccessPath {
+                        mode: OnboardingProviderAccessMode::SubscriptionManaged,
+                        descriptor: OnboardingLaneDescriptor {
+                            lane_id: "claude_code".to_string(),
+                            provider_id: "anthropic".to_string(),
+                            backend_id: Some("claude_code".to_string()),
+                            label: "Claude Code (Delegated local agent)".to_string(),
+                            kind: OnboardingLaneKind::DelegatedAgent,
+                            supported_access_modes: vec!["subscription_managed".to_string()],
+                            api_key_prompt: Some("Anthropic API key".to_string()),
+                            recommended: false,
+                            status_label: "ready locally".to_string(),
+                            detail: "ready locally".to_string(),
+                            compatibility_note: None,
+                            model_catalog_label: None,
+                        },
+                        label: "Claude Code local agent".to_string(),
+                        detail: "Use your existing Claude Code login on this machine.".to_string(),
+                    },
+                    ProviderAccessPath {
+                        mode: OnboardingProviderAccessMode::ApiKey,
+                        descriptor: OnboardingLaneDescriptor {
+                            lane_id: "anthropic".to_string(),
+                            provider_id: "anthropic".to_string(),
+                            backend_id: None,
+                            label: "Anthropic (Claude)".to_string(),
+                            kind: OnboardingLaneKind::DirectApi,
+                            supported_access_modes: vec!["api_key".to_string()],
+                            api_key_prompt: Some("Anthropic API key".to_string()),
+                            recommended: false,
+                            status_label: "not configured".to_string(),
+                            detail: "Use a provider API key stored in `.env`.".to_string(),
+                            compatibility_note: None,
+                            model_catalog_label: None,
+                        },
+                        label: "Anthropic API".to_string(),
+                        detail: "Store `ANTHROPIC_API_KEY` in `.env`.".to_string(),
+                    },
+                ],
+            },
+            ProviderChoice {
+                provider_id: "openai".to_string(),
+                label: "OpenAI (GPT)".to_string(),
+                selection_label: "OpenAI (GPT) - API configured".to_string(),
+                access_paths: vec![ProviderAccessPath {
+                    mode: OnboardingProviderAccessMode::ApiKey,
+                    descriptor: OnboardingLaneDescriptor {
+                        lane_id: "openai".to_string(),
+                        provider_id: "openai".to_string(),
+                        backend_id: None,
+                        label: "OpenAI (GPT)".to_string(),
+                        kind: OnboardingLaneKind::DirectApi,
+                        supported_access_modes: vec!["api_key".to_string()],
+                        api_key_prompt: Some("OpenAI API key".to_string()),
+                        recommended: false,
+                        status_label: "configured".to_string(),
+                        detail: "Use a provider API key stored in `.env`.".to_string(),
+                        compatibility_note: None,
+                        model_catalog_label: None,
+                    },
+                    label: "OpenAI API".to_string(),
+                    detail: "Store `OPENAI_API_KEY` in `.env`.".to_string(),
+                }],
+            },
+        ];
+
+        assert_eq!(
+            default_provider_choice_index(&OnboardingWizard::new(), &choices),
+            0
+        );
+    }
+
+    #[test]
     fn test_workspace_status_defaults_to_absent() {
         let dir = tempfile::tempdir().unwrap();
         let status = workspace_status(dir.path());
@@ -3961,7 +4306,14 @@ mod tests {
             compatibility_note: None,
             model_catalog_label: None,
         };
-        persist_provider_path_selection(dir.path(), &descriptor, Some("api_key")).unwrap();
+        persist_provider_path_selection(
+            dir.path(),
+            &descriptor,
+            "OpenAI (GPT)",
+            "Use a provider API key stored in `.env`.",
+            Some("api_key"),
+        )
+        .unwrap();
 
         let loaded = load_setup_state(dir.path()).unwrap().unwrap();
         assert_eq!(loaded.setup.selected_provider.as_deref(), Some("openai"));

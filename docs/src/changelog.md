@@ -9,6 +9,18 @@ This changelog tracks the public semver release line. Planning milestone tags su
 
 ---
 
+## [1.4.3] - 2026-04-08
+
+### Added
+
+- AI provider onboarding now presents provider families first, then lets operators choose between detected local agent access, local runtime access, or direct API access where available.
+- Provider-specific onboarding guidance now explains the exact credential or local-agent path for Anthropic, OpenAI, Gemini, OpenRouter, and Ollama instead of dropping directly into a generic API-key prompt.
+
+### Changed
+
+- Local agent detection now influences the default onboarding selection so a ready local Claude Code or Codex lane outranks an unconfigured API path.
+- WhatsApp channel onboarding now runs an actual pairing bootstrap flow instead of stopping on a stale manual-docs message.
+
 ## [1.4.2] - 2026-04-08
 
 ### Added
