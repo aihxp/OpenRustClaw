@@ -706,12 +706,27 @@ pub fn init(root: Option<&str>) -> Result<()> {
 }
 
 fn write_detected_delegated_model_profiles(root: &Path) -> Result<()> {
+    let workspace_root = workspace_root_from_control_root(root);
+    let config = runtime::load_effective_config("config/default.toml", &workspace_root)
+        .unwrap_or_else(|_| AppConfig::default());
     let catalog = AgentBackendCatalogService::new().discover();
     let control = AgentBackendControlService::new();
+    let audit_path = workspace_root.join(&config.external_backends.audit_log_path);
+    let policy = control.policy_from_config(&config, audit_path.display().to_string());
     for contract in control
         .contracts_from_catalog(&catalog)
         .into_iter()
-        .filter(|contract| contract.execution_eligible)
+        .filter(|contract| {
+            control
+                .evaluate_execution(
+                    &policy,
+                    contract,
+                    "completion",
+                    None,
+                    chrono::Utc::now().to_rfc3339(),
+                )
+                .allowed
+        })
     {
         let profile_id = format!("delegated-{}", contract.backend_id);
         write_if_missing(
@@ -2785,7 +2800,18 @@ fn slugify(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
     use tempfile::tempdir;
+
+    #[cfg(unix)]
+    fn write_fake_executable(dir: &Path, name: &str, body: &str) {
+        let path = dir.join(name);
+        fs::write(&path, body).unwrap();
+        let mut permissions = fs::metadata(&path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&path, permissions).unwrap();
+    }
 
     #[test]
     fn init_creates_valid_registry() {
@@ -2797,6 +2823,50 @@ mod tests {
         assert!(registry.model_profiles.contains_key("core-groq"));
         assert!(registry.claws.contains_key("main"));
         assert!(runtime_artifact_path(dir.path()).exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn init_skips_delegated_profiles_denied_by_policy() {
+        let workspace = tempdir().unwrap();
+        let control_root = control_root_for(workspace.path());
+        fs::create_dir_all(workspace.path().join("config")).unwrap();
+
+        let mut config = AppConfig::default();
+        config.external_backends.allow_local_cli_wrappers = false;
+        fs::write(
+            workspace.path().join("config/default.toml"),
+            toml::to_string_pretty(&config).unwrap(),
+        )
+        .unwrap();
+
+        let fake_bin = tempdir().unwrap();
+        write_fake_executable(
+            fake_bin.path(),
+            "codex",
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex 0.1.0'; exit 0; fi\nif [ \"$1\" = \"--help\" ]; then printf '%s\n' 'Codex CLI' 'Commands:' '  login'; exit 0; fi\nif [ \"$1\" = \"login\" ] && [ \"$2\" = \"status\" ]; then echo 'Logged in using ChatGPT'; exit 0; fi\nexit 1\n",
+        );
+
+        let original_path = std::env::var_os("PATH");
+        unsafe {
+            std::env::set_var("PATH", fake_bin.path());
+        }
+        let init_result = init(Some(control_root.to_str().unwrap()));
+        match original_path {
+            Some(value) => unsafe {
+                std::env::set_var("PATH", value);
+            },
+            None => unsafe {
+                std::env::remove_var("PATH");
+            },
+        }
+
+        init_result.unwrap();
+        assert!(
+            !models_dir(&control_root)
+                .join("delegated-codex.yaml")
+                .exists()
+        );
     }
 
     #[test]
