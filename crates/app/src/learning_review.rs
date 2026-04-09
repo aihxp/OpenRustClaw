@@ -165,7 +165,7 @@ where
             })
             .await?;
 
-        let candidate = self
+        let candidate = match self
             .source
             .mark_learning_candidate_promoted(
                 &candidate.id,
@@ -173,7 +173,18 @@ where
                 request.promoted_by.as_deref(),
                 Some("promoted to active lesson"),
             )
-            .await?;
+            .await
+        {
+            Ok(candidate) => candidate,
+            Err(error) => {
+                if let Err(cleanup_error) = self.source.deactivate_lesson(&lesson_id).await {
+                    return Err(Error::Internal(format!(
+                        "failed to persist learning candidate promotion for lesson '{lesson_id}': {error}; cleanup failed: {cleanup_error}"
+                    )));
+                }
+                return Err(error);
+            }
+        };
 
         Ok(LearningCandidatePromotionReport {
             candidate,
@@ -261,6 +272,7 @@ mod tests {
         candidates: Arc<Mutex<BTreeMap<String, LearningCandidate>>>,
         created_lessons: Arc<Mutex<Vec<String>>>,
         deactivated_lessons: Arc<Mutex<Vec<String>>>,
+        fail_mark_promoted: Arc<Mutex<bool>>,
     }
 
     #[async_trait]
@@ -357,6 +369,9 @@ mod tests {
             actor: Option<&str>,
             _note: Option<&str>,
         ) -> Result<LearningCandidate> {
+            if *self.fail_mark_promoted.lock().unwrap() {
+                return Err(Error::Internal("promotion persistence failed".to_string()));
+            }
             let mut candidates = self.candidates.lock().unwrap();
             let candidate = candidates.get_mut(id).unwrap();
             candidate.status = LearningCandidateStatus::Promoted;
@@ -562,6 +577,60 @@ mod tests {
         assert_eq!(
             source.deactivated_lessons.lock().unwrap().as_slice(),
             &[report.lesson_id]
+        );
+    }
+
+    #[tokio::test]
+    async fn learning_review_deactivates_lesson_when_promotion_persistence_fails() {
+        let source = MockLearningReviewSource::default();
+        let service = LearningReviewService::new(source.clone());
+        let candidate = service
+            .queue(&create_request(LearningCandidateImpact::Standard))
+            .await
+            .unwrap();
+        service
+            .review(
+                &candidate.id,
+                &LearningCandidateReviewRequest {
+                    action: LearningCandidateReviewAction::Approve,
+                    reviewed_by: Some("operator".to_string()),
+                    review_note: Some("approved".to_string()),
+                },
+            )
+            .await
+            .unwrap();
+        *source.fail_mark_promoted.lock().unwrap() = true;
+
+        let error = service
+            .promote(
+                &candidate.id,
+                &LearningCandidatePromotionRequest {
+                    lesson_id: Some("lesson-rollback".to_string()),
+                    active: true,
+                    promoted_by: Some("operator".to_string()),
+                },
+            )
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("promotion persistence failed"));
+        assert_eq!(
+            source.created_lessons.lock().unwrap().as_slice(),
+            &["lesson-rollback".to_string()]
+        );
+        assert_eq!(
+            source.deactivated_lessons.lock().unwrap().as_slice(),
+            &["lesson-rollback".to_string()]
+        );
+        assert_eq!(
+            source
+                .candidates
+                .lock()
+                .unwrap()
+                .get(&candidate.id)
+                .unwrap()
+                .status,
+            LearningCandidateStatus::Approved
         );
     }
 }
