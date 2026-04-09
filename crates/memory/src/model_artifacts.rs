@@ -1,4 +1,4 @@
-use openrustclaw_core::error::{Error, MemoryError, Result};
+use openrustclaw_core::error::{DatabaseError, Error, MemoryError, Result};
 use openrustclaw_core::traits::CoreMemoryStore;
 use openrustclaw_core::types::{
     ModelArtifact, ModelArtifactProjection, ModelArtifactPromotionRequest,
@@ -128,7 +128,12 @@ impl ModelArtifactService {
     async fn sync_projection(&self, namespace: &str) -> Result<()> {
         let projections = self.projected_entries(namespace).await?;
         for key in reserved_model_artifact_core_keys() {
-            let _ = self.core_memory_store.remove(namespace, key).await;
+            match self.core_memory_store.remove(namespace, key).await {
+                Ok(()) => {}
+                Err(Error::Database(DatabaseError::NotFound { entity, .. }))
+                    if entity == "CoreMemory" => {}
+                Err(error) => return Err(error),
+            }
         }
         for projection in projections {
             let mut entry = CoreMemoryManager::new_entry(&projection.key, &projection.value, 0.9);
@@ -154,6 +159,7 @@ mod tests {
     use chrono::Utc;
     use openrustclaw_core::types::{
         ModelArtifact, ModelArtifactKind, ModelArtifactSourceKind, ModelArtifactSourceRef,
+        ModelArtifactStatus,
     };
 
     fn model_artifact(
