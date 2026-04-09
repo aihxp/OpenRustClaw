@@ -1727,26 +1727,18 @@
       })();
       const enterpriseOperatorState = (() => {
         const queryOperatorId = controlUiQuery.get("operator_id");
-        const queryOperatorToken = controlUiQuery.get("operator_token");
         const queryApproverId = controlUiQuery.get("approver_id");
-        const queryApproverToken = controlUiQuery.get("approver_token");
         if (queryOperatorId !== null) {
           window.localStorage.setItem("openrustclawEnterpriseOperatorId", queryOperatorId);
-        }
-        if (queryOperatorToken !== null) {
-          window.localStorage.setItem("openrustclawEnterpriseOperatorToken", queryOperatorToken);
         }
         if (queryApproverId !== null) {
           window.localStorage.setItem("openrustclawEnterpriseApproverId", queryApproverId);
         }
-        if (queryApproverToken !== null) {
-          window.localStorage.setItem("openrustclawEnterpriseApproverToken", queryApproverToken);
-        }
         return {
           id: window.localStorage.getItem("openrustclawEnterpriseOperatorId") || "",
-          token: window.localStorage.getItem("openrustclawEnterpriseOperatorToken") || "",
+          token: window.sessionStorage.getItem("openrustclawEnterpriseOperatorToken") || "",
           approverId: window.localStorage.getItem("openrustclawEnterpriseApproverId") || "",
-          approverToken: window.localStorage.getItem("openrustclawEnterpriseApproverToken") || "",
+          approverToken: window.sessionStorage.getItem("openrustclawEnterpriseApproverToken") || "",
         };
       })();
       let configEditorDirty = false;
@@ -2888,9 +2880,9 @@
           window.localStorage.removeItem("openrustclawEnterpriseOperatorId");
         }
         if (enterpriseOperatorState.token) {
-          window.localStorage.setItem("openrustclawEnterpriseOperatorToken", enterpriseOperatorState.token);
+          window.sessionStorage.setItem("openrustclawEnterpriseOperatorToken", enterpriseOperatorState.token);
         } else {
-          window.localStorage.removeItem("openrustclawEnterpriseOperatorToken");
+          window.sessionStorage.removeItem("openrustclawEnterpriseOperatorToken");
         }
         if (enterpriseOperatorState.approverId) {
           window.localStorage.setItem("openrustclawEnterpriseApproverId", enterpriseOperatorState.approverId);
@@ -2898,9 +2890,9 @@
           window.localStorage.removeItem("openrustclawEnterpriseApproverId");
         }
         if (enterpriseOperatorState.approverToken) {
-          window.localStorage.setItem("openrustclawEnterpriseApproverToken", enterpriseOperatorState.approverToken);
+          window.sessionStorage.setItem("openrustclawEnterpriseApproverToken", enterpriseOperatorState.approverToken);
         } else {
-          window.localStorage.removeItem("openrustclawEnterpriseApproverToken");
+          window.sessionStorage.removeItem("openrustclawEnterpriseApproverToken");
         }
         populateEnterpriseCredentialInputs();
       }

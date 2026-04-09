@@ -216,4 +216,26 @@ mod tests {
         assert!(CONTROL_UI_HTML.contains("function exportEnterpriseAuditBundle"));
         assert!(CONTROL_UI_HTML.contains("function bootstrapEnterpriseAccess"));
     }
+
+    #[test]
+    fn enterprise_admin_tokens_are_session_scoped() {
+        assert!(
+            CONTROL_UI_HTML
+                .contains("sessionStorage.getItem(\"openrustclawEnterpriseOperatorToken\")")
+        );
+        assert!(
+            CONTROL_UI_HTML
+                .contains("sessionStorage.getItem(\"openrustclawEnterpriseApproverToken\")")
+        );
+        assert!(!CONTROL_UI_HTML.contains("controlUiQuery.get(\"operator_token\")"));
+        assert!(!CONTROL_UI_HTML.contains("controlUiQuery.get(\"approver_token\")"));
+        assert!(
+            !CONTROL_UI_HTML
+                .contains("localStorage.setItem(\"openrustclawEnterpriseOperatorToken\"")
+        );
+        assert!(
+            !CONTROL_UI_HTML
+                .contains("localStorage.setItem(\"openrustclawEnterpriseApproverToken\"")
+        );
+    }
 }
