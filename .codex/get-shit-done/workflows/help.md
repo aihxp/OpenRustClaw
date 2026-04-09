@@ -432,6 +432,26 @@ Usage: `$gsd-set-profile budget`
 
 ### Utility Commands
 
+**`$gsd-code-review <phase> [--depth=quick|standard|deep] [--files=file1,file2,...]`**
+Review the source files changed during a phase and write `{phase}-REVIEW.md`.
+
+- Uses explicit `--files` scope first, then phase artifacts, then git fallback
+- Good default after phase completion and before verification or shipping
+- Retroactive sweeps are safest in an isolated worktree with explicit file scope
+- Old phases reviewed at current `HEAD` are not historical snapshots
+
+Usage: `$gsd-code-review 200 --files=crates/cli/src/commands/runtime.rs,crates/cli/src/commands/start.rs`
+
+**`$gsd-code-review-fix <phase> [--all] [--auto]`**
+Apply fixes from `{phase}-REVIEW.md` and write `{phase}-REVIEW-FIX.md`.
+
+- Fixes Critical and Warning findings by default; `--all` includes Info
+- `--auto` re-runs review plus fix up to three iterations
+- Best used only in a clean branch or isolated worktree because the fixer makes source commits
+- For retroactive sweeps, review first and fix only after confirming the finding still applies
+
+Usage: `$gsd-code-review-fix 200 --auto`
+
 **`$gsd-cleanup`**
 Archive accumulated phase directories from completed milestones.
 

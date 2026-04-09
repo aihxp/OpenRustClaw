@@ -12,6 +12,14 @@ config_file = "/home/hprincivil/projects/OpenRustClaw/.codex/agents/gsd-advisor-
 description = "Deeply analyzes codebase for a phase and returns structured assumptions with evidence. Spawned by discuss-phase assumptions mode."
 config_file = "/home/hprincivil/projects/OpenRustClaw/.codex/agents/gsd-assumptions-analyzer.toml"
 
+[agents.gsd-code-fixer]
+description = "Applies fixes to code review findings from REVIEW.md. Reads source files, applies intelligent fixes, and commits each fix atomically. Spawned by /gsd-code-review-fix."
+config_file = "/home/hprincivil/projects/OpenRustClaw/.codex/agents/gsd-code-fixer.toml"
+
+[agents.gsd-code-reviewer]
+description = "Reviews source files for bugs, security issues, and code quality problems. Produces structured REVIEW.md with severity-classified findings. Spawned by /gsd-code-review."
+config_file = "/home/hprincivil/projects/OpenRustClaw/.codex/agents/gsd-code-reviewer.toml"
+
 [agents.gsd-codebase-mapper]
 description = "Explores codebase and writes structured analysis documents. Spawned by map-codebase with a focus area (tech, arch, quality, concerns). Writes documents directly to reduce orchestrator context load."
 config_file = "/home/hprincivil/projects/OpenRustClaw/.codex/agents/gsd-codebase-mapper.toml"
