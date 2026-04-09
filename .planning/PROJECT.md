@@ -13,29 +13,38 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 ## Current State
 
 - **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, v1.9 GitHub Repository Presence and Actions Recovery, v1.10 Release Binaries Workflow Recovery, v1.11 Crates.io and Docs.rs Publication Foundation, v1.12 Secure Node Connectivity and SSH Tunnel Revisit, v1.13 Brownfield-to-Greenfield Transition, v1.14 Continued Greenfield Conversion, v1.15 Deeper Greenfield Conversion, v1.16 Greenfield Conversion: Skills and Runtime Hotspots, v1.17 Greenfield Conversion: Completion Metrics and Remaining Hotspots, v1.18 Greenfield Conversion: Final Ranked Seam and 100% Completion Path, v1.19 Full Greenfield Conversion: Control Plane Route Families I, v1.20 Full Greenfield Conversion: Control Plane Route Families II, v1.21 Full Greenfield Conversion: Mobile and Voice Runtime Services, v1.22 Full Greenfield Conversion: Orchestration and Browser Services, v1.23 Full Greenfield Conversion: Setup and Secondary Command Surfaces, v1.24 Full Greenfield Conversion: Adapter-Only Exit and Enforcement, v1.25 Native Delivery Layer: Port Contracts and Legacy Inventory, v1.26 Native Delivery Layer: Control, MCP, and Gateway Delivery, v1.27 Native Delivery Layer: CLI Core Dispatch and Operator Commands I, v1.28 Native Delivery Layer: CLI Operator Commands II and UI-Adjacent Flows, v1.29 Native Delivery Layer: Runtime Hosts and Background Workers, v1.30 Native Delivery Layer: Repositories and Integration Adapters, v1.31 Native Delivery Layer: Legacy Module Retirement and Compatibility Shutdown, v1.32 Native Delivery Layer: Native Product Exit Audit and Packaging, v1.33 Native Delivery Implementation: Gateway and MCP Successor Entry Points, v1.34 Native Delivery Implementation: Native CLI Dispatch and Core Operator Paths, v1.35 Native Delivery Implementation: Runtime Hosts and Background Workers, v1.36 Native Delivery Implementation: Repository and Integration Adapter Lift, v1.37 Native Delivery Implementation: Legacy Command Tree Retirement, v1.38 Native Delivery Implementation: Native Product Verification and Packaging Exit, v1.39 Native Product E2E Verification and Greenfield Repairs, v1.40 Public Product Cleanup, Documentation Convergence, CI Repair, and Release, v1.41 Markdown Surface Audit, Cleanup, and Consolidation, v1.42 Onboarding Primary LLM Selection, v1.43 Learning Loop, Memory Depth, and God Mode, v1.44 Agent Discovery, Journey Cohesion, and Provider Access, and v1.45 Agent Fabric, Routing Console, and Guided Delegation
-- **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.45-*`
-- **Planning state:** active milestone `v1.46 Ad Hoc Release Catch-Up and GSD Re-entry`
+- **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.46-*`
+- **Planning state:** `v1.46 Ad Hoc Release Catch-Up and GSD Re-entry` is shipped, and the next GSD entry is the release-traceability queue
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closed that workflow gap going forward
 - **Program baselines:** the internal architecture and verification denominators remain closed, and the public-product convergence roadmap is now complete at `1/1`, or `100%`
 
-## Most Recent Milestone: v1.45 Agent Fabric, Routing Console, and Guided Delegation
+## Most Recent Milestone: v1.46 Ad Hoc Release Catch-Up and GSD Re-entry
+
+**Result:** Shipped 2026-04-09. OpenRustClaw captured the out-of-band `1.4.1` through `1.4.9` release line under one truthful milestone, aligned the planning deck with the shipped onboarding and runtime baseline, preserved the release and operational hardening story, and restored an explicit next GSD entrypoint.
+
+**Archive:** `.planning/milestones/v1.46-*`
+
+## Next GSD Entry
+
+**Status:** No active milestone is open after `v1.46` shipped.
+
+**Next command:** `$gsd-new-milestone`
+
+**Suggested first phase:** `Phase 200: Release Evidence Consolidation and Milestone Correlation`
+
+**Immediate focus:** make future semver releases traceable back to named GSD phases or milestone closeout artifacts so the public package line and planning line stay correlated.
+
+## Previous Milestone: v1.45 Agent Fabric, Routing Console, and Guided Delegation
 
 **Result:** Shipped 2026-04-08. OpenRustClaw closed the delegated-agent fabric roadmap at `5/5`, added truthful Cursor execution support, trusted remote-host inventory, durable route policy and receipts, a dedicated routing console, and a guided first-task launch path after onboarding or repair.
 
-**Archive:** `.planning/milestones/v1.45-MILESTONE-AUDIT.md`, `.planning/milestones/v1.45-VERIFICATIONS.md`
+**Archive:** `.planning/milestones/v1.45-MILESTONE-AUDIT.md`, `.planning/milestones/v1.45-phases`
 
-## Current Milestone
-
-**Status:** `v1.46 Ad Hoc Release Catch-Up and GSD Re-entry` is active.
-
-**Immediate focus:** capture the shipped `1.4.1` through `1.4.9` work under one truthful active milestone, align the planning deck with the current onboarding and runtime baseline, and re-enter future work through GSD instead of continuing ad hoc release flow.
-
-## Previous Milestone: v1.44 Agent Discovery, Journey Cohesion, and Provider Access
+## Older Milestone: v1.44 Agent Discovery, Journey Cohesion, and Provider Access
 
 **Result:** Shipped 2026-04-08. OpenRustClaw closed the delegated-agent discovery and journey-cohesion roadmap at `5/5`, added truthful local-agent discovery, compliance-safe delegated backend contracts, onboarding and model-menu convergence, bounded delegated runtime routing, and a repaired operator journey across README, inspect, and Control UI.
 
 **Archive:** `.planning/milestones/v1.44-MILESTONE-AUDIT.md`, `.planning/milestones/v1.44-phases`
-
 ## Older Milestone: v1.43 Learning Loop, Memory Depth, and God Mode
 
 **Result:** Shipped 2026-04-08. OpenRustClaw closed the learning-loop and memory-depth roadmap at `5/5`, added explainable hybrid retrieval and bounded recall packs, durable structured memory artifacts, reviewable learning candidates, proposal-first skill reuse, and a named God Mode lane with TTL-backed restore plus quarantine controls.
@@ -184,10 +193,8 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ### Active
 
-- **CURS-01:** Cursor support must stay truthful: either OpenRustClaw proves a documented programmable surface and uses it safely, or it keeps Cursor as detection-only with explicit reasons.
-- **FABR-01:** Operators can register and inspect trusted local and remote delegated-agent backends as one execution fabric instead of one-host-only lanes.
-- **ROUTX-01:** Control surfaces expose a dedicated routing console with backend readiness, policy state, route choices, and receipts instead of burying that story inside a general dashboard.
-- **TASK-01:** The first task after onboarding or repair uses the selected lane and available backends to suggest a coherent execution path with actionable fallback guidance.
+- **GSD-02:** Future semver releases should be traceable back to named GSD phases or milestone closeout artifacts instead of relying on conversational reconstruction.
+- **REL-03:** Release evidence for shipped semver versions should be consolidated into one milestone archive surface so the public package line and planning line stay correlated.
 
 ### Out of Scope
 
@@ -261,6 +268,8 @@ The next follow-on queue returned to onboarding behavior rather than broad repo 
 | Defer enterprise-ready concerns until after MVP stabilization | Enterprise packaging on top of an unstable MVP would have created the wrong priorities | ✓ Good |
 | Accept v1.0 milestone audit gaps around missing phase verification artifacts while preserving the gap explicitly in the archive | The shipped MVP passed its release gate, but lifecycle evidence was incomplete and needed to be recorded honestly | ⚠ Revisit |
 | Archive milestone verification evidence explicitly during milestone completion | Later review should not depend on live phase directories or manual reconstruction | ✓ Good |
+| Repurpose `v1.46` as a catch-up milestone for the shipped `1.4.1` through `1.4.9` line | The repo had already shipped materially beyond the active GSD deck, so truthful planning state mattered more than preserving the old speculative scope | ✓ Good |
+| Make release traceability the next queue after `v1.46` | Future semver releases need named milestone evidence so the planning line and package line stay correlated | ✓ Good |
 | Define the first enterprise slice around explicit approval boundaries plus durable audit evidence | The repo needed a truthful foundation before larger governance work like RBAC or compliance packaging | ✓ Good |
 | Prioritize deeper OpenClaw parity through a focused top-five surface slice | Browser depth, supervision, mobile, Control UI, and voice/calls are the clearest next parity gains without scattering effort | ✓ Good |
 | Keep deeper parity work grounded in typed runtime summaries instead of frontend-only stitching | Browser, supervision, mobile, Control UI, and voice parity all landed more cleanly when the Rust-owned control plane aggregated the operator story first | ✓ Good |
@@ -310,7 +319,7 @@ The next follow-on queue returned to onboarding behavior rather than broad repo 
 - the internal native-product E2E roadmap is closed at `1/1`, or `100%`
 - the public-product convergence roadmap is now closed at `1/1`, or `100%`
 - the markdown-surface audit roadmap is now closed at `1/1`, or `100%`
-- there is an active milestone: `v1.46 Ad Hoc Release Catch-Up and GSD Re-entry`
+- there is no active milestone open; the next queue is release traceability and milestone correlation
 
 ## Evolution
 
@@ -330,4 +339,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-09 after resetting v1.46 as the active catch-up milestone*
+*Last updated: 2026-04-09 after completing the v1.46 catch-up milestone*

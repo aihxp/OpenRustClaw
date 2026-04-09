@@ -8,12 +8,15 @@ OpenRustClaw now ships:
 
 - a self-hosted product model across `solo`, `team`, `company`, and `enterprise`
 - a Rust-first production runtime with the sidecar kept as an optional compatibility lane
-- guided onboarding, resumable setup, repair, and setup handoff
+- guided onboarding, resumable setup, repair, and setup handoff with provider, access-mode, and primary-model continuity
 - persisted assistant continuity, memory policy, and operator-visible evidence
 - bounded learning, structured memory artifacts, and an operator-gated God Mode lane
 - truthful direct-provider, local-runtime, and delegated local-agent selection during onboarding and runtime inspection
 - trusted remote delegated backends, durable route receipts, and a dedicated routing console
 - guided first-task launch that stays aligned with the selected lane and route policy
+- Tailscale-first private gateway guidance with truthful bound-versus-advertised runtime addresses
+- runtime lifecycle control through `openrustclaw start`, `openrustclaw stop`, and `openrustclaw restart`, plus startup preflight checks for release updates and safe OpenClaw migration
+- a public semver release lane for `openrustclaw-core` through `1.4.9`, kept separate from milestone archive tags
 - shared CLI, HTTP, MCP, and Control UI surfaces
 - enterprise access, policy, governance, audit, and operator-gated autonomy controls
 

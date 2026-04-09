@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.46 Ad Hoc Release Catch-Up and GSD Re-entry (Shipped: 2026-04-09)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.46-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Captured the `1.4.1` through `1.4.9` semver line in the active roadmap as one canonical release ledger covering onboarding, delegated backends, Tailscale guidance, runtime lifecycle, and operational hardening.
+- Updated the planning-facing product baseline so onboarding, repair, delegated-agent continuity, Tailscale-first access, and runtime lifecycle control now describe the shipped operator journey truthfully.
+- Preserved the public `1.4.x` semver line through `1.4.9` and its operational hardening story so release tags, OpenClaw migration support, and local temp-dir safeguards now live in canonical planning and release docs.
+- Closed the catch-up milestone with an explicit next GSD command and a named release-traceability queue so future work re-enters the pipeline instead of drifting through ad hoc releases.
+
+---
+
 ## v1.45 Agent Fabric, Routing Console, and Guided Delegation (Shipped: 2026-04-08)
 
 **Phases completed:** 5 phases, 10 plans, 0 tasks

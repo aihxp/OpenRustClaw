@@ -8,6 +8,8 @@ The rest of the workspace remains out of the public crates.io lane until it has 
 
 This semver package lane is different from planning milestone tags such as `v1.45`. Milestone tags and milestone GitHub releases are archive markers for shipped planning slices. The public package line is the semver `1.4.x` line for `openrustclaw-core`.
 
+The current shipped public package baseline has advanced through `1.4.9`. The `v1.4.1` through `v1.4.9` tags should therefore be read as shipped semver releases that the planning deck later captured under `v1.46`, not as a second milestone numbering system.
+
 ## Preflight
 
 Before attempting a publish:
