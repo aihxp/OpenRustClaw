@@ -176,10 +176,10 @@ The phase correctly defers cluster/HA/fleet concerns and stays within the single
 ## Consensus Summary
 
 ### Agreed Strengths
-- Reviewers generally agreed the plans are structured and traceable to the phase goal, but they emphasized different strengths.
+- Reviewers agreed the phase targets a coherent deploy-run-recover story, but they emphasized different strengths.
 
 ### Agreed Concerns
-- No clearly shared concern theme was detected across reviewers; reviewer-specific concerns are preserved above.
+- No exact shared concern wording emerged across reviewers; use the reviewer sections above for the concrete plan-specific risks.
 
 ### Divergent Views
-- Reviewers disagreed on overall risk level: gemini=HIGH, claude=LOW.
+- Not all reviewers exposed a phase-level risk label; parsed label: claude=LOW-MEDIUM. Gemini only provided plan-level risk assessments.

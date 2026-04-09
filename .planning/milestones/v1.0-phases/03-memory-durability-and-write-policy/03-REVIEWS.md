@@ -146,14 +146,10 @@ Yes. The three success criteria from the phase definition are directly addressed
 ## Consensus Summary
 
 ### Agreed Strengths
-- **Appropriate Enforcement Boundary**: Enforcing the policy at the `memory_store` tool schema level (Plan 01) rather than just tweaking the system prompt ensures robust, programmatic enforcement that the LLM cannot easily bypass.
-- **Graceful Rejection Handling**: Returning a non-error refusal for blocked writes (Plan 01) is an excellent design choice. It prevents the assistant's execution loop from crashing while still strictly enforcing the memory policy.
-- **Consistent Surface Parity**: Plan 02 ensures that both the CLI and the web-based Control UI are updated in tandem, preventing the kind of operator surface drift the project has worked hard to eliminate in earlier milestones.
+- Reviewers agreed the phase is coherently sequenced from enforcement to inspection to documentation, but they emphasized different strengths.
 
 ### Agreed Concerns
-- **Database Schema Migration [HIGH]**: None of the plans explicitly address modifying the SQLite database schema or creating a migration script to durably store the new `policy_basis`, `reason`, or `source_classification` metadata. If the existing `memory_store` persistence layer lacks a JSON blob column or specific columns for this data, Plan 01 will fail during the storage phase.
-- **Backward Compatibility of Tool Schema [MEDIUM]**: Modifying the `memory_store` tool schema to require a policy basis and reason could break existing custom workflows, tests, or legacy integrations that rely on the old arguments. It is not specified if these new fields are strictly required or if there is a fallback mechanism.
-- **Visibility of Blocked Writes [LOW]**: Plan 01 specifies returning a non-error refusal to the model, but it does not state if or how these blocked write attempts are logged. Operators might be confused if the assistant "ignores" an implicit memory and the refusal is completely invisible outside of debug logs.
+- No exact shared concern wording emerged across reviewers; use the reviewer sections above for the concrete plan-specific risks.
 
 ### Divergent Views
 - Reviewers disagreed on overall risk level: gemini=MEDIUM, claude=LOW.

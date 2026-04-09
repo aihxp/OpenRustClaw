@@ -133,14 +133,10 @@ The three plans form a clean dependency chain (inspector → reporting → scaff
 ## Consensus Summary
 
 ### Agreed Strengths
-- **Excellent Separation of Concerns:** The division into core enforcement (Plan 01), reporting/audit (Plan 02), and scaffolding/closure (Plan 03) prevents massive, tangled commits and makes the work easily verifiable.
-- **Strong Reuse Strategy:** Introducing `verification-artifacts.cjs` as a single source of truth for readiness inspection directly addresses the historical drift between `init`, `phase complete`, and `audit-uat`.
-- **Self-Referential Proof:** Plan 03 explicitly requires writing Phase 8's own `08-VERIFICATION.md` artifact, forcing the new contract to immediately validate itself before the phase can close.
+- Reviewers agreed the phase is tightly scoped around a shared verification inspector and a self-proving closure path, but they emphasized different strengths.
 
 ### Agreed Concerns
-- **MEDIUM: Ambiguity in "Staleness" Definition.** Decision D-05 states stale means the verification artifact is "older than the latest execution evidence in the phase directory, especially summaries and UAT artifacts." The plans do not specify exactly which files constitute "execution evidence." Relying on arbitrary file modification times in a directory can be brittle (e.g., touching a file or modifying a `.plan` file might falsely flag the verification as stale).
-- **LOW: Inspector Error Handling.** The plans do not specify how the shared inspector (`verification-artifacts.cjs`) should handle malformed `VERIFICATION.md` files (e.g., missing frontmatter, unparseable YAML) or completely absent phase directories (which is a valid state for roadmap-only milestones).
-- **LOW: Bootstrapping Phase 8's Completion.** In Plan 03, the `VERIFICATION.md` file must be physically written to disk *before* any command invoking the new `phase complete` gate is run. If the implementation attempts to complete the phase before the file is fully flushed, the newly implemented hard gate will block the completion of its own phase.
+- Both reviewers highlighted the need to define verification freshness or staleness more explicitly before implementation.
 
 ### Divergent Views
 - Reviewers converged on an overall LOW risk posture.

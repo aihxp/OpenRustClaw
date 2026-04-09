@@ -94,10 +94,10 @@ Ready to persist this review to the repo when you'd like to proceed.
 ## Consensus Summary
 
 ### Agreed Strengths
-- Reviewers generally agreed the plans are structured and traceable to the phase goal, but they emphasized different strengths.
+- Reviewers agreed the phase is coherent and phase-bounded, but they emphasized different strengths.
 
 ### Agreed Concerns
-- No clearly shared concern theme was detected across reviewers; reviewer-specific concerns are preserved above.
+- No exact shared concern wording emerged across reviewers; use the reviewer sections above for the concrete plan-specific risks.
 
 ### Divergent Views
-- Reviewers converged on an overall HIGH risk posture.
+- Not all reviewers exposed a phase-level risk label; parsed label: claude=LOW-MEDIUM. Gemini only provided plan-level risk assessments.
