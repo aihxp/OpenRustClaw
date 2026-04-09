@@ -82,7 +82,8 @@ The onboarding flow now does the real first-start work:
 If you choose advanced remote guidance during setup, OpenRustClaw now saves the intended remote-connectivity profile as part of the setup contract:
 
 - prefer a node-first path
-- use SSH tunnel as the first fallback
+- use Tailscale tailnet as the first fallback
+- use SSH tunnel as the second fallback
 - use reverse proxy only as a bounded last resort
 
 ## 4. Verify Readiness
