@@ -255,8 +255,8 @@ impl BackendProbe {
             auth_probe: Some(&["agent", "status"]),
             model_probe: Some(&["agent", "models"]),
             model_discovery: AgentBackendCapability::Supported,
-            delegated_execution: AgentBackendCapability::Supported,
-            policy_classification: "delegated_cli_candidate",
+            delegated_execution: AgentBackendCapability::Unsupported,
+            policy_classification: "integration_only",
             notes: &[
                 "Use documented `cursor agent` auth, model, and headless print surfaces instead of scraping browser sessions or editor state.",
             ],
@@ -520,8 +520,8 @@ mod tests {
             .find(|entry| entry.host == AiHost::Cursor)
             .unwrap();
         assert_eq!(cursor.auth_status, AgentBackendAuthStatus::LoggedIn);
-        assert_eq!(cursor.readiness, AgentBackendReadiness::Ready);
-        assert_eq!(cursor.policy_classification, "delegated_cli_candidate");
+        assert_eq!(cursor.readiness, AgentBackendReadiness::DetectionOnly);
+        assert_eq!(cursor.policy_classification, "integration_only");
         assert_eq!(cursor.model_discovery, AgentBackendCapability::Supported);
         assert!(
             cursor
