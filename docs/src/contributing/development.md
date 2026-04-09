@@ -32,7 +32,7 @@ This guide covers setting up your development environment for contributing to Op
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/openrustclaw/openrustclaw.git
+git clone https://github.com/aihxp/OpenRustClaw.git
 cd OpenRustClaw
 ```
 
