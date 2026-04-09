@@ -218,7 +218,7 @@ where
         }
 
         let installed_skill_name = self.source.install_skill_proposal(&proposal).await?;
-        let proposal = self
+        let proposal = match self
             .source
             .mark_skill_proposal_installed(
                 &proposal.id,
@@ -226,7 +226,20 @@ where
                 request.installed_by.as_deref(),
                 request.note.as_deref(),
             )
-            .await?;
+            .await
+        {
+            Ok(proposal) => proposal,
+            Err(error) => {
+                if let Err(cleanup_error) =
+                    self.source.rollback_installed_skill(&installed_skill_name).await
+                {
+                    return Err(Error::Internal(format!(
+                        "failed to persist installed skill proposal for skill '{installed_skill_name}': {error}; cleanup failed: {cleanup_error}"
+                    )));
+                }
+                return Err(error);
+            }
+        };
 
         Ok(SkillProposalInstallReport {
             proposal,
@@ -302,6 +315,7 @@ mod tests {
         proposals: Arc<Mutex<BTreeMap<String, SkillProposal>>>,
         installed: Arc<Mutex<Vec<String>>>,
         rolled_back: Arc<Mutex<Vec<String>>>,
+        fail_mark_installed: Arc<Mutex<bool>>,
     }
 
     #[async_trait]
@@ -372,6 +386,9 @@ mod tests {
             _actor: Option<&str>,
             _note: Option<&str>,
         ) -> Result<SkillProposal> {
+            if *self.fail_mark_installed.lock().unwrap() {
+                return Err(Error::Internal("install persistence failed".to_string()));
+            }
             let mut proposals = self.proposals.lock().unwrap();
             let proposal = proposals.get_mut(id).unwrap();
             proposal.status = SkillProposalStatus::Installed;
@@ -585,6 +602,81 @@ mod tests {
         assert_eq!(
             service.source.rolled_back.lock().unwrap().as_slice(),
             &["danger-helper".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn proposal_service_rolls_back_installed_skill_when_persistence_fails() {
+        let source = MockSkillProposalSource::default();
+        let service = SkillProposalService::new(source.clone());
+        let proposal = service
+            .queue(&openrustclaw_core::types::SkillProposalCreateRequest {
+                namespace: "user-1".to_string(),
+                skill_name: "triage-helper".to_string(),
+                summary: "Summarize runtime triage".to_string(),
+                body: "# Skill".to_string(),
+                rationale: None,
+                source: SkillProposalSourceRef {
+                    kind: SkillProposalSourceKind::LearningCandidate,
+                    source_id: "candidate-1".to_string(),
+                    detail: None,
+                },
+                god_mode_origin: false,
+            })
+            .await
+            .unwrap();
+        service
+            .review(
+                &proposal.id,
+                &SkillProposalReviewRequest {
+                    action: SkillProposalReviewAction::Approve,
+                    reviewed_by: Some("operator".to_string()),
+                    review_note: Some("approved".to_string()),
+                },
+            )
+            .await
+            .unwrap();
+        service
+            .verify(
+                &proposal.id,
+                &SkillProposalVerifyRequest {
+                    verified_by: Some("operator".to_string()),
+                    note: None,
+                },
+            )
+            .await
+            .unwrap();
+        *source.fail_mark_installed.lock().unwrap() = true;
+
+        let error = service
+            .install(
+                &proposal.id,
+                &SkillProposalInstallRequest {
+                    installed_by: Some("operator".to_string()),
+                    note: None,
+                },
+            )
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("install persistence failed"));
+        assert_eq!(
+            source.installed.lock().unwrap().as_slice(),
+            &["triage-helper".to_string()]
+        );
+        assert_eq!(
+            source.rolled_back.lock().unwrap().as_slice(),
+            &["triage-helper".to_string()]
+        );
+        assert_eq!(
+            source
+                .proposals
+                .lock()
+                .unwrap()
+                .get(&proposal.id)
+                .unwrap()
+                .status,
+            SkillProposalStatus::Approved
         );
     }
 }
