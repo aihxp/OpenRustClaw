@@ -35,3 +35,12 @@ Thumbs.db
 /docs/book/
 /slides/output/
 /dist/
+
+# Local operator/runtime state
+/.claude-plugin/
+/.claw/
+/config.json
+/events.jsonl
+/labels/
+/statuses/
+/views.json

@@ -9,6 +9,12 @@ This changelog tracks the public semver release line. Planning milestone tags su
 
 ---
 
+## [1.4.8] - 2026-04-09
+
+### Fixed
+
+- Repo-level Git ignores now cover local operator and runtime state such as `.claw/`, `.claude-plugin/`, and the generated JSON/status artifacts, so normal local usage does not leave noisy untracked files in the worktree.
+
 ## [1.4.7] - 2026-04-09
 
 ### Changed
