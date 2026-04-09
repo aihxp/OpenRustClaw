@@ -95,6 +95,7 @@ impl AgentBackendCatalogService {
             BackendProbe::claude_code(),
             BackendProbe::codex(),
             BackendProbe::gemini(),
+            BackendProbe::cursor(),
         ]
         .into_iter()
         .map(|probe| self.inspect_probe(probe))
@@ -255,8 +256,8 @@ impl BackendProbe {
             auth_probe: Some(&["agent", "status"]),
             model_probe: Some(&["agent", "models"]),
             model_discovery: AgentBackendCapability::Supported,
-            delegated_execution: AgentBackendCapability::Unsupported,
-            policy_classification: "integration_only",
+            delegated_execution: AgentBackendCapability::Candidate,
+            policy_classification: "delegated_cli_candidate",
             notes: &[
                 "Use documented `cursor agent` auth, model, and headless print surfaces instead of scraping browser sessions or editor state.",
             ],
@@ -520,8 +521,8 @@ mod tests {
             .find(|entry| entry.host == AiHost::Cursor)
             .unwrap();
         assert_eq!(cursor.auth_status, AgentBackendAuthStatus::LoggedIn);
-        assert_eq!(cursor.readiness, AgentBackendReadiness::DetectionOnly);
-        assert_eq!(cursor.policy_classification, "integration_only");
+        assert_eq!(cursor.readiness, AgentBackendReadiness::Ready);
+        assert_eq!(cursor.policy_classification, "delegated_cli_candidate");
         assert_eq!(cursor.model_discovery, AgentBackendCapability::Supported);
         assert!(
             cursor
@@ -545,7 +546,7 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
-    fn discover_delegated_cli_candidates_skips_cursor() {
+    fn discover_delegated_cli_candidates_includes_cursor() {
         let temp_dir = tempfile::tempdir().unwrap();
         write_fake_executable(
             temp_dir.path(),
@@ -565,7 +566,7 @@ mod tests {
         write_fake_executable(
             temp_dir.path(),
             "cursor",
-            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'Cursor 3.0.9'; exit 0; fi\nif [ \"$1\" = \"--help\" ]; then printf '%s\n' 'Cursor'; exit 0; fi\nexit 1\n",
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'Cursor 3.0.9'; exit 0; fi\nif [ \"$1\" = \"--help\" ]; then printf '%s\n' 'Cursor' 'Subcommands:' '  agent'; exit 0; fi\nif [ \"$1\" = \"agent\" ] && [ \"$2\" = \"status\" ]; then echo 'Logged in as operator@example.com'; exit 0; fi\nif [ \"$1\" = \"agent\" ] && [ \"$2\" = \"models\" ]; then printf '%s\n' 'Available models' '' 'auto - Auto'; exit 0; fi\nexit 1\n",
         );
 
         let original_path = env::var_os("PATH");
@@ -575,8 +576,8 @@ mod tests {
 
         let catalog = AgentBackendCatalogService::new().discover_delegated_cli_candidates();
 
-        assert_eq!(catalog.len(), 3);
-        assert!(!catalog.iter().any(|entry| entry.host == AiHost::Cursor));
+        assert_eq!(catalog.len(), 4);
+        assert!(catalog.iter().any(|entry| entry.host == AiHost::Cursor));
 
         match original_path {
             Some(value) => unsafe {

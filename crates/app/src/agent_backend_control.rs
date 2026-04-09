@@ -318,23 +318,23 @@ mod tests {
     }
 
     #[test]
-    fn detection_only_backends_remain_ineligible() {
+    fn not_ready_candidate_backends_remain_ineligible() {
         let service = AgentBackendControlService::new();
         let contract = service.contract_for_entry(&sample_entry(
             AiHost::Cursor,
             AgentBackendReadiness::DetectionOnly,
-            Some("documented backend surface not confirmed"),
-            "integration_only",
+            Some("Binary is installed, but login is not yet ready for delegated execution."),
+            "delegated_cli_candidate",
         ));
 
         assert_eq!(
             contract.delegated_execution_kind,
-            DelegatedExecutionKind::Unsupported
+            DelegatedExecutionKind::LocalCli
         );
         assert!(!contract.execution_eligible);
         assert_eq!(
             contract.model_catalog_mode,
-            DelegatedModelCatalogMode::Unsupported
+            DelegatedModelCatalogMode::VendorManaged
         );
     }
 
