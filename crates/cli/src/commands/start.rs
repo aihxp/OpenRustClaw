@@ -231,6 +231,12 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
 
     gate_nonshipping_channels(&mut config.channels);
 
+    let addr = format!("{}:{}", config.gateway.host, config.gateway.port);
+    let _runtime_lock = runtime::acquire_runtime_lock(config_path, &workspace_root, &addr)?;
+    let listener = bind_gateway_listener(&addr).await?;
+
+    info!(addr = %addr, "Gateway listener reserved");
+
     // Ensure data directory exists
     let db_path = config.database.url.replace("sqlite://", "");
     if let Some(parent) = std::path::Path::new(&db_path).parent() {
@@ -322,14 +328,12 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     let metrics_handle = install_metrics();
 
     let mut app = gateway.router(gateway_state);
-    let addr = gateway.addr();
     let control_auth_state = ControlAuthState {
         bearer_token: control_api_token,
         trusted_proxy_token,
         origin_validation: config.security.origin_validation,
         origin_validator: Arc::new(OriginValidator::new(config.gateway.allowed_origins.clone())),
     };
-    let _runtime_lock = runtime::acquire_runtime_lock(config_path, &workspace_root, &addr)?;
 
     info!(addr = %addr, "Starting gateway server");
 
@@ -837,11 +841,6 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
         }
     };
 
-    // Start server with graceful shutdown
-    let listener = tokio::net::TcpListener::bind(&addr)
-        .await
-        .with_context(|| format!("Failed to bind to {}", addr))?;
-
     info!("OpenRustClaw is ready!");
     info!("Gateway: http://{}", addr);
     info!("Prometheus metrics: http://{}/metrics", addr);
@@ -1099,6 +1098,22 @@ fn channel_langsmith_client(config: &AppConfig) -> Option<LangSmithClient> {
     }
 }
 
+async fn bind_gateway_listener(addr: &str) -> Result<tokio::net::TcpListener> {
+    tokio::net::TcpListener::bind(addr)
+        .await
+        .map_err(|error| bind_gateway_listener_error(addr, error))
+}
+
+fn bind_gateway_listener_error(addr: &str, error: std::io::Error) -> anyhow::Error {
+    if error.kind() == std::io::ErrorKind::AddrInUse {
+        anyhow::anyhow!(
+            "Failed to bind to {addr}: address is already in use. Stop the process already listening there or change `gateway.host`/`gateway.port`, then retry."
+        )
+    } else {
+        anyhow::Error::new(error).context(format!("Failed to bind to {addr}"))
+    }
+}
+
 fn gateway_langsmith_client(config: &AppConfig) -> Option<LangSmithClient> {
     if !config.observability.langsmith_enabled {
         return None;
@@ -1154,6 +1169,22 @@ fn validate_gateway_network_mode(config: &AppConfig) -> Result<()> {
                 );
             }
         }
+        "tailnet" => {
+            if !is_loopback {
+                anyhow::bail!(
+                    "gateway.network_mode=tailnet requires a loopback bind host because Tailscale-native access should front a private local listener, got '{}'",
+                    config.gateway.host
+                );
+            }
+            if !config.security.require_auth
+                && config.security.control_api_token_env.is_none()
+                && config.security.trusted_proxy_token_env.is_none()
+            {
+                anyhow::bail!(
+                    "gateway.network_mode=tailnet requires direct auth or an explicit control/proxy token gate"
+                );
+            }
+        }
         "lan" | "remote" => {
             if is_loopback {
                 anyhow::bail!(
@@ -1177,7 +1208,7 @@ fn validate_gateway_network_mode(config: &AppConfig) -> Result<()> {
         }
         other => {
             anyhow::bail!(
-                "Unknown gateway.network_mode '{}'. Expected loopback, lan, or remote",
+                "Unknown gateway.network_mode '{}'. Expected loopback, tailnet, lan, or remote",
                 other
             );
         }
@@ -15234,6 +15265,19 @@ mod tests {
         )
     }
 
+    #[test]
+    fn bind_gateway_listener_reports_address_in_use_with_actionable_message() {
+        let error = bind_gateway_listener_error(
+            "127.0.0.1:18789",
+            std::io::Error::new(std::io::ErrorKind::AddrInUse, "already reserved"),
+        );
+        let message = error.to_string();
+        assert!(message.contains("Failed to bind to"));
+        assert!(message.contains("address is already in use"));
+        assert!(message.contains("gateway.host"));
+        assert!(message.contains("gateway.port"));
+    }
+
     struct EnvVarGuard {
         key: &'static str,
         previous: Option<String>,
@@ -15370,6 +15414,25 @@ mod tests {
         config.security.require_auth = true;
 
         assert!(validate_gateway_network_mode(&config).is_ok());
+    }
+
+    #[test]
+    fn validate_gateway_network_mode_accepts_tailnet_with_loopback_host() {
+        let mut config = AppConfig::default();
+        config.gateway.network_mode = "tailnet".to_string();
+        config.gateway.host = "127.0.0.1".to_string();
+        config.security.require_auth = true;
+
+        assert!(validate_gateway_network_mode(&config).is_ok());
+    }
+
+    #[test]
+    fn validate_gateway_network_mode_rejects_tailnet_with_non_loopback_host() {
+        let mut config = AppConfig::default();
+        config.gateway.network_mode = "tailnet".to_string();
+        config.gateway.host = "0.0.0.0".to_string();
+
+        assert!(validate_gateway_network_mode(&config).is_err());
     }
 
     #[tokio::test]

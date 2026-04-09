@@ -9,6 +9,25 @@ This changelog tracks the public semver release line. Planning milestone tags su
 
 ---
 
+## [1.4.5] - 2026-04-08
+
+### Added
+
+- Onboarding now supports a Tailscale tailnet gateway path that keeps OpenRustClaw bound to loopback and records a `tailscale_tailnet` remote-connectivity profile for setup handoff and repair guidance.
+- Gateway setup now probes `tailscale status --json` when the Tailscale path is selected and surfaces the detected `*.ts.net` name for private browser-origin guidance.
+
+### Changed
+
+- Gateway setup now persists `OPENRUSTCLAW_GATEWAY__NETWORK_MODE` alongside host and port so onboarding-created workspaces keep the intended deployment posture on later starts.
+- The remote-connectivity guidance and docs now rank Tailscale private tailnet access ahead of SSH tunnel and reverse proxy fallback paths.
+- AI model setup no longer probes Ollama before showing the provider menu; Ollama stays selectable and is validated only if you choose it.
+- Local delegated-agent discovery during onboarding is now limited to the supported delegated CLIs instead of scanning unrelated desktop integrations.
+
+### Fixed
+
+- `openrustclaw start` now reserves the gateway listener before database migrations and other heavy startup work, so port conflicts fail fast instead of surfacing late.
+- `openrustclaw start` no longer emits the duplicate tracing-subscriber warning on normal startup because the generic CLI tracing path is skipped for the dedicated runtime command.
+
 ## [1.4.4] - 2026-04-08
 
 ### Fixed

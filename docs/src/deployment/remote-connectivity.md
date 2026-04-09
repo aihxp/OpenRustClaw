@@ -7,8 +7,9 @@ This guide defines the current OpenRustClaw contract for nodes and remote access
 Use remote connectivity in this order:
 
 1. node-first
-2. SSH tunnel fallback
-3. reverse proxy fallback
+2. Tailscale tailnet fallback
+3. SSH tunnel fallback
+4. reverse proxy fallback
 
 That order matters. OpenRustClaw should not default to "just expose the gateway somehow" when a clearer node boundary is available.
 
@@ -33,9 +34,21 @@ The preferred remote story is node-first:
 
 Today, this is a product-direction contract more than a fully automated bootstrap flow. OpenRustClaw already ships mobile node surfaces and a distributed crate, but the guided remote-node bootstrap story is still being hardened.
 
-## First Fallback: SSH Tunnel
+## First Fallback: Tailscale Tailnet
 
-When the preferred node path is unavailable or not yet supported for a deployment, use an SSH tunnel as the first fallback.
+When the preferred node path is unavailable or not yet supported for a deployment, prefer a private Tailscale tailnet path before opening a broader transport workaround.
+
+Use this fallback when:
+
+- you want private remote reachability without binding OpenRustClaw beyond loopback
+- you control the machine running `tailscaled`
+- you can keep the gateway private and front it with `tailscale serve`
+
+OpenRustClaw's `gateway.network_mode = "tailnet"` posture is designed for this case: keep the application listener on loopback, then let Tailscale provide the private access path.
+
+## Second Fallback: SSH Tunnel
+
+When the preferred node path and private Tailscale path are unavailable or not yet supported for a deployment, use an SSH tunnel as the next fallback.
 
 Use this fallback when:
 
@@ -43,7 +56,7 @@ Use this fallback when:
 - you need a durable private path to a local gateway
 - you want to avoid broad public exposure while the node path is unavailable
 
-Do not treat the SSH tunnel as the product's primary topology. It is the first recovery and compatibility fallback.
+Do not treat the SSH tunnel as the product's primary topology. It is the second recovery and compatibility fallback after a private Tailscale path.
 
 ## Last Fallback: Reverse Proxy
 
@@ -65,8 +78,9 @@ As of `v1.12` planning:
 - mobile nodes are shipped and inspectable
 - distributed runtime components exist, but the broader distributed lane remains gated from the shipped surface
 - onboarding does not yet automate a complete node-first remote bootstrap
+- onboarding now has a Tailscale tailnet-guidance path for private loopback-backed remote access
 - onboarding now records the intended remote-connectivity profile in setup state and the `Setup Handoff` surface
-- SSH tunnel and reverse proxy remain operator-managed advanced paths until later phases harden the bootstrap and inspection flow
+- Tailscale, SSH tunnel, and reverse proxy remain operator-managed advanced paths until later phases harden the bootstrap and inspection flow
 
 ## Operator Rules
 
@@ -74,8 +88,9 @@ Before exposing OpenRustClaw beyond one local host:
 
 1. decide whether you are using a node boundary or only a remote access path
 2. prefer node-first if the deployment supports it
-3. use SSH tunnel before reverse proxy
-4. keep reverse proxy as a bounded last resort
-5. preserve the control auth and origin boundary at every layer
+3. use Tailscale tailnet access before SSH tunnel when it fits the deployment
+4. use SSH tunnel before reverse proxy
+5. keep reverse proxy as a bounded last resort
+6. preserve the control auth and origin boundary at every layer
 
 Pair this guide with [Production Deployment](./production.md) and [Security](../guides/security.md).

@@ -3181,8 +3181,10 @@ enum WebhooksAction {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    init_tracing(Env::detect());
     let cli = Cli::parse();
+    if !matches!(&cli.command, Commands::Start { .. }) {
+        init_tracing(Env::detect());
+    }
 
     match cli.command {
         Commands::Start { config, channels } => {

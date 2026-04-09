@@ -90,6 +90,17 @@ impl AgentBackendCatalogService {
         .collect()
     }
 
+    pub fn discover_delegated_cli_candidates(&self) -> Vec<AgentBackendCatalogEntry> {
+        [
+            BackendProbe::claude_code(),
+            BackendProbe::codex(),
+            BackendProbe::gemini(),
+        ]
+        .into_iter()
+        .map(|probe| self.inspect_probe(probe))
+        .collect()
+    }
+
     fn inspect_probe(&self, probe: BackendProbe) -> AgentBackendCatalogEntry {
         let inspected_at = chrono::Utc::now().to_rfc3339();
         let Some(executable_path) = resolve_on_path(probe.binary_name) else {
@@ -521,6 +532,51 @@ mod tests {
 
         let mapped = backend_for_provider(&catalog, "anthropic").unwrap();
         assert_eq!(mapped.host, AiHost::ClaudeCode);
+
+        match original_path {
+            Some(value) => unsafe {
+                env::set_var("PATH", value);
+            },
+            None => unsafe {
+                env::remove_var("PATH");
+            },
+        }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn discover_delegated_cli_candidates_skips_cursor() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        write_fake_executable(
+            temp_dir.path(),
+            "claude",
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'claude 1.0.0'; exit 0; fi\nif [ \"$1\" = \"--help\" ]; then printf '%s\n' 'Claude Code' 'Commands:' '  auth'; exit 0; fi\nif [ \"$1\" = \"auth\" ] && [ \"$2\" = \"status\" ]; then echo '{\"loggedIn\":true,\"authMethod\":\"claude.ai\"}'; exit 0; fi\nexit 1\n",
+        );
+        write_fake_executable(
+            temp_dir.path(),
+            "codex",
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex 0.1.0'; exit 0; fi\nif [ \"$1\" = \"--help\" ]; then printf '%s\n' 'Codex CLI'; exit 0; fi\nif [ \"$1\" = \"login\" ] && [ \"$2\" = \"status\" ]; then echo 'Logged in using ChatGPT'; exit 0; fi\nexit 1\n",
+        );
+        write_fake_executable(
+            temp_dir.path(),
+            "gemini",
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'gemini 0.1.0'; exit 0; fi\nif [ \"$1\" = \"--help\" ]; then printf '%s\n' 'Gemini CLI'; exit 0; fi\nexit 1\n",
+        );
+        write_fake_executable(
+            temp_dir.path(),
+            "cursor",
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'Cursor 3.0.9'; exit 0; fi\nif [ \"$1\" = \"--help\" ]; then printf '%s\n' 'Cursor'; exit 0; fi\nexit 1\n",
+        );
+
+        let original_path = env::var_os("PATH");
+        unsafe {
+            env::set_var("PATH", temp_dir.path());
+        }
+
+        let catalog = AgentBackendCatalogService::new().discover_delegated_cli_candidates();
+
+        assert_eq!(catalog.len(), 3);
+        assert!(!catalog.iter().any(|entry| entry.host == AiHost::Cursor));
 
         match original_path {
             Some(value) => unsafe {

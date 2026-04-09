@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::Duration;
 use tokio::fs;
 
@@ -164,6 +165,16 @@ pub struct RemoteConnectivityProfile {
     pub detail: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TailscaleProbeResult {
+    detected: bool,
+    authenticated: bool,
+    backend_state: Option<String>,
+    dns_name: Option<String>,
+    suggested_origin: Option<String>,
+    detail: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SetupState {
     pub started_at: String,
@@ -261,7 +272,7 @@ impl OnboardingProviderAccessMode {
     }
 }
 
-fn direct_provider_lane_statuses(ollama_available: bool) -> Vec<DirectProviderLaneStatus> {
+fn direct_provider_lane_statuses() -> Vec<DirectProviderLaneStatus> {
     [
         (
             "anthropic",
@@ -287,7 +298,7 @@ fn direct_provider_lane_statuses(ollama_available: bool) -> Vec<DirectProviderLa
             "configured",
             "not configured",
         ),
-        ("ollama", ollama_available, "available", "not detected"),
+        ("ollama", false, "", "select to validate"),
     ]
     .into_iter()
     .map(
@@ -305,10 +316,15 @@ fn direct_provider_lane_statuses(ollama_available: bool) -> Vec<DirectProviderLa
 }
 
 async fn onboarding_lane_catalog() -> Result<Vec<OnboardingLaneDescriptor>> {
-    let agent_backends = AgentBackendCatalogService::new().discover();
+    let agent_backends = tokio::task::spawn_blocking(|| {
+        AgentBackendCatalogService::new().discover_delegated_cli_candidates()
+    });
+    let agent_backends = agent_backends
+        .await
+        .map_err(|error| anyhow!("failed to inspect local agent backends: {error}"))?;
     let delegated_contracts =
         AgentBackendControlService::new().contracts_from_catalog(&agent_backends);
-    let direct_statuses = direct_provider_lane_statuses(models::check_ollama().await);
+    let direct_statuses = direct_provider_lane_statuses();
     Ok(OnboardingLaneCatalogService::new().catalog(&direct_statuses, &delegated_contracts))
 }
 
@@ -506,6 +522,7 @@ fn provider_choice_status_summary(access_paths: &[ProviderAccessPath]) -> String
             OnboardingProviderAccessMode::LocalRuntime => {
                 match path.descriptor.status_label.as_str() {
                     "available" => "local runtime available".to_string(),
+                    "select to validate" => "local runtime validate on selection".to_string(),
                     other => format!("local runtime {other}"),
                 }
             }
@@ -1254,6 +1271,7 @@ pub fn should_offer_assistant_launch(
 async fn run_gateway_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
     let gateway_modes = vec![
         "Local gateway on this machine",
+        "Tailscale tailnet on this machine",
         "Remote gateway/client guidance only",
     ];
     let mode = Select::with_theme(&wizard.theme)
@@ -1262,15 +1280,24 @@ async fn run_gateway_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
         .default(0)
         .interact()?;
 
-    let connectivity_profile = if mode == 1 {
+    let tailscale_probe = if mode == 1 {
+        let probe = inspect_tailscale_status();
+        print_tailscale_gateway_hints(&probe);
+        Some(probe)
+    } else {
+        None
+    };
+
+    let connectivity_profile = if mode == 2 {
         println!("Remote gateway/client mode is not a separate shipped runtime yet.");
         println!(
-            "Current remote-connectivity direction: prefer a node-first path, fall back to an SSH tunnel if needed, and only use a reverse proxy as a last resort you fully control."
+            "Current remote-connectivity direction: prefer a node-first path, then Tailscale tailnet access where it fits, then SSH tunnel, and only use a reverse proxy as a last resort you fully control."
         );
 
         let remote_profiles = vec![
+            "Node-first with Tailscale tailnet fallback, SSH tunnel second, reverse proxy last resort",
             "Node-first with SSH tunnel fallback and reverse proxy last resort",
-            "Node-first with SSH tunnel fallback only",
+            "Tailscale tailnet as the primary remote access path",
             "SSH tunnel fallback only for now",
             "Reverse proxy only as a last resort",
         ];
@@ -1280,31 +1307,47 @@ async fn run_gateway_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
             .default(0)
             .interact()?;
         remote_connectivity_profile_for_selection(selection)
+    } else if mode == 1 {
+        tailscale_connectivity_profile()
     } else {
         local_connectivity_profile()
     };
     wizard.state.remote_connectivity_profile = Some(connectivity_profile.clone());
 
-    let host: String = Input::with_theme(&wizard.theme)
-        .with_prompt("Gateway host")
-        .default("127.0.0.1".to_string())
-        .interact_text()?;
+    let host = if mode == 1 {
+        println!("  Gateway host is pinned to 127.0.0.1 for Tailscale-native private access.");
+        "127.0.0.1".to_string()
+    } else {
+        Input::with_theme(&wizard.theme)
+            .with_prompt("Gateway host")
+            .default("127.0.0.1".to_string())
+            .interact_text()?
+    };
 
     let port: u16 = Input::with_theme(&wizard.theme)
         .with_prompt("Gateway port")
         .default(18789)
         .interact_text()?;
 
+    let network_mode = if mode == 1 {
+        "tailnet".to_string()
+    } else {
+        gateway_network_mode_for_host(&host).to_string()
+    };
+
     // Generate JWT secret
     let jwt_secret = generate_jwt_secret();
 
     // Save to environment file
-    save_gateway_config(&host, port, &jwt_secret).await?;
+    save_gateway_config(&host, port, &network_mode, &jwt_secret).await?;
 
     wizard.state.gateway_configured = true;
     let workspace_root = std::env::current_dir()?;
-    let (remote_status, remote_detail) =
-        remote_connectivity_bootstrap_outcome(&connectivity_profile);
+    let (remote_status, remote_detail) = if let Some(probe) = tailscale_probe.as_ref() {
+        tailscale_connectivity_bootstrap_outcome(probe, port)
+    } else {
+        remote_connectivity_bootstrap_outcome(&connectivity_profile)
+    };
     record_bootstrap_outcome(
         &workspace_root,
         "remote_connectivity",
@@ -1319,7 +1362,10 @@ async fn run_gateway_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
         "ready",
         format!("Gateway configured for {host}:{port}."),
     )?;
-    println!("✓ Gateway configured on {}:{}", host, port);
+    println!(
+        "✓ Gateway configured on {}:{} ({})",
+        host, port, network_mode
+    );
     Ok(true)
 }
 
@@ -1334,21 +1380,36 @@ fn local_connectivity_profile() -> RemoteConnectivityProfile {
     }
 }
 
+fn tailscale_connectivity_profile() -> RemoteConnectivityProfile {
+    RemoteConnectivityProfile {
+        mode: "tailnet_access".to_string(),
+        primary_path: "tailscale_tailnet".to_string(),
+        fallback_paths: vec!["ssh_tunnel".to_string(), "reverse_proxy".to_string()],
+        detail: "Tailscale tailnet access selected: keep the gateway on loopback and expose it privately through Tailscale-native access on this machine.".to_string(),
+    }
+}
+
 fn remote_connectivity_profile_for_selection(selection: usize) -> RemoteConnectivityProfile {
     match selection {
         1 => RemoteConnectivityProfile {
             mode: "remote_access".to_string(),
             primary_path: "node_first".to_string(),
-            fallback_paths: vec!["ssh_tunnel".to_string()],
+            fallback_paths: vec!["ssh_tunnel".to_string(), "reverse_proxy".to_string()],
             detail: "Remote access profile saved: prefer a node-first path and use an SSH tunnel if the node path is unavailable.".to_string(),
         },
         2 => RemoteConnectivityProfile {
+            mode: "remote_access".to_string(),
+            primary_path: "tailscale_tailnet".to_string(),
+            fallback_paths: Vec::new(),
+            detail: "Remote access profile saved: use Tailscale tailnet access as the primary private path to a protected local gateway.".to_string(),
+        },
+        3 => RemoteConnectivityProfile {
             mode: "remote_access".to_string(),
             primary_path: "ssh_tunnel".to_string(),
             fallback_paths: Vec::new(),
             detail: "Remote access profile saved: use SSH tunnel as the temporary compatibility path until a node-first path is available.".to_string(),
         },
-        3 => RemoteConnectivityProfile {
+        4 => RemoteConnectivityProfile {
             mode: "remote_access".to_string(),
             primary_path: "reverse_proxy".to_string(),
             fallback_paths: Vec::new(),
@@ -1358,10 +1419,11 @@ fn remote_connectivity_profile_for_selection(selection: usize) -> RemoteConnecti
             mode: "remote_access".to_string(),
             primary_path: "node_first".to_string(),
             fallback_paths: vec![
+                "tailscale_tailnet".to_string(),
                 "ssh_tunnel".to_string(),
                 "reverse_proxy".to_string(),
             ],
-            detail: "Remote access profile saved: prefer a node-first path, use SSH tunnel as the first fallback, and keep reverse proxy as the last-resort fallback.".to_string(),
+            detail: "Remote access profile saved: prefer a node-first path, use Tailscale tailnet access as the first private fallback, then SSH tunnel, and keep reverse proxy as the last-resort fallback.".to_string(),
         },
     }
 }
@@ -1374,12 +1436,163 @@ fn remote_connectivity_bootstrap_outcome(
             "ready",
             "Local runtime remains the active control path for this workspace.".to_string(),
         )
+    } else if profile.mode == "tailnet_access" {
+        (
+            "warning",
+            format!(
+                "{} Finish the host-level Tailscale bootstrap, then verify the tailnet path with `openrustclaw doctor` and the setup handoff surface.",
+                profile.detail
+            ),
+        )
     } else {
         (
             "warning",
             format!(
                 "{} Finish the host-level remote bootstrap manually, then verify the resulting path with `openrustclaw doctor` and the setup handoff surface.",
                 profile.detail
+            ),
+        )
+    }
+}
+
+fn gateway_network_mode_for_host(host: &str) -> &'static str {
+    match host.trim().to_ascii_lowercase().as_str() {
+        "127.0.0.1" | "::1" | "localhost" => "loopback",
+        "0.0.0.0" | "::" => "lan",
+        _ => "remote",
+    }
+}
+
+fn inspect_tailscale_status() -> TailscaleProbeResult {
+    let output = match Command::new("tailscale")
+        .args(["status", "--json"])
+        .output()
+    {
+        Ok(output) => output,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return TailscaleProbeResult {
+                detected: false,
+                authenticated: false,
+                backend_state: None,
+                dns_name: None,
+                suggested_origin: None,
+                detail: "Tailscale CLI was not found on PATH. Install Tailscale and sign in before selecting the tailnet gateway path.".to_string(),
+            };
+        }
+        Err(error) => {
+            return TailscaleProbeResult {
+                detected: true,
+                authenticated: false,
+                backend_state: None,
+                dns_name: None,
+                suggested_origin: None,
+                detail: format!(
+                    "Tailscale status could not be inspected: {error}. Finish the host-level Tailscale bootstrap before relying on tailnet access."
+                ),
+            };
+        }
+    };
+
+    if output.status.success() {
+        return parse_tailscale_status_json(&String::from_utf8_lossy(&output.stdout));
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    TailscaleProbeResult {
+        detected: true,
+        authenticated: false,
+        backend_state: None,
+        dns_name: None,
+        suggested_origin: None,
+        detail: if stderr.is_empty() {
+            "Tailscale CLI is installed, but the daemon is not ready yet. Finish `tailscale up` before relying on tailnet access.".to_string()
+        } else {
+            format!(
+                "Tailscale CLI is installed, but it is not ready yet: {stderr}. Finish `tailscale up` before relying on tailnet access."
+            )
+        },
+    }
+}
+
+fn parse_tailscale_status_json(raw: &str) -> TailscaleProbeResult {
+    let parsed = serde_json::from_str::<serde_json::Value>(raw).ok();
+    let backend_state = parsed
+        .as_ref()
+        .and_then(|value| value.get("BackendState"))
+        .and_then(|value| value.as_str())
+        .map(ToString::to_string);
+    let dns_name = parsed
+        .as_ref()
+        .and_then(|value| value.get("Self"))
+        .and_then(|value| value.get("DNSName"))
+        .and_then(|value| value.as_str())
+        .map(|value| value.trim_end_matches('.').to_string())
+        .filter(|value| !value.is_empty());
+    let authenticated = matches!(backend_state.as_deref(), Some("Running"));
+    let suggested_origin = dns_name
+        .as_ref()
+        .map(|dns_name| format!("https://{dns_name}"));
+
+    let detail = if authenticated {
+        match dns_name.as_deref() {
+            Some(dns_name) => format!(
+                "Tailscale is running and authenticated on `{dns_name}`. Tailnet devices can reach this host once you expose the loopback gateway through `tailscale serve`."
+            ),
+            None => {
+                "Tailscale is running and authenticated. Tailnet devices can reach this host once you expose the loopback gateway through `tailscale serve`.".to_string()
+            }
+        }
+    } else if let Some(state) = backend_state.as_deref() {
+        format!(
+            "Tailscale is installed, but the backend state is `{state}`. Finish `tailscale up` before relying on tailnet access."
+        )
+    } else {
+        "Tailscale is installed, but status details were incomplete. Verify `tailscale status --json` and finish host bootstrap before relying on tailnet access.".to_string()
+    };
+
+    TailscaleProbeResult {
+        detected: true,
+        authenticated,
+        backend_state,
+        dns_name,
+        suggested_origin,
+        detail,
+    }
+}
+
+fn print_tailscale_gateway_hints(probe: &TailscaleProbeResult) {
+    println!(
+        "  Tailscale tailnet mode keeps OpenRustClaw bound to loopback and relies on Tailscale-native access for private remote reachability."
+    );
+    println!("  {}", probe.detail);
+    if let Some(origin) = probe.suggested_origin.as_deref() {
+        println!(
+            "  If you want browser access to `/control/ui` over Tailscale, add `{origin}` to `gateway.allowed_origins`."
+        );
+    }
+}
+
+fn tailscale_connectivity_bootstrap_outcome(
+    probe: &TailscaleProbeResult,
+    port: u16,
+) -> (&'static str, String) {
+    if probe.authenticated {
+        let mut detail = format!(
+            "{} Expose the loopback gateway privately with `tailscale serve http / http://127.0.0.1:{port}`.",
+            probe.detail
+        );
+        if let Some(origin) = probe.suggested_origin.as_deref() {
+            detail.push_str(&format!(
+                " Browser access to `/control/ui` also requires adding `{origin}` to `gateway.allowed_origins`."
+            ));
+        }
+        ("ready", detail)
+    } else {
+        (
+            "warning",
+            format!(
+                "{} Finish the host-level Tailscale bootstrap, then expose the loopback gateway with `tailscale serve` and verify the path with `openrustclaw doctor`.",
+                probe.detail
             ),
         )
     }
@@ -2384,7 +2597,7 @@ async fn validate_provider_bootstrap(
 }
 
 fn validate_delegated_backend_bootstrap(backend_id: &str) -> Result<BootstrapAssessment> {
-    let catalog = AgentBackendCatalogService::new().discover();
+    let catalog = AgentBackendCatalogService::new().discover_delegated_cli_candidates();
     let contract = AgentBackendControlService::new()
         .contracts_from_catalog(&catalog)
         .into_iter()
@@ -3033,16 +3246,22 @@ fn prepare_setup_state_for_repair(workspace_root: &Path, steps: &[OnboardingStep
     })
 }
 
-async fn save_gateway_config(host: &str, port: u16, jwt_secret: &str) -> Result<()> {
-    let env_content = format!(
-        r#"# OpenRustClaw Configuration - Generated by onboarding wizard
-OPENRUSTCLAW_GATEWAY__HOST={host}
-OPENRUSTCLAW_GATEWAY__PORT={port}
-OPENRUSTCLAW_SECURITY__JWT_SECRET={jwt_secret}
-"#
-    );
-
-    fs::write(".env", env_content).await?;
+async fn save_gateway_config(
+    host: &str,
+    port: u16,
+    network_mode: &str,
+    jwt_secret: &str,
+) -> Result<()> {
+    upsert_env_entries(&[
+        ("OPENRUSTCLAW_GATEWAY__HOST", host.to_string()),
+        ("OPENRUSTCLAW_GATEWAY__PORT", port.to_string()),
+        (
+            "OPENRUSTCLAW_GATEWAY__NETWORK_MODE",
+            network_mode.to_string(),
+        ),
+        ("OPENRUSTCLAW_SECURITY__JWT_SECRET", jwt_secret.to_string()),
+    ])
+    .await?;
     println!("  Configuration saved to .env");
     Ok(())
 }
@@ -3586,7 +3805,7 @@ mod tests {
     #[test]
     fn test_onboarding_lane_catalog_matches_current_supported_paths() {
         let catalog =
-            OnboardingLaneCatalogService::new().catalog(&direct_provider_lane_statuses(false), &[]);
+            OnboardingLaneCatalogService::new().catalog(&direct_provider_lane_statuses(), &[]);
         assert_eq!(catalog.len(), 5);
         assert_eq!(
             catalog
@@ -3858,7 +4077,45 @@ mod tests {
         assert_eq!(remote.primary_path, "node_first");
         assert_eq!(
             remote.fallback_paths,
-            vec!["ssh_tunnel".to_string(), "reverse_proxy".to_string()]
+            vec![
+                "tailscale_tailnet".to_string(),
+                "ssh_tunnel".to_string(),
+                "reverse_proxy".to_string()
+            ]
+        );
+
+        let tailscale = tailscale_connectivity_profile();
+        assert_eq!(tailscale.mode, "tailnet_access");
+        assert_eq!(tailscale.primary_path, "tailscale_tailnet");
+    }
+
+    #[test]
+    fn test_gateway_network_mode_for_host_infers_tail_safe_defaults() {
+        assert_eq!(gateway_network_mode_for_host("127.0.0.1"), "loopback");
+        assert_eq!(gateway_network_mode_for_host("0.0.0.0"), "lan");
+        assert_eq!(gateway_network_mode_for_host("10.0.0.8"), "remote");
+    }
+
+    #[test]
+    fn test_parse_tailscale_status_json_extracts_dns_name_and_origin() {
+        let probe = parse_tailscale_status_json(
+            r#"{
+                "BackendState": "Running",
+                "Self": {
+                    "DNSName": "openrustclaw.example.ts.net."
+                }
+            }"#,
+        );
+
+        assert!(probe.detected);
+        assert!(probe.authenticated);
+        assert_eq!(
+            probe.dns_name.as_deref(),
+            Some("openrustclaw.example.ts.net")
+        );
+        assert_eq!(
+            probe.suggested_origin.as_deref(),
+            Some("https://openrustclaw.example.ts.net")
         );
     }
 

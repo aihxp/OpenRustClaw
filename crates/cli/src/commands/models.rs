@@ -60,7 +60,8 @@ fn get_default_models() -> HashMap<&'static str, Vec<ModelInfo>> {
             ModelInfo {
                 name: "claude-3-7-sonnet-20250219".to_string(),
                 provider: "anthropic".to_string(),
-                description: "Claude Sonnet 3.7 - Earlier high-capability Claude release".to_string(),
+                description: "Claude Sonnet 3.7 - Earlier high-capability Claude release"
+                    .to_string(),
                 context_window: 200_000,
                 supports_tools: true,
                 supports_vision: true,
@@ -409,12 +410,19 @@ struct ProviderScan {
 
 /// Check if Ollama is available locally.
 pub(crate) async fn check_ollama() -> bool {
+    check_ollama_with_timeout(Duration::from_secs(2)).await
+}
+
+pub(crate) async fn check_ollama_with_timeout(timeout: Duration) -> bool {
     let base_url =
         std::env::var("OLLAMA_BASE_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
 
-    reqwest::Client::new()
+    reqwest::Client::builder()
+        .connect_timeout(timeout)
+        .build()
+        .expect("reqwest client should build")
         .get(format!("{}/api/tags", base_url))
-        .timeout(Duration::from_secs(2))
+        .timeout(timeout)
         .send()
         .await
         .is_ok()
@@ -667,8 +675,16 @@ mod tests {
         let anthropic = models.get("anthropic").unwrap();
         assert!(!anthropic.is_empty());
         assert_eq!(anthropic[0].name, "claude-opus-4-1-20250805");
-        assert!(anthropic.iter().any(|model| model.name == "claude-3-5-haiku-20241022"));
-        assert!(!anthropic.iter().any(|model| model.name == "claude-haiku-4-20250514"));
+        assert!(
+            anthropic
+                .iter()
+                .any(|model| model.name == "claude-3-5-haiku-20241022")
+        );
+        assert!(
+            !anthropic
+                .iter()
+                .any(|model| model.name == "claude-haiku-4-20250514")
+        );
         // All Anthropic models should support tools and vision
         for model in anthropic {
             assert_eq!(model.provider, "anthropic");
