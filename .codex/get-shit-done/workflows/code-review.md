@@ -232,6 +232,14 @@ if [ ${#REVIEW_FILES[@]} -eq 0 ]; then
 fi
 ```
 
+**Retroactive historical review rule:**
+
+When reviewing older phases in a branch that has materially moved on from the phase-era code, do not
+trust current-`HEAD` scoping just because a phase directory exists. If SUMMARY artifacts lack a
+machine-readable file list, reconstruct scope from the phase summaries plus phase commit range, and
+review that phase one at a time in an isolated worktree. Prefer a manual `REVIEW.md` over a noisy
+bulk diff when the fallback scope would span unrelated later work.
+
 **Post-processing (all tiers):**
 
 1. **Apply exclusions (per D-03):** Remove paths matching planning artifacts
