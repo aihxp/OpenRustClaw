@@ -487,6 +487,8 @@ grep -A 3 "^### CR-\|^### WR-" "${REVIEW_PATH}" | head -n 12
 </process>
 
 <platform_notes>
+**Retroactive phase sweeps:** When reviewing already-shipped phases against a dirty primary worktree, use an isolated branch or `git worktree` and pass an explicit `--files` list derived from phase artifacts. Do not rely on git-diff fallback for broad historical sweeps; it scopes against current history, not the original phase snapshot.
+
 **Windows:** This workflow uses bash features (arrays, process substitution). On Windows, it requires
 Git Bash or WSL. Native PowerShell is not supported. The CI matrix (Ubuntu/macOS/Windows)
 runs under Git Bash on Windows runners, which provides bash compatibility.

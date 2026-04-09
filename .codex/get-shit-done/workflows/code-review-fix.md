@@ -479,6 +479,8 @@ echo "════════════════════════�
 </process>
 
 <platform_notes>
+**Retroactive phase sweeps:** Run auto-fix only from a clean or isolated worktree. The fixer commits source changes atomically, so using it from a dirty shared worktree risks mixing unrelated local work into retroactive fix history.
+
 **Windows:** This workflow uses bash features (arrays, variable expansion, while loops). On Windows, it requires Git Bash or WSL. Native PowerShell is not supported. The CI matrix (Ubuntu/macOS/Windows) runs under Git Bash on Windows runners, which provides bash compatibility.
 </platform_notes>
 
