@@ -1,26 +1,26 @@
 ---
-status: none_fixed
+status: all_fixed
 findings_in_scope: 1
-fixed: 0
-skipped: 1
-iteration: 1
+fixed: 1
+skipped: 0
+iteration: 2
 ---
 
 # Phase 200 Code Review Fix
 
-Attempted to apply automatic fixes for Phase 200 review findings.
+Resolved the outstanding Phase 200 review finding after the initial auto-fix attempt deferred it as a design-level change.
 
 ## Outcome
 
-- `WR-01` was not auto-fixed.
+- `WR-01` is now fixed.
 
-## Skip Reasons
+## Applied Fixes
 
 ### WR-01: Non-Linux ownership detection only recognizes the current CLI process
 
-This finding requires either:
+Implemented host-appropriate process probes for non-Linux platforms so listener ownership classification no longer falls back to `pid == current_pid`. Unix hosts now use `ps`-based liveness and command checks, and non-Unix hosts use `sysinfo` to verify both process existence and whether the process looks like OpenRustClaw.
 
-- a real cross-platform process-introspection implementation for non-Linux hosts, or
-- an explicit product decision to degrade or disable listener-ownership classification on hosts where the runtime owner cannot be verified.
+## Verification
 
-That is a runtime-behavior design change, not a safe blind auto-fix for a retroactive sweep. It should be handled in a dedicated follow-up change with platform-specific tests.
+- `cargo test -p openrustclaw-cli restart_runtime_process_checks_listener_before_service_manager_restart -- --nocapture`
+- `cargo test -p openrustclaw-cli runtime_process -- --nocapture`

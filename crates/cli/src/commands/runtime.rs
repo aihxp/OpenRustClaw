@@ -53,6 +53,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::time::Duration;
+#[cfg(not(unix))]
+use sysinfo::{Pid, ProcessesToUpdate, System};
 use tokio::process::Command;
 use tokio::time::sleep;
 use uuid::Uuid;
@@ -1325,6 +1327,12 @@ pub async fn restart_runtime_process(
         clear_runtime_lock(workspace_root)?;
     }
 
+    if service_install_status.installed {
+        if !lock_status.active {
+            let _ = ensure_configured_listener_available(config_path, workspace_root)?;
+        }
+    }
+
     if service_install_status.installed
         && invoke_service_manager_action(&service_install_status, ServiceManagerAction::Restart)?
     {
@@ -1989,9 +1997,21 @@ fn process_is_alive(pid: u32) -> bool {
         Path::new("/proc").join(pid.to_string()).exists()
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(all(unix, not(target_os = "linux")))]
     {
-        pid == std::process::id()
+        StdCommand::new("ps")
+            .args(["-p", &pid.to_string(), "-o", "pid="])
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .and_then(|output| String::from_utf8(output.stdout).ok())
+            .and_then(|output| output.trim().parse::<u32>().ok())
+            == Some(pid)
+    }
+
+    #[cfg(not(unix))]
+    {
+        load_process_probe(pid).is_some()
     }
 }
 
@@ -2018,10 +2038,59 @@ fn process_looks_like_openrustclaw(pid: u32) -> bool {
             .unwrap_or(false)
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(all(unix, not(target_os = "linux")))]
     {
-        pid == std::process::id()
+        StdCommand::new("ps")
+            .args(["-p", &pid.to_string(), "-o", "command="])
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .and_then(|output| String::from_utf8(output.stdout).ok())
+            .map(|output| output.to_ascii_lowercase().contains("openrustclaw"))
+            .unwrap_or(false)
     }
+
+    #[cfg(not(unix))]
+    {
+        load_process_probe(pid)
+            .map(|probe| probe.looks_like_openrustclaw)
+            .unwrap_or(false)
+    }
+}
+
+#[cfg(not(unix))]
+struct ProcessProbe {
+    looks_like_openrustclaw: bool,
+}
+
+#[cfg(not(unix))]
+fn load_process_probe(pid: u32) -> Option<ProcessProbe> {
+    let pid = Pid::from_u32(pid);
+    let mut system = System::new();
+    system.refresh_processes(ProcessesToUpdate::Some(&[pid]));
+
+    let process = system.process(pid)?;
+    let exe_match = process
+        .exe()
+        .and_then(|path| path.file_name())
+        .map(|value| value.to_string_lossy().to_ascii_lowercase())
+        .map(|value| value.contains("openrustclaw"))
+        .unwrap_or(false);
+    let name_match = process
+        .name()
+        .to_string_lossy()
+        .to_ascii_lowercase()
+        .contains("openrustclaw");
+    let cmd_match = process.cmd().iter().any(|value| {
+        value
+            .to_string_lossy()
+            .to_ascii_lowercase()
+            .contains("openrustclaw")
+    });
+
+    Some(ProcessProbe {
+        looks_like_openrustclaw: exe_match || name_match || cmd_match,
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -5072,6 +5141,78 @@ mod tests {
 
         assert!(message.contains("non-OpenRustClaw or unclassified process"));
         assert!(!message.contains("restart launch exited early"));
+        Ok(())
+    }
+
+    #[test]
+    #[serial]
+    fn restart_runtime_process_checks_listener_before_service_manager_restart() -> Result<()> {
+        let temp = tempdir()?;
+        let workspace_root = temp.path();
+        fs::create_dir_all(workspace_root.join("config"))?;
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+        let port = listener.local_addr()?.port();
+        let mut config = AppConfig::default();
+        config.gateway.host = "127.0.0.1".to_string();
+        config.gateway.port = port;
+        fs::write(
+            workspace_root.join("config/default.toml"),
+            toml::to_string_pretty(&config)?,
+        )?;
+
+        let xdg = tempdir()?;
+        let service_dir = xdg.path().join("systemd/user");
+        fs::create_dir_all(&service_dir)?;
+        fs::write(
+            service_dir.join(DEFAULT_SYSTEMD_SERVICE_NAME),
+            "[Unit]\nDescription=OpenRustClaw test service\n",
+        )?;
+
+        let bin_dir = tempdir()?;
+        let command_log = temp.path().join("systemctl.log");
+        let systemctl = bin_dir.path().join("systemctl");
+        fs::write(
+            &systemctl,
+            format!(
+                "#!/bin/sh\necho \"$@\" >> \"{}\"\nexit 0\n",
+                command_log.display()
+            ),
+        )?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut permissions = fs::metadata(&systemctl)?.permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(&systemctl, permissions)?;
+        }
+
+        let current_path = std::env::var("PATH").unwrap_or_default();
+        let combined_path = if current_path.is_empty() {
+            bin_dir.path().display().to_string()
+        } else {
+            format!("{}:{current_path}", bin_dir.path().display())
+        };
+        let _path_guard = EnvVarGuard::set("PATH", &combined_path);
+        let _xdg_guard = EnvVarGuard::set(
+            "XDG_CONFIG_HOME",
+            xdg.path().to_str().expect("tempdir path should be utf-8"),
+        );
+
+        let runtime = tokio::runtime::Runtime::new()?;
+        let error = runtime
+            .block_on(restart_runtime_process(
+                "config/default.toml",
+                workspace_root,
+            ))
+            .unwrap_err();
+        let message = error.to_string();
+
+        assert!(message.contains("non-OpenRustClaw or unclassified process"));
+        assert!(
+            !command_log.exists(),
+            "service-manager restart should not run before listener preflight"
+        );
         Ok(())
     }
 

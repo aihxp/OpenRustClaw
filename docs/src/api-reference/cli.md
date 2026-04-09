@@ -81,7 +81,7 @@ openrustclaw stop
 
 Restart the running OpenRustClaw gateway/runtime for the current workspace.
 
-`openrustclaw restart` now probes the configured listener before it relaunches the runtime. If a foreign process is still holding the port, the command reports that classified conflict directly instead of surfacing a late `restart launch exited early` failure from the child process.
+`openrustclaw restart` now probes the configured listener before it relaunches the runtime, and before it asks the host user service manager to restart a lockless runtime. If a foreign process is still holding the port, the command reports that classified conflict directly instead of surfacing a late `restart launch exited early` failure from the child process.
 
 ```bash
 openrustclaw restart [OPTIONS]

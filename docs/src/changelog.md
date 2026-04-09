@@ -20,7 +20,7 @@ This changelog tracks the public semver release line. Planning milestone tags su
 ### Fixed
 
 - Runtime listener conflicts now classify active OpenRustClaw ownership, stale OpenRustClaw state, and foreign-process port collisions before `openrustclaw start` exits.
-- `openrustclaw restart` now probes the configured listener before relaunching, so foreign process conflicts fail with the classified listener-owner message instead of bubbling up as an early child-start exit.
+- `openrustclaw restart` now probes the configured listener before relaunching, and before a managed restart when the workspace does not already own the runtime lock, so foreign process conflicts fail with the classified listener-owner message instead of bubbling up as an early child-start exit.
 - `openrustclaw stop` now clears stale runtime beacons alongside stale runtime locks and can recover a lockless-but-beaconed workspace runtime before the next `start`.
 
 ## [1.4.8] - 2026-04-09
