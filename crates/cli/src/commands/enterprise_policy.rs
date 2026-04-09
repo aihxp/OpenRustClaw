@@ -556,6 +556,7 @@ fn list_recent_exports(
         return Ok(Vec::new());
     }
 
+    let cutoff = Utc::now() - Duration::days(policy.retention_days.max(1) as i64);
     let mut exports = Vec::new();
     for path in list_export_paths(&export_root)? {
         let Ok(raw) = fs::read_to_string(&path) else {
@@ -564,6 +565,12 @@ fn list_recent_exports(
         let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else {
             continue;
         };
+        let Some(exported_at) = exported_at_from_value(&value) else {
+            continue;
+        };
+        if exported_at < cutoff {
+            continue;
+        }
         let Some(summary) = export_summary_from_value(&path, &value) else {
             continue;
         };
@@ -598,14 +605,10 @@ fn prune_expired_exports(export_root: &Path, retention_days: usize) -> Result<us
         let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else {
             continue;
         };
-        let Some(exported_at_raw) = value.get("exported_at").and_then(|field| field.as_str())
-        else {
+        let Some(exported_at) = exported_at_from_value(&value) else {
             continue;
         };
-        let Ok(exported_at) = chrono::DateTime::parse_from_rfc3339(exported_at_raw) else {
-            continue;
-        };
-        if exported_at.with_timezone(&Utc) < cutoff {
+        if exported_at < cutoff {
             fs::remove_file(&path).with_context(|| {
                 format!("failed to remove expired audit bundle {}", path.display())
             })?;
@@ -613,6 +616,12 @@ fn prune_expired_exports(export_root: &Path, retention_days: usize) -> Result<us
         }
     }
     Ok(pruned)
+}
+
+fn exported_at_from_value(value: &serde_json::Value) -> Option<chrono::DateTime<Utc>> {
+    let exported_at_raw = value.get("exported_at")?.as_str()?;
+    let exported_at = chrono::DateTime::parse_from_rfc3339(exported_at_raw).ok()?;
+    Some(exported_at.with_timezone(&Utc))
 }
 
 fn export_summary_from_value(
@@ -812,13 +821,14 @@ fn validate_approval_policy(value: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        EnterpriseAuditExportPolicyUpdate, EnterpriseAuditExportRequest,
+        EnterpriseAuditExportPolicy, EnterpriseAuditExportPolicyUpdate, EnterpriseAuditExportRequest,
         EnterpriseBrowserPolicyUpdate, EnterpriseMobileApprovalPolicyUpdate,
         EnterprisePolicyUpdateRequest, approval_required_for_command,
-        delegated_backend_summary_from_catalog, export_audit_bundle, review_summary, summary,
-        update_policy,
+        delegated_backend_summary_from_catalog, export_audit_bundle, list_recent_exports,
+        review_summary, summary, update_policy,
     };
     use anyhow::Result;
+    use chrono::Utc;
     use openrustclaw_app::agent_backend_catalog::{
         AgentBackendAuthStatus, AgentBackendCapability, AgentBackendCatalogEntry,
         AgentBackendReadiness,
@@ -1132,6 +1142,47 @@ mod tests {
         assert_eq!(review.recent_exports.len(), 1);
         assert_eq!(review.recent_exports[0].export_path, export.export_path);
         assert!(review.governance.dual_approval_rule_count >= 1);
+        Ok(())
+    }
+
+    #[test]
+    fn list_recent_exports_ignores_exports_past_retention_window() -> Result<()> {
+        let root = tempdir().expect("tempdir");
+        let export_root = root.path().join(".claw/control/enterprise/review-exports");
+        std::fs::create_dir_all(&export_root)?;
+        std::fs::write(
+            export_root.join("enterprise-audit-stale.json"),
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "exported_at": "2026-01-01T00:00:00Z",
+                "note": "stale bundle"
+            }))?,
+        )?;
+        let fresh_path = export_root.join("enterprise-audit-fresh.json");
+        std::fs::write(
+            &fresh_path,
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "exported_at": Utc::now().to_rfc3339(),
+                "note": "fresh bundle",
+                "enterprise_foundations": { "recent_events": [] },
+                "tool_history": { "entries": [] },
+                "operator_history": { "entries": [] },
+                "governance": { "rules": [] },
+                "supervision": { "attention_required_count": 0 }
+            }))?,
+        )?;
+
+        let exports = list_recent_exports(
+            root.path(),
+            &EnterpriseAuditExportPolicy {
+                export_root: ".claw/control/enterprise/review-exports".to_string(),
+                recent_event_limit: 4,
+                tool_history_limit: 6,
+                retention_days: 10,
+                export_history_limit: 3,
+            },
+        )?;
+        assert_eq!(exports.len(), 1);
+        assert_eq!(exports[0].export_path, fresh_path.display().to_string());
         Ok(())
     }
 }
