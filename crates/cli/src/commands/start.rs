@@ -9345,8 +9345,17 @@ async fn orchestration_active_run_supervision_handler(
 async fn orchestration_active_run_pause_handler(
     State(state): State<RuntimeControlState>,
     AxumPath(run_id): AxumPath<String>,
+    operator: Option<Extension<enterprise_access::EnterpriseAuthenticatedOperator>>,
 ) -> impl IntoResponse {
-    match orchestrate::pause_active_run(&state.workspace_root, &run_id) {
+    let started_at = std::time::Instant::now();
+    let payload = orchestrate::ActiveRunInterventionRequest {
+        requested_by: operator.map(|Extension(operator)| operator.id),
+        reason: None,
+        rollback_reference: None,
+    };
+    let result = orchestrate::pause_active_run(&state.workspace_root, &run_id, payload);
+    record_operator_tool_result("orchestration.active.pause", started_at, &result);
+    match result {
         Ok(run) => (StatusCode::OK, Json(serde_json::json!(run))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
@@ -9391,8 +9400,17 @@ async fn orchestration_active_run_escalate_handler(
 async fn orchestration_active_run_resume_handler(
     State(state): State<RuntimeControlState>,
     AxumPath(run_id): AxumPath<String>,
+    operator: Option<Extension<enterprise_access::EnterpriseAuthenticatedOperator>>,
 ) -> impl IntoResponse {
-    match orchestrate::resume_active_run(&state.workspace_root, &run_id) {
+    let started_at = std::time::Instant::now();
+    let payload = orchestrate::ActiveRunInterventionRequest {
+        requested_by: operator.map(|Extension(operator)| operator.id),
+        reason: None,
+        rollback_reference: None,
+    };
+    let result = orchestrate::resume_active_run(&state.workspace_root, &run_id, payload);
+    record_operator_tool_result("orchestration.active.resume", started_at, &result);
+    match result {
         Ok(run) => (StatusCode::OK, Json(serde_json::json!(run))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
@@ -9437,8 +9455,17 @@ async fn orchestration_active_run_rollback_handler(
 async fn orchestration_active_run_kill_handler(
     State(state): State<RuntimeControlState>,
     AxumPath(run_id): AxumPath<String>,
+    operator: Option<Extension<enterprise_access::EnterpriseAuthenticatedOperator>>,
 ) -> impl IntoResponse {
-    match orchestrate::kill_active_run(&state.workspace_root, &run_id) {
+    let started_at = std::time::Instant::now();
+    let payload = orchestrate::ActiveRunInterventionRequest {
+        requested_by: operator.map(|Extension(operator)| operator.id),
+        reason: None,
+        rollback_reference: None,
+    };
+    let result = orchestrate::kill_active_run(&state.workspace_root, &run_id, payload);
+    record_operator_tool_result("orchestration.active.kill", started_at, &result);
+    match result {
         Ok(run) => (StatusCode::OK, Json(serde_json::json!(run))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,

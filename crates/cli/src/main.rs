@@ -5653,19 +5653,31 @@ async fn main() -> Result<()> {
             }
             OrchestrateAction::Pause { run_id } => {
                 let workspace_root = std::env::current_dir()?;
-                let payload = commands::orchestrate::pause_active_run(&workspace_root, &run_id)?;
+                let payload = commands::orchestrate::pause_active_run(
+                    &workspace_root,
+                    &run_id,
+                    commands::orchestrate::ActiveRunInterventionRequest::default(),
+                )?;
                 println!("{}", serde_json::to_string_pretty(&payload)?);
                 Ok(())
             }
             OrchestrateAction::Resume { run_id } => {
                 let workspace_root = std::env::current_dir()?;
-                let payload = commands::orchestrate::resume_active_run(&workspace_root, &run_id)?;
+                let payload = commands::orchestrate::resume_active_run(
+                    &workspace_root,
+                    &run_id,
+                    commands::orchestrate::ActiveRunInterventionRequest::default(),
+                )?;
                 println!("{}", serde_json::to_string_pretty(&payload)?);
                 Ok(())
             }
             OrchestrateAction::Kill { run_id } => {
                 let workspace_root = std::env::current_dir()?;
-                let payload = commands::orchestrate::kill_active_run(&workspace_root, &run_id)?;
+                let payload = commands::orchestrate::kill_active_run(
+                    &workspace_root,
+                    &run_id,
+                    commands::orchestrate::ActiveRunInterventionRequest::default(),
+                )?;
                 println!("{}", serde_json::to_string_pretty(&payload)?);
                 Ok(())
             }

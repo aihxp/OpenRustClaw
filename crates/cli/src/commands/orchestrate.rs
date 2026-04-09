@@ -1539,16 +1539,49 @@ fn cli_supervision_summary_from_app(
     }
 }
 
-pub fn pause_active_run(workspace_root: &Path, run_id: &str) -> Result<ActiveOrchestrationRun> {
-    apply_active_lifecycle_action(workspace_root, run_id, "pause", "operator", None, None)
+pub fn pause_active_run(
+    workspace_root: &Path,
+    run_id: &str,
+    request: ActiveRunInterventionRequest,
+) -> Result<ActiveOrchestrationRun> {
+    apply_active_lifecycle_action(
+        workspace_root,
+        run_id,
+        "pause",
+        request.requested_by.as_deref().unwrap_or("operator"),
+        request.reason.as_deref(),
+        None,
+    )
 }
 
-pub fn resume_active_run(workspace_root: &Path, run_id: &str) -> Result<ActiveOrchestrationRun> {
-    apply_active_lifecycle_action(workspace_root, run_id, "resume", "operator", None, None)
+pub fn resume_active_run(
+    workspace_root: &Path,
+    run_id: &str,
+    request: ActiveRunInterventionRequest,
+) -> Result<ActiveOrchestrationRun> {
+    apply_active_lifecycle_action(
+        workspace_root,
+        run_id,
+        "resume",
+        request.requested_by.as_deref().unwrap_or("operator"),
+        request.reason.as_deref(),
+        None,
+    )
 }
 
-pub fn kill_active_run(workspace_root: &Path, run_id: &str) -> Result<ActiveOrchestrationRun> {
-    apply_active_lifecycle_action(workspace_root, run_id, "kill", "operator", None, None)
+pub fn kill_active_run(
+    workspace_root: &Path,
+    run_id: &str,
+    request: ActiveRunInterventionRequest,
+) -> Result<ActiveOrchestrationRun> {
+    apply_active_lifecycle_action(
+        workspace_root,
+        run_id,
+        "kill",
+        request.requested_by.as_deref().unwrap_or("operator"),
+        request.reason.as_deref(),
+        None,
+    )
 }
 
 pub fn escalate_active_run(
@@ -4340,6 +4373,80 @@ mod tests {
     }
 
     #[test]
+    fn pause_resume_and_kill_record_authenticated_operator_ids() {
+        let root = tempfile::tempdir().unwrap();
+        let snapshot = ActiveOrchestrationRun {
+            run_id: "run-auth".to_string(),
+            created_at: "2026-03-19T00:00:00Z".to_string(),
+            updated_at: "2026-03-19T00:00:00Z".to_string(),
+            started_at: Some("2026-03-19T00:00:01Z".to_string()),
+            finished_at: None,
+            status: "running".to_string(),
+            request: OrchestrationRequest::default(),
+            routing: None,
+            current_stage: Some("worker_execution".to_string()),
+            current_actor_type: Some("worker".to_string()),
+            current_actor_id: Some("worker-a".to_string()),
+            current_note: Some("running".to_string()),
+            lifecycle: SupervisionLifecycleSummary {
+                state: "running".to_string(),
+                ..SupervisionLifecycleSummary::default()
+            },
+            pause_requested: false,
+            kill_requested: false,
+            checkpoint_count: 0,
+            trace_count: 0,
+            worker_count: 0,
+            relationship_count: 0,
+            resource_totals: None,
+            receipt_id: None,
+            receipt_path: None,
+            last_error: None,
+        };
+        write_active_run(root.path(), &snapshot).unwrap();
+
+        pause_active_run(
+            root.path(),
+            "run-auth",
+            ActiveRunInterventionRequest {
+                requested_by: Some("owner-1".to_string()),
+                reason: None,
+                rollback_reference: None,
+            },
+        )
+        .unwrap();
+        resume_active_run(
+            root.path(),
+            "run-auth",
+            ActiveRunInterventionRequest {
+                requested_by: Some("owner-1".to_string()),
+                reason: None,
+                rollback_reference: None,
+            },
+        )
+        .unwrap();
+        kill_active_run(
+            root.path(),
+            "run-auth",
+            ActiveRunInterventionRequest {
+                requested_by: Some("owner-1".to_string()),
+                reason: None,
+                rollback_reference: None,
+            },
+        )
+        .unwrap();
+
+        let decisions = read_active_run_decisions(root.path(), "run-auth", 10).unwrap();
+        assert_eq!(decisions.len(), 3);
+        assert_eq!(decisions[0].action, "pause");
+        assert_eq!(decisions[0].requested_by, "owner-1");
+        assert_eq!(decisions[1].action, "resume");
+        assert_eq!(decisions[1].requested_by, "owner-1");
+        assert_eq!(decisions[2].action, "kill");
+        assert_eq!(decisions[2].requested_by, "owner-1");
+    }
+
+    #[test]
     fn reflection_candidates_capture_failed_worker() {
         let routing = RoutingDecision {
             execution_mode: "orchestrated".to_string(),
@@ -4535,11 +4642,26 @@ mod tests {
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].run_id, "run-1");
 
-        let paused = pause_active_run(root.path(), "run-1").unwrap();
+        let paused = pause_active_run(
+            root.path(),
+            "run-1",
+            ActiveRunInterventionRequest::default(),
+        )
+        .unwrap();
         assert!(paused.pause_requested);
-        let resumed = resume_active_run(root.path(), "run-1").unwrap();
+        let resumed = resume_active_run(
+            root.path(),
+            "run-1",
+            ActiveRunInterventionRequest::default(),
+        )
+        .unwrap();
         assert!(!resumed.pause_requested);
-        let killed = kill_active_run(root.path(), "run-1").unwrap();
+        let killed = kill_active_run(
+            root.path(),
+            "run-1",
+            ActiveRunInterventionRequest::default(),
+        )
+        .unwrap();
         assert!(killed.kill_requested);
     }
 }

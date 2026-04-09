@@ -86,6 +86,10 @@ Exit workflow.
 Default is true — only skip on explicit false. This check runs AFTER phase validation so invalid phase errors are shown first.
 
 Note: This reuses the `workflow.code_review` config key rather than introducing a separate `workflow.code_review_fix` key. Rationale: fixes are meaningless without review, so a single toggle makes sense. If independent control is needed later, a separate key can be added in v2.
+
+Retroactive batch rule: for older phases reviewed against reconstructed historical scope, run
+fixes serially one phase at a time in a clean isolated worktree. Do not let one phase's fix pass
+bleed into the next phase's review context or commit batch.
 </step>
 
 <step name="check_review_exists">

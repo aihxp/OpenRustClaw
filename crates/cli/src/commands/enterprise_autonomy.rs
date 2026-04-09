@@ -381,7 +381,15 @@ pub fn kill_switch(
         .into_iter()
         .filter(is_full_autonomy_active_run)
     {
-        orchestrate::kill_active_run(workspace_root, &run.run_id)?;
+        orchestrate::kill_active_run(
+            workspace_root,
+            &run.run_id,
+            orchestrate::ActiveRunInterventionRequest {
+                requested_by: Some(request.operator_id.clone()),
+                reason: trim_optional(request.reason.clone()),
+                rollback_reference: None,
+            },
+        )?;
         affected_run_ids.push(run.run_id);
     }
 
@@ -1000,8 +1008,14 @@ mod tests {
             },
         )?;
 
-        assert_eq!(enabled.baseline_policy.approval_policy, baseline.approval_policy);
-        assert_eq!(enabled.baseline_policy.max_delegations, baseline.max_delegations);
+        assert_eq!(
+            enabled.baseline_policy.approval_policy,
+            baseline.approval_policy
+        );
+        assert_eq!(
+            enabled.baseline_policy.max_delegations,
+            baseline.max_delegations
+        );
         assert_eq!(
             crate::commands::control::runtime_autonomy_policy(root.path())?.approval_policy,
             "none"
