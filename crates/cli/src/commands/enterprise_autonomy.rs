@@ -270,8 +270,8 @@ pub fn enable(
     require_bootstrapped_access(workspace_root)?;
     validate_operator_id(&request.operator_id)?;
 
-    let current_runtime = control::runtime_autonomy_policy(workspace_root)?;
     let mut manifest = refresh_manifest_state(workspace_root)?;
+    let current_runtime = control::runtime_autonomy_policy(workspace_root)?;
     if manifest.enabled {
         anyhow::bail!("God Mode is already enabled");
     }
@@ -953,6 +953,74 @@ mod tests {
         assert_eq!(
             crate::commands::control::runtime_autonomy_policy(root.path())?.approval_policy,
             crate::commands::control::AutonomyPolicy::default().approval_policy
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn reenable_after_expiry_captures_restored_baseline() -> Result<()> {
+        let root = tempdir().expect("tempdir");
+        bootstrap(root.path())?;
+
+        let baseline = crate::commands::control::AutonomyPolicy {
+            autonomy_level: "managed".to_string(),
+            yolo_mode: false,
+            steering_enabled: true,
+            decision_learning_enabled: true,
+            critic_enabled: true,
+            max_delegations: 2,
+            max_iterations: 3,
+            max_runtime_secs: 120,
+            max_lesson_hints: 2,
+            approval_policy: "side_effects".to_string(),
+        };
+        crate::commands::control::set_runtime_autonomy(root.path(), &baseline)?;
+
+        let mut manifest = EnterpriseAutonomyManifest::default();
+        manifest.enabled = true;
+        manifest.updated_at = Some(Utc::now().to_rfc3339());
+        manifest.enabled_at = manifest.updated_at.clone();
+        manifest.enabled_by = Some("owner-1".to_string());
+        manifest.override_policy = default_override_policy();
+        manifest.baseline_policy = baseline.clone();
+        manifest.expires_at = Some((Utc::now() - Duration::seconds(1)).to_rfc3339());
+        save_manifest(root.path(), &manifest)?;
+        crate::commands::control::set_runtime_autonomy(root.path(), &manifest.override_policy)?;
+
+        let enabled = enable(
+            root.path(),
+            EnterpriseAutonomyEnableRequest {
+                operator_id: "owner-1".to_string(),
+                note: Some("re-enable after expiry".to_string()),
+                max_delegations: None,
+                max_iterations: None,
+                max_runtime_secs: None,
+                max_lesson_hints: None,
+                ttl_secs: None,
+            },
+        )?;
+
+        assert_eq!(enabled.baseline_policy.approval_policy, baseline.approval_policy);
+        assert_eq!(enabled.baseline_policy.max_delegations, baseline.max_delegations);
+        assert_eq!(
+            crate::commands::control::runtime_autonomy_policy(root.path())?.approval_policy,
+            "none"
+        );
+
+        let disabled = disable(
+            root.path(),
+            EnterpriseAutonomyDisableRequest {
+                operator_id: "owner-1".to_string(),
+                reason: Some("done".to_string()),
+            },
+        )?;
+        assert_eq!(
+            disabled.baseline_policy.approval_policy,
+            baseline.approval_policy
+        );
+        assert_eq!(
+            crate::commands::control::runtime_autonomy_policy(root.path())?.approval_policy,
+            baseline.approval_policy
         );
         Ok(())
     }
