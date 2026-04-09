@@ -51,6 +51,9 @@ pub struct ServiceStatusReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub uptime_seconds: Option<i64>,
     pub gateway_addr: String,
+    pub listener_addr: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub advertised_addrs: Vec<String>,
     pub default_provider: String,
     pub fallback_chain: Vec<String>,
     pub enabled_channels: Vec<String>,
@@ -147,6 +150,8 @@ pub struct ChannelHealthMonitorStatus {
 pub struct LiveRuntimeMetadata {
     pub config_path: String,
     pub gateway_addr: String,
+    pub listener_addr: String,
+    pub advertised_addrs: Vec<String>,
     pub started_at: Option<DateTime<Utc>>,
     pub sidecar_running: bool,
 }
@@ -207,6 +212,7 @@ fn channel_health_monitor_status_from_app(
 
 pub async fn status(config_path: &str, workspace_root: &Path) -> Result<ServiceStatusReport> {
     let config = runtime::load_effective_config(config_path, workspace_root)?;
+    let advertising = runtime::resolve_gateway_advertising(&config);
     let pool = init_pool(&config.database.url, config.database.max_connections).await?;
     let registry_root = super::channels::resolve_root(None)?;
     let registry = super::channels::load_registry(registry_root)?;
@@ -216,7 +222,9 @@ pub async fn status(config_path: &str, workspace_root: &Path) -> Result<ServiceS
         &registry,
         &LiveRuntimeMetadata {
             config_path: config_path.to_string(),
-            gateway_addr: format!("{}:{}", config.gateway.host, config.gateway.port),
+            gateway_addr: advertising.primary_addr,
+            listener_addr: advertising.listener_addr,
+            advertised_addrs: advertising.advertised_addrs,
             started_at: None,
             sidecar_running: false,
         },
@@ -254,6 +262,8 @@ pub async fn status_with_pool(
         started_at: live.started_at.map(|value| value.to_rfc3339()),
         uptime_seconds,
         gateway_addr: live.gateway_addr.clone(),
+        listener_addr: live.listener_addr.clone(),
+        advertised_addrs: live.advertised_addrs.clone(),
         default_provider: config.providers.default_provider.clone(),
         fallback_chain: config.providers.fallback_chain.clone(),
         enabled_channels: enabled_channels(config),

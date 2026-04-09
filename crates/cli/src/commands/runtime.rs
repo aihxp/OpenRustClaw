@@ -2,8 +2,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
+use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
+use std::process::Command as StdCommand;
 use std::process::Stdio;
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -255,6 +257,10 @@ pub struct RuntimeBeacon {
     pub generated_at: String,
     pub process_id: u32,
     pub gateway_addr: String,
+    #[serde(default)]
+    pub listener_addr: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub advertised_addrs: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub started_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -357,6 +363,13 @@ pub struct RuntimeLockGuard {
     process_id: u32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GatewayAdvertising {
+    pub primary_addr: String,
+    pub listener_addr: String,
+    pub advertised_addrs: Vec<String>,
+}
+
 static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 fn env_lock() -> &'static Mutex<()> {
@@ -391,6 +404,116 @@ pub fn runtime_release_root_for(workspace_root: impl AsRef<Path>) -> PathBuf {
 
 pub fn runtime_lock_path_for(workspace_root: impl AsRef<Path>) -> PathBuf {
     workspace_root.as_ref().join(DEFAULT_RUNTIME_LOCK_PATH)
+}
+
+impl GatewayAdvertising {
+    pub fn direct(listener_addr: impl Into<String>) -> Self {
+        let listener_addr = listener_addr.into();
+        Self {
+            primary_addr: listener_addr.clone(),
+            listener_addr: listener_addr.clone(),
+            advertised_addrs: vec![listener_addr],
+        }
+    }
+}
+
+pub fn resolve_gateway_advertising(config: &AppConfig) -> GatewayAdvertising {
+    let listener_addr = format!("{}:{}", config.gateway.host, config.gateway.port);
+    let mut advertised_addrs =
+        detect_tailscale_gateway_addresses(config.gateway.port, &config.gateway.network_mode);
+
+    if !advertised_addrs.iter().any(|value| value == &listener_addr) {
+        advertised_addrs.push(listener_addr.clone());
+    }
+
+    let primary_addr = advertised_addrs
+        .first()
+        .cloned()
+        .unwrap_or_else(|| listener_addr.clone());
+
+    GatewayAdvertising {
+        primary_addr,
+        listener_addr,
+        advertised_addrs,
+    }
+}
+
+fn detect_tailscale_gateway_addresses(port: u16, network_mode: &str) -> Vec<String> {
+    let output = match StdCommand::new("tailscale")
+        .args(["status", "--json"])
+        .output()
+    {
+        Ok(output) => output,
+        Err(_) => return Vec::new(),
+    };
+
+    if !output.status.success() {
+        return Vec::new();
+    }
+
+    parse_tailscale_gateway_addresses(&String::from_utf8_lossy(&output.stdout), port, network_mode)
+}
+
+fn parse_tailscale_gateway_addresses(raw: &str, port: u16, network_mode: &str) -> Vec<String> {
+    let parsed = match serde_json::from_str::<serde_json::Value>(raw) {
+        Ok(parsed) => parsed,
+        Err(_) => return Vec::new(),
+    };
+
+    if parsed.get("BackendState").and_then(|value| value.as_str()) != Some("Running") {
+        return Vec::new();
+    }
+
+    let mut advertised = Vec::new();
+    if let Some(addresses) = parsed
+        .get("Self")
+        .and_then(|value| value.get("TailscaleIPs"))
+        .and_then(|value| value.as_array())
+    {
+        for address in addresses
+            .iter()
+            .filter_map(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            push_unique(
+                &mut advertised,
+                format_tailscale_gateway_address(address, port, network_mode),
+            );
+        }
+    }
+
+    if let Some(dns_name) = parsed
+        .get("Self")
+        .and_then(|value| value.get("DNSName"))
+        .and_then(|value| value.as_str())
+        .map(|value| value.trim_end_matches('.').trim())
+        .filter(|value| !value.is_empty())
+    {
+        push_unique(
+            &mut advertised,
+            format_tailscale_gateway_address(dns_name, port, network_mode),
+        );
+    }
+
+    advertised
+}
+
+fn format_tailscale_gateway_address(host: &str, port: u16, network_mode: &str) -> String {
+    if network_mode == "tailnet" {
+        return host.to_string();
+    }
+
+    match host.parse::<IpAddr>() {
+        Ok(ip) => SocketAddr::new(ip, port).to_string(),
+        Err(_) => format!("{host}:{port}"),
+    }
+}
+
+fn push_unique(values: &mut Vec<String>, candidate: String) {
+    if !values.iter().any(|value| value == &candidate) {
+        values.push(candidate);
+    }
 }
 
 pub fn runtime_service_install_status(
@@ -924,8 +1047,14 @@ pub fn load_cached_runtime_beacon(workspace_root: &Path) -> Result<Option<Runtim
 
     let raw = fs::read_to_string(&path)
         .with_context(|| format!("Failed to read '{}'", path.display()))?;
-    let beacon: RuntimeBeacon =
+    let mut beacon: RuntimeBeacon =
         serde_json::from_str(&raw).context("Failed to parse runtime beacon")?;
+    if beacon.listener_addr.is_empty() {
+        beacon.listener_addr = beacon.gateway_addr.clone();
+    }
+    if beacon.advertised_addrs.is_empty() {
+        beacon.advertised_addrs.push(beacon.gateway_addr.clone());
+    }
     Ok(Some(beacon))
 }
 
@@ -1047,13 +1176,33 @@ pub async fn runtime_beacon_status(
     started_at: Option<chrono::DateTime<Utc>>,
     sidecar_running: bool,
 ) -> Result<RuntimeBeacon> {
+    let advertising = GatewayAdvertising::direct(gateway_addr);
+    runtime_beacon_status_with_advertising(
+        config_path,
+        workspace_root,
+        refresh,
+        &advertising,
+        started_at,
+        sidecar_running,
+    )
+    .await
+}
+
+pub async fn runtime_beacon_status_with_advertising(
+    config_path: &str,
+    workspace_root: &Path,
+    refresh: bool,
+    advertising: &GatewayAdvertising,
+    started_at: Option<chrono::DateTime<Utc>>,
+    sidecar_running: bool,
+) -> Result<RuntimeBeacon> {
     if !refresh && let Some(beacon) = load_cached_runtime_beacon(workspace_root)? {
         return Ok(beacon);
     }
-    refresh_runtime_beacon(
+    refresh_runtime_beacon_with_advertising(
         config_path,
         workspace_root,
-        gateway_addr,
+        advertising,
         started_at,
         sidecar_running,
     )
@@ -1185,10 +1334,10 @@ pub async fn runtime_operator_ops_summary(
     })
 }
 
-pub async fn refresh_runtime_beacon(
+pub async fn refresh_runtime_beacon_with_advertising(
     config_path: &str,
     workspace_root: &Path,
-    gateway_addr: &str,
+    advertising: &GatewayAdvertising,
     started_at: Option<chrono::DateTime<Utc>>,
     sidecar_running: bool,
 ) -> Result<RuntimeBeacon> {
@@ -1196,7 +1345,9 @@ pub async fn refresh_runtime_beacon(
     let beacon = RuntimeBeacon {
         generated_at: Utc::now().to_rfc3339(),
         process_id: std::process::id(),
-        gateway_addr: gateway_addr.to_string(),
+        gateway_addr: advertising.primary_addr.clone(),
+        listener_addr: advertising.listener_addr.clone(),
+        advertised_addrs: advertising.advertised_addrs.clone(),
         started_at: started_at.map(|value| value.to_rfc3339()),
         uptime_seconds: started_at.map(|value| (Utc::now() - value).num_seconds().max(0)),
         sidecar_running,
@@ -3737,6 +3888,52 @@ mod tests {
         }
         assert!(!lock_path.exists());
         Ok(())
+    }
+
+    #[test]
+    fn parse_tailscale_gateway_addresses_prefers_tailnet_ips_before_listener() {
+        let advertised = parse_tailscale_gateway_addresses(
+            r#"{
+              "BackendState":"Running",
+              "Self":{
+                "TailscaleIPs":["100.101.102.103"],
+                "DNSName":"openrustclaw-node.ts.net."
+              }
+            }"#,
+            18789,
+            "lan",
+        );
+
+        assert_eq!(
+            advertised,
+            vec![
+                "100.101.102.103:18789".to_string(),
+                "openrustclaw-node.ts.net:18789".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_tailscale_gateway_addresses_uses_raw_tailnet_identity_for_tailnet_mode() {
+        let advertised = parse_tailscale_gateway_addresses(
+            r#"{
+              "BackendState":"Running",
+              "Self":{
+                "TailscaleIPs":["100.101.102.103"],
+                "DNSName":"openrustclaw-node.ts.net."
+              }
+            }"#,
+            18789,
+            "tailnet",
+        );
+
+        assert_eq!(
+            advertised,
+            vec![
+                "100.101.102.103".to_string(),
+                "openrustclaw-node.ts.net".to_string(),
+            ]
+        );
     }
 
     #[test]

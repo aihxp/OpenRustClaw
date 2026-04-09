@@ -9,6 +9,17 @@ This changelog tracks the public semver release line. Planning milestone tags su
 
 ---
 
+## [1.4.7] - 2026-04-09
+
+### Changed
+
+- Gateway runtime status now distinguishes the bound listener from the advertised endpoint and prefers detected Tailscale tailnet addresses when presenting gateway access details.
+
+### Fixed
+
+- Managed restart requests now relaunch the runtime instead of only terminating the active `openrustclaw start` process.
+- Runtime beacons and service status now preserve both the listener address and the ordered advertised address list so Tailscale-first access does not hide the actual bind target.
+
 ## [1.4.6] - 2026-04-09
 
 ### Changed

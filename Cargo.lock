@@ -70,7 +70,7 @@ dependencies = [
 
 [[package]]
 name = "ai21"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "backoff",
@@ -204,7 +204,7 @@ dependencies = [
 
 [[package]]
 name = "anthropic-rust"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "backoff",
@@ -338,7 +338,7 @@ dependencies = [
 
 [[package]]
 name = "async-openai"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "backoff",
@@ -456,7 +456,7 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "aws-bedrock"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "aws-credential-types",
@@ -791,7 +791,7 @@ dependencies = [
 
 [[package]]
 name = "azure-openai"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "backoff",
@@ -1448,7 +1448,7 @@ checksum = "4bfbf56724aa9eca8afa4fcfadeb479e722935bb2a0900c2d37e0cc477af0688"
 
 [[package]]
 name = "cloudflare-ai"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "backoff",
@@ -1539,7 +1539,7 @@ dependencies = [
 
 [[package]]
 name = "cohere"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "backoff",
@@ -2306,7 +2306,7 @@ dependencies = [
 
 [[package]]
 name = "deepseek"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "backoff",
@@ -2777,7 +2777,7 @@ checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
 
 [[package]]
 name = "fireworks-ai"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "backoff",
@@ -3379,7 +3379,7 @@ dependencies = [
 
 [[package]]
 name = "google-gemini"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -3425,7 +3425,7 @@ dependencies = [
 
 [[package]]
 name = "groq"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "backoff",
@@ -4837,7 +4837,7 @@ checksum = "6373607a59f0be73a39b6fe456b8192fcc3585f602af20751600e974dd455e77"
 
 [[package]]
 name = "llama-cpp"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "backoff",
@@ -5114,7 +5114,7 @@ dependencies = [
 
 [[package]]
 name = "mistral"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "backoff",
@@ -5550,7 +5550,7 @@ dependencies = [
 
 [[package]]
 name = "ollama-sdk"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "backoff",
@@ -5617,7 +5617,7 @@ dependencies = [
 
 [[package]]
 name = "openrouter-api"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "backoff",
@@ -5643,7 +5643,7 @@ dependencies = [
 
 [[package]]
 name = "openrustclaw-agent"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5668,7 +5668,7 @@ dependencies = [
 
 [[package]]
 name = "openrustclaw-app"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "chrono",
@@ -5685,7 +5685,7 @@ dependencies = [
 
 [[package]]
 name = "openrustclaw-automation"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5716,7 +5716,7 @@ dependencies = [
 
 [[package]]
 name = "openrustclaw-benches"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "axum 0.8.8",
@@ -5739,7 +5739,7 @@ dependencies = [
 
 [[package]]
 name = "openrustclaw-canvas"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5761,7 +5761,7 @@ dependencies = [
 
 [[package]]
 name = "openrustclaw-channels"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -5791,7 +5791,7 @@ dependencies = [
 
 [[package]]
 name = "openrustclaw-cli"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "anyhow",
  "argon2",
@@ -5856,7 +5856,7 @@ dependencies = [
 
 [[package]]
 name = "openrustclaw-core"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "bytes",
@@ -5877,7 +5877,7 @@ dependencies = [
 
 [[package]]
 name = "openrustclaw-cursor"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "chrono",
@@ -5905,7 +5905,7 @@ dependencies = [
 
 [[package]]
 name = "openrustclaw-db"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "chrono",
@@ -5924,7 +5924,7 @@ dependencies = [
 
 [[package]]
 name = "openrustclaw-distributed"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6013,7 +6013,7 @@ dependencies = [
 
 [[package]]
 name = "openrustclaw-gateway"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6086,7 +6086,7 @@ dependencies = [
 
 [[package]]
 name = "openrustclaw-langbridge"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "openrustclaw-core",
@@ -6102,7 +6102,7 @@ dependencies = [
 
 [[package]]
 name = "openrustclaw-mcp"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "futures",
@@ -6118,7 +6118,7 @@ dependencies = [
 
 [[package]]
 name = "openrustclaw-mcp2cli"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6154,7 +6154,7 @@ dependencies = [
 
 [[package]]
 name = "openrustclaw-memory"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "chrono",
@@ -6177,7 +6177,7 @@ dependencies = [
 
 [[package]]
 name = "openrustclaw-mobile"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6203,7 +6203,7 @@ dependencies = [
 
 [[package]]
 name = "openrustclaw-observability"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "axum 0.8.8",
@@ -6233,7 +6233,7 @@ dependencies = [
 
 [[package]]
 name = "openrustclaw-optimization"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "anyhow",
  "chrono",
@@ -6255,7 +6255,7 @@ dependencies = [
 
 [[package]]
 name = "openrustclaw-providers"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "anthropic-rust",
  "async-openai",
@@ -6283,7 +6283,7 @@ dependencies = [
 
 [[package]]
 name = "openrustclaw-scheduler"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6317,7 +6317,7 @@ dependencies = [
 
 [[package]]
 name = "openrustclaw-security"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "argon2",
  "async-trait",
@@ -6342,7 +6342,7 @@ dependencies = [
 
 [[package]]
 name = "openrustclaw-skills"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -6371,7 +6371,7 @@ dependencies = [
 
 [[package]]
 name = "openrustclaw-voice"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6651,7 +6651,7 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
 name = "perplexity"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "backoff",
@@ -7836,7 +7836,7 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 
 [[package]]
 name = "replicate"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "backoff",
@@ -9804,7 +9804,7 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "together-ai"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "backoff",
@@ -10746,7 +10746,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vllm"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "async-trait",
  "backoff",

@@ -87,9 +87,11 @@ use openrustclaw_core::types::{
     SkillProposalSourceRef, SkillProposalVerifyRequest, SourceType, StreamChunk, ToolFormat,
 };
 use std::collections::{HashMap, HashSet};
+use std::ffi::OsString;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
+use std::process::Command as StdCommand;
 use std::sync::{Arc, OnceLock};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::signal;
@@ -231,8 +233,9 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
 
     gate_nonshipping_channels(&mut config.channels);
 
-    let addr = format!("{}:{}", config.gateway.host, config.gateway.port);
-    let _runtime_lock = runtime::acquire_runtime_lock(config_path, &workspace_root, &addr)?;
+    let advertising = runtime::resolve_gateway_advertising(&config);
+    let addr = advertising.listener_addr.clone();
+    let runtime_lock = runtime::acquire_runtime_lock(config_path, &workspace_root, &addr)?;
     let listener = bind_gateway_listener(&addr).await?;
 
     info!(addr = %addr, "Gateway listener reserved");
@@ -642,7 +645,9 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
                 langsmith: channel_langsmith_client(&config),
                 event_bus: event_bus.clone(),
                 channel_agent: channel_agent.clone(),
-                gateway_addr: addr.clone(),
+                gateway_addr: advertising.primary_addr.clone(),
+                listener_addr: advertising.listener_addr.clone(),
+                advertised_addrs: advertising.advertised_addrs.clone(),
                 started_at,
                 sidecar_running: sidecar.is_some(),
             }),
@@ -669,10 +674,10 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
             warn!(error = %error, "Failed to validate runtime fallback health during startup");
         }
     }
-    let _ = runtime::refresh_runtime_beacon(
+    let _ = runtime::refresh_runtime_beacon_with_advertising(
         config_path,
         &workspace_root,
-        &addr,
+        &advertising,
         Some(started_at),
         sidecar.is_some(),
     )
@@ -710,7 +715,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
 
     let beacon_config_path = config_path.to_string();
     let beacon_root = workspace_root.clone();
-    let beacon_addr = addr.clone();
+    let beacon_advertising = advertising.clone();
     let beacon_started_at = started_at;
     let beacon_sidecar_running = sidecar.is_some();
     let beacon_events = event_bus.clone();
@@ -718,10 +723,10 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
         let mut ticker = interval(Duration::from_secs(15));
         loop {
             ticker.tick().await;
-            match runtime::refresh_runtime_beacon(
+            match runtime::refresh_runtime_beacon_with_advertising(
                 &beacon_config_path,
                 &beacon_root,
-                &beacon_addr,
+                &beacon_advertising,
                 Some(beacon_started_at),
                 beacon_sidecar_running,
             )
@@ -842,9 +847,21 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     };
 
     info!("OpenRustClaw is ready!");
-    info!("Gateway: http://{}", addr);
-    info!("Prometheus metrics: http://{}/metrics", addr);
-    info!("WebSocket: ws://{}/ws", addr);
+    if advertising.primary_addr != advertising.listener_addr {
+        info!("Gateway advertised address: {}", advertising.primary_addr);
+    }
+    if advertising.advertised_addrs.len() > 1 {
+        info!(
+            "Advertised addresses: {}",
+            advertising.advertised_addrs.join(", ")
+        );
+    }
+    info!("Gateway listener: http://{}", advertising.listener_addr);
+    info!(
+        "Prometheus metrics: http://{}/metrics",
+        advertising.listener_addr
+    );
+    info!("WebSocket: ws://{}/ws", advertising.listener_addr);
     if sidecar.is_some() {
         info!(role = ?config.sidecar.role, "Sidecar gRPC: {}", sidecar_addr);
     }
@@ -886,7 +903,9 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
 
     info!("OpenRustClaw shutdown complete");
     if let Some(ShutdownReason::ChannelRestart(reason)) = shutdown_reason {
-        anyhow::bail!(reason);
+        drop(runtime_lock);
+        launch_managed_restart(&workspace_root, &reason)?;
+        return Ok(());
     }
     Ok(())
 }
@@ -1102,6 +1121,49 @@ async fn bind_gateway_listener(addr: &str) -> Result<tokio::net::TcpListener> {
     tokio::net::TcpListener::bind(addr)
         .await
         .map_err(|error| bind_gateway_listener_error(addr, error))
+}
+
+fn restart_launch_plan(
+    workspace_root: &Path,
+    executable: &Path,
+    args: &[OsString],
+) -> (PathBuf, PathBuf, Vec<OsString>) {
+    (
+        workspace_root.to_path_buf(),
+        executable.to_path_buf(),
+        args.to_vec(),
+    )
+}
+
+fn launch_managed_restart(workspace_root: &Path, reason: &str) -> Result<()> {
+    let executable =
+        std::env::current_exe().context("Failed to resolve current executable for restart")?;
+    let args = std::env::args_os().skip(1).collect::<Vec<_>>();
+    let (restart_root, restart_executable, restart_args) =
+        restart_launch_plan(workspace_root, &executable, &args);
+
+    let child = StdCommand::new(&restart_executable)
+        .args(&restart_args)
+        .current_dir(&restart_root)
+        .env("OPENRUSTCLAW_MANAGED_RESTART_REASON", reason)
+        .stdin(std::process::Stdio::inherit())
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit())
+        .spawn()
+        .with_context(|| {
+            format!(
+                "Failed to relaunch '{}' for managed restart",
+                restart_executable.display()
+            )
+        })?;
+
+    info!(
+        reason = %reason,
+        child_pid = child.id(),
+        executable = %restart_executable.display(),
+        "Managed runtime restart launched"
+    );
+    Ok(())
 }
 
 fn bind_gateway_listener_error(addr: &str, error: std::io::Error) -> anyhow::Error {
@@ -2672,6 +2734,8 @@ struct RuntimeControlState {
     event_bus: DurableEventBus,
     channel_agent: Option<SharedChannelAgent>,
     gateway_addr: String,
+    listener_addr: String,
+    advertised_addrs: Vec<String>,
     started_at: DateTime<Utc>,
     sidecar_running: bool,
 }
@@ -8635,11 +8699,15 @@ async fn runtime_beacon_handler(
     State(state): State<RuntimeControlState>,
     Query(query): Query<RefreshQuery>,
 ) -> impl IntoResponse {
-    match runtime::runtime_beacon_status(
+    match runtime::runtime_beacon_status_with_advertising(
         &state.config_path,
         &state.workspace_root,
         query.refresh,
-        &state.gateway_addr,
+        &runtime::GatewayAdvertising {
+            primary_addr: state.gateway_addr.clone(),
+            listener_addr: state.listener_addr.clone(),
+            advertised_addrs: state.advertised_addrs.clone(),
+        },
         Some(state.started_at),
         state.sidecar_running,
     )
@@ -10370,6 +10438,8 @@ async fn service_status_handler(State(state): State<RuntimeControlState>) -> imp
                 &services::LiveRuntimeMetadata {
                     config_path: state.config_path.clone(),
                     gateway_addr: state.gateway_addr.clone(),
+                    listener_addr: state.listener_addr.clone(),
+                    advertised_addrs: state.advertised_addrs.clone(),
                     started_at: Some(state.started_at),
                     sidecar_running: state.sidecar_running,
                 },
@@ -10448,11 +10518,15 @@ async fn service_beacon_handler(
     State(state): State<RuntimeControlState>,
     Query(query): Query<RefreshQuery>,
 ) -> impl IntoResponse {
-    match runtime::runtime_beacon_status(
+    match runtime::runtime_beacon_status_with_advertising(
         &state.config_path,
         &state.workspace_root,
         query.refresh,
-        &state.gateway_addr,
+        &runtime::GatewayAdvertising {
+            primary_addr: state.gateway_addr.clone(),
+            listener_addr: state.listener_addr.clone(),
+            advertised_addrs: state.advertised_addrs.clone(),
+        },
         Some(state.started_at),
         state.sidecar_running,
     )
@@ -10732,10 +10806,14 @@ async fn reload_runtime_agent(state: &RuntimeControlState) -> Result<serde_json:
     }
 
     let _ = runtime::mark_runtime_applied(&state.config_path, &state.workspace_root)?;
-    let beacon = runtime::refresh_runtime_beacon(
+    let beacon = runtime::refresh_runtime_beacon_with_advertising(
         &state.config_path,
         &state.workspace_root,
-        &state.gateway_addr,
+        &runtime::GatewayAdvertising {
+            primary_addr: state.gateway_addr.clone(),
+            listener_addr: state.listener_addr.clone(),
+            advertised_addrs: state.advertised_addrs.clone(),
+        },
         Some(state.started_at),
         state.sidecar_running,
     )
@@ -15345,9 +15423,29 @@ mod tests {
             event_bus: DurableEventBus::new(pool, 16),
             channel_agent: None,
             gateway_addr: "127.0.0.1:18789".to_string(),
+            listener_addr: "127.0.0.1:18789".to_string(),
+            advertised_addrs: vec!["127.0.0.1:18789".to_string()],
             started_at: Utc::now(),
             sidecar_running: false,
         }
+    }
+
+    #[test]
+    fn restart_launch_plan_preserves_workspace_and_args() {
+        let workspace_root = Path::new("/tmp/openrustclaw");
+        let executable = Path::new("/usr/local/bin/openrustclaw");
+        let args = vec![
+            OsString::from("start"),
+            OsString::from("--config"),
+            OsString::from("config/default.toml"),
+        ];
+
+        let (restart_root, restart_executable, restart_args) =
+            restart_launch_plan(workspace_root, executable, &args);
+
+        assert_eq!(restart_root, workspace_root);
+        assert_eq!(restart_executable, executable);
+        assert_eq!(restart_args, args);
     }
 
     fn test_control_plane_state(workspace_root: PathBuf) -> ControlPlaneApiState {
