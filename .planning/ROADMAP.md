@@ -4,14 +4,13 @@
 
 - See `.planning/MILESTONES.md` for the full shipped milestone ledger.
 - ✅ **v1.46 Ad Hoc Release Catch-Up and GSD Re-entry** — Phases 196-199 (shipped 2026-04-09)
-- 🚧 **v1.47 Runtime Lifecycle Reliability** — active
+- ✅ **v1.47 Runtime Lifecycle Reliability** — shipped 2026-04-09
 
 ## Current Status
 
-`v1.47` is active and focused on runtime lifecycle reliability.
+`v1.47` shipped on 2026-04-09 and closed the runtime lifecycle reliability gap around listener conflicts, stale runtime state, and restart recovery.
 
-- Next command: `$gsd-discuss-phase 200`
-- Alternate direct path: `$gsd-plan-phase 200`
+- Next command: `$gsd-new-milestone`
 - Queued after this milestone: release traceability and milestone correlation
 
 ## Current Milestone Overview
@@ -20,9 +19,9 @@ The goal of `v1.47` is to make `openrustclaw start`, `stop`, and `restart` trust
 
 ## Phases
 
-- [ ] **Phase 200: Runtime Ownership and Conflict Classification** - Make lifecycle commands classify listener ownership and stale-runtime state before failing on a busy port.
-- [ ] **Phase 201: Restart and Stop Recovery Hardening** - Make stop and restart reconcile runtime locks, recoverable stale processes, and listener reuse safely.
-- [ ] **Phase 202: Operator Recovery Surface and Verification** - Ship the regression coverage and operator remediation surface for lifecycle conflict recovery.
+- [x] **Phase 200: Runtime Ownership and Conflict Classification** - Make lifecycle commands classify listener ownership and stale-runtime state before failing on a busy port.
+- [x] **Phase 201: Restart and Stop Recovery Hardening** - Make stop and restart reconcile runtime locks, recoverable stale processes, and listener reuse safely.
+- [x] **Phase 202: Operator Recovery Surface and Verification** - Ship the regression coverage and operator remediation surface for lifecycle conflict recovery.
 
 ## Phase Details
 
@@ -57,9 +56,9 @@ The goal of `v1.47` is to make `openrustclaw start`, `stop`, and `restart` trust
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 200. Runtime Ownership and Conflict Classification | 0/0 | Not started | - |
-| 201. Restart and Stop Recovery Hardening | 0/0 | Not started | - |
-| 202. Operator Recovery Surface and Verification | 0/0 | Not started | - |
+| 200. Runtime Ownership and Conflict Classification | 1/1 | Complete | 2026-04-09 |
+| 201. Restart and Stop Recovery Hardening | 1/1 | Complete | 2026-04-09 |
+| 202. Operator Recovery Surface and Verification | 1/1 | Complete | 2026-04-09 |
 
 ## Recent Milestone
 
@@ -77,7 +76,7 @@ Archived detail lives in `.planning/milestones/v1.46-ROADMAP.md`.
 
 ## Current Status
 
-- Active milestone: `v1.47 Runtime Lifecycle Reliability`
-- Roadmap progress: 0/3 phases complete
-- Current work: make runtime lifecycle behavior trustworthy when listeners are already bound or stale runtime state is present
-- Next step: `$gsd-discuss-phase 200`
+- Most recent milestone: `v1.47 Runtime Lifecycle Reliability`
+- Roadmap progress: 3/3 phases complete
+- Current work: milestone closeout and queue handoff to release traceability
+- Next step: `$gsd-new-milestone`

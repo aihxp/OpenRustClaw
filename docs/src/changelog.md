@@ -17,6 +17,12 @@ This changelog tracks the public semver release line. Planning milestone tags su
 - `openrustclaw start` now performs a bounded startup preflight that can warn about newer tagged releases and migrate safe legacy `OpenClaw` workspace paths into the current `OpenRustClaw` layout.
 - Heavy release and verification scripts now default their temp and Cargo target directories into the repo `target/` tree, and `scripts/cargo-local.sh` provides the same safer local-target workflow for manual Cargo runs on hosts with small `/tmp`.
 
+### Fixed
+
+- Runtime listener conflicts now classify active OpenRustClaw ownership, stale OpenRustClaw state, and foreign-process port collisions before `openrustclaw start` exits.
+- `openrustclaw restart` now probes the configured listener before relaunching, so foreign process conflicts fail with the classified listener-owner message instead of bubbling up as an early child-start exit.
+- `openrustclaw stop` now clears stale runtime beacons alongside stale runtime locks and can recover a lockless-but-beaconed workspace runtime before the next `start`.
+
 ## [1.4.8] - 2026-04-09
 
 ### Fixed

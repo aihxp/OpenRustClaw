@@ -7,20 +7,20 @@
 
 ### Runtime Lifecycle
 
-- [ ] **RUN-01**: User can run `openrustclaw restart` and have the current workspace return to a healthy listening state without ad hoc manual cleanup when the prior runtime is recoverable.
-- [ ] **RUN-02**: User can run `openrustclaw start` and get deterministic behavior when the configured listener is already bound, including ownership classification before the command exits.
-- [ ] **RUN-03**: User can run `openrustclaw stop` and have runtime locks, listener state, and service metadata reconciled so a subsequent `start` does not fail on stale local state.
+- [x] **RUN-01**: User can run `openrustclaw restart` and have the current workspace return to a healthy listening state without ad hoc manual cleanup when the prior runtime is recoverable.
+- [x] **RUN-02**: User can run `openrustclaw start` and get deterministic behavior when the configured listener is already bound, including ownership classification before the command exits.
+- [x] **RUN-03**: User can run `openrustclaw stop` and have runtime locks, listener state, and service metadata reconciled so a subsequent `start` does not fail on stale local state.
 
 ### Conflict Diagnostics
 
-- [ ] **DIAG-01**: User can see which process or runtime instance currently owns the blocked listener directly from `openrustclaw start` or `restart` output.
-- [ ] **DIAG-02**: User can distinguish an active healthy OpenRustClaw runtime, stale OpenRustClaw state, and a foreign process conflict before retrying lifecycle commands.
-- [ ] **DIAG-03**: User has one documented remediation path for loopback listener conflicts and partial restart failures.
+- [x] **DIAG-01**: User can see which process or runtime instance currently owns the blocked listener directly from `openrustclaw start` or `restart` output.
+- [x] **DIAG-02**: User can distinguish an active healthy OpenRustClaw runtime, stale OpenRustClaw state, and a foreign process conflict before retrying lifecycle commands.
+- [x] **DIAG-03**: User has one documented remediation path for loopback listener conflicts and partial restart failures.
 
 ### Regression Safety
 
-- [ ] **SAFE-01**: Automated tests cover runtime lifecycle conflict paths including active-runtime conflicts, stale-lock recovery, foreign-process conflicts, and restart recovery.
-- [ ] **SAFE-02**: Operator-facing docs for runtime lifecycle and production recovery stay aligned with the shipped listener-conflict and remediation behavior.
+- [x] **SAFE-01**: Automated tests cover runtime lifecycle conflict paths including active-runtime conflicts, stale-lock recovery, foreign-process conflicts, and restart recovery.
+- [x] **SAFE-02**: Operator-facing docs for runtime lifecycle and production recovery stay aligned with the shipped listener-conflict and remediation behavior.
 
 ## v2 Requirements
 
@@ -41,14 +41,14 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| RUN-02 | Phase 200 | Pending |
-| DIAG-01 | Phase 200 | Pending |
-| DIAG-02 | Phase 200 | Pending |
-| RUN-01 | Phase 201 | Pending |
-| RUN-03 | Phase 201 | Pending |
-| DIAG-03 | Phase 202 | Pending |
-| SAFE-01 | Phase 202 | Pending |
-| SAFE-02 | Phase 202 | Pending |
+| RUN-02 | Phase 200 | Complete |
+| DIAG-01 | Phase 200 | Complete |
+| DIAG-02 | Phase 200 | Complete |
+| RUN-01 | Phase 201 | Complete |
+| RUN-03 | Phase 201 | Complete |
+| DIAG-03 | Phase 202 | Complete |
+| SAFE-01 | Phase 202 | Complete |
+| SAFE-02 | Phase 202 | Complete |
 
 **Coverage:**
 - v1 requirements: 8 total
@@ -57,4 +57,4 @@
 
 ---
 *Requirements defined: 2026-04-09*
-*Last updated: 2026-04-09 after initial definition*
+*Last updated: 2026-04-09 after milestone completion*

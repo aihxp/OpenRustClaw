@@ -37,6 +37,8 @@ Options:
 
 Start the gateway server and Python sidecar.
 
+When the configured listener is already busy, `openrustclaw start` now classifies the conflict before it exits. The error surface tells you whether the listener belongs to an active OpenRustClaw runtime, stale OpenRustClaw workspace state, or a non-OpenRustClaw process, and points you at `openrustclaw stop` or `openrustclaw restart` when those are the safe recovery paths.
+
 ```bash
 openrustclaw start [OPTIONS]
 
@@ -59,6 +61,8 @@ openrustclaw start --config config/production.toml
 
 Stop the running OpenRustClaw gateway/runtime for the current workspace.
 
+`openrustclaw stop` also reconciles stale runtime ownership state. If the workspace only has a stale runtime lock or beacon left behind, the command clears that metadata so the next `start` does not fail on old OpenRustClaw state.
+
 ```bash
 openrustclaw stop [OPTIONS]
 
@@ -76,6 +80,8 @@ openrustclaw stop
 ### `restart`
 
 Restart the running OpenRustClaw gateway/runtime for the current workspace.
+
+`openrustclaw restart` now probes the configured listener before it relaunches the runtime. If a foreign process is still holding the port, the command reports that classified conflict directly instead of surfacing a late `restart launch exited early` failure from the child process.
 
 ```bash
 openrustclaw restart [OPTIONS]

@@ -238,8 +238,8 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
 
     let advertising = runtime::resolve_gateway_advertising(&config);
     let addr = advertising.listener_addr.clone();
+    let listener = bind_gateway_listener(&workspace_root, &addr).await?;
     let runtime_lock = runtime::acquire_runtime_lock(config_path, &workspace_root, &addr)?;
-    let listener = bind_gateway_listener(&addr).await?;
 
     info!(addr = %addr, "Gateway listener reserved");
 
@@ -905,6 +905,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     }
 
     info!("OpenRustClaw shutdown complete");
+    runtime::clear_runtime_beacon_cache(&workspace_root)?;
     if let Some(ShutdownReason::ChannelRestart(reason)) = shutdown_reason {
         drop(runtime_lock);
         launch_managed_restart(&workspace_root, &reason)?;
@@ -1141,10 +1142,13 @@ fn channel_langsmith_client(config: &AppConfig) -> Option<LangSmithClient> {
     }
 }
 
-async fn bind_gateway_listener(addr: &str) -> Result<tokio::net::TcpListener> {
+async fn bind_gateway_listener(
+    workspace_root: &Path,
+    addr: &str,
+) -> Result<tokio::net::TcpListener> {
     tokio::net::TcpListener::bind(addr)
         .await
-        .map_err(|error| bind_gateway_listener_error(addr, error))
+        .map_err(|error| bind_gateway_listener_error(workspace_root, addr, error))
 }
 
 fn restart_launch_plan(
@@ -1190,11 +1194,16 @@ fn launch_managed_restart(workspace_root: &Path, reason: &str) -> Result<()> {
     Ok(())
 }
 
-fn bind_gateway_listener_error(addr: &str, error: std::io::Error) -> anyhow::Error {
+fn bind_gateway_listener_error(
+    workspace_root: &Path,
+    addr: &str,
+    error: std::io::Error,
+) -> anyhow::Error {
     if error.kind() == std::io::ErrorKind::AddrInUse {
-        anyhow::anyhow!(
-            "Failed to bind to {addr}: address is already in use. Stop the process already listening there or change `gateway.host`/`gateway.port`, then retry."
-        )
+        anyhow::anyhow!(runtime::listener_conflict_failure_message(
+            workspace_root,
+            addr
+        ))
     } else {
         anyhow::Error::new(error).context(format!("Failed to bind to {addr}"))
     }
@@ -15369,7 +15378,9 @@ mod tests {
 
     #[test]
     fn bind_gateway_listener_reports_address_in_use_with_actionable_message() {
+        let temp = tempdir().expect("tempdir");
         let error = bind_gateway_listener_error(
+            temp.path(),
             "127.0.0.1:18789",
             std::io::Error::new(std::io::ErrorKind::AddrInUse, "already reserved"),
         );
@@ -15378,6 +15389,25 @@ mod tests {
         assert!(message.contains("address is already in use"));
         assert!(message.contains("gateway.host"));
         assert!(message.contains("gateway.port"));
+    }
+
+    #[test]
+    fn bind_gateway_listener_reports_active_openrustclaw_runtime_owner() {
+        let temp = tempdir().expect("tempdir");
+        let workspace_root = temp.path();
+        let _guard =
+            runtime::acquire_runtime_lock("config/default.toml", workspace_root, "127.0.0.1:18789")
+                .expect("runtime lock");
+
+        let error = bind_gateway_listener_error(
+            workspace_root,
+            "127.0.0.1:18789",
+            std::io::Error::new(std::io::ErrorKind::AddrInUse, "already reserved"),
+        );
+        let message = error.to_string();
+        assert!(message.contains("active OpenRustClaw runtime"));
+        assert!(message.contains("openrustclaw restart"));
+        assert!(message.contains("openrustclaw stop"));
     }
 
     struct EnvVarGuard {

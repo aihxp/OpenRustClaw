@@ -378,6 +378,64 @@ pub struct RuntimeLockStatus {
     pub config_path: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeListenerOwnerKind {
+    ActiveOpenRustClaw,
+    StaleOpenRustClaw,
+    ForeignProcess,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RuntimeListenerConflictDiagnosis {
+    pub listener_addr: String,
+    pub owner_kind: RuntimeListenerOwnerKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner_pid: Option<u32>,
+    pub ownership_source: String,
+    pub detail: String,
+    pub remediation: String,
+}
+
+impl RuntimeListenerConflictDiagnosis {
+    pub fn failure_message(&self) -> String {
+        match self.owner_kind {
+            RuntimeListenerOwnerKind::ActiveOpenRustClaw => {
+                let pid_suffix = self
+                    .owner_pid
+                    .map(|pid| format!(" (pid {pid})"))
+                    .unwrap_or_default();
+                format!(
+                    "Failed to bind to {}: address is already in use by an active OpenRustClaw runtime{} via {}. {} {}",
+                    self.listener_addr,
+                    pid_suffix,
+                    self.ownership_source,
+                    self.detail,
+                    self.remediation
+                )
+            }
+            RuntimeListenerOwnerKind::StaleOpenRustClaw => {
+                let pid_suffix = self
+                    .owner_pid
+                    .map(|pid| format!(" (last known pid {pid})"))
+                    .unwrap_or_default();
+                format!(
+                    "Failed to bind to {}: address is already in use, and this workspace still has stale OpenRustClaw state for that listener{} via {}. {} {}",
+                    self.listener_addr,
+                    pid_suffix,
+                    self.ownership_source,
+                    self.detail,
+                    self.remediation
+                )
+            }
+            RuntimeListenerOwnerKind::ForeignProcess => format!(
+                "Failed to bind to {}: address is already in use by a non-OpenRustClaw or unclassified process. {} {}",
+                self.listener_addr, self.detail, self.remediation
+            ),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct RuntimeOperatorOpsSummary {
     pub generated_at: String,
@@ -985,12 +1043,156 @@ pub fn runtime_lock_status(workspace_root: &Path) -> Result<RuntimeLockStatus> {
     })
 }
 
+pub fn diagnose_listener_conflict(
+    workspace_root: &Path,
+    listener_addr: &str,
+) -> Result<RuntimeListenerConflictDiagnosis> {
+    let lock_status = runtime_lock_status(workspace_root)?;
+    let lock_matches = lock_status.gateway_addr.as_deref() == Some(listener_addr);
+    let beacon = load_cached_runtime_beacon(workspace_root)?;
+    let beacon_matches = beacon
+        .as_ref()
+        .map(|value| listener_addr_matches_runtime_beacon(value, listener_addr))
+        .unwrap_or(false);
+    let beacon_alive = beacon
+        .as_ref()
+        .map(|value| process_is_alive(value.process_id))
+        .unwrap_or(false);
+    let beacon_runtime = beacon
+        .as_ref()
+        .filter(|_| beacon_alive)
+        .map(|value| process_looks_like_openrustclaw(value.process_id))
+        .unwrap_or(false);
+
+    if lock_status.active && lock_matches {
+        return Ok(RuntimeListenerConflictDiagnosis {
+            listener_addr: listener_addr.to_string(),
+            owner_kind: RuntimeListenerOwnerKind::ActiveOpenRustClaw,
+            owner_pid: lock_status.process_id,
+            ownership_source: "the runtime lock".to_string(),
+            detail: "This workspace already recorded a live owner for the configured listener."
+                .to_string(),
+            remediation:
+                "Use `openrustclaw restart` to recycle it, or `openrustclaw stop` before starting a second runtime."
+                    .to_string(),
+        });
+    }
+
+    if lock_status.stale && lock_matches {
+        return Ok(RuntimeListenerConflictDiagnosis {
+            listener_addr: listener_addr.to_string(),
+            owner_kind: RuntimeListenerOwnerKind::StaleOpenRustClaw,
+            owner_pid: lock_status.process_id,
+            ownership_source: "the runtime lock".to_string(),
+            detail: "The recorded runtime owner is gone, so the listener may now belong to another process or stale workspace state."
+                .to_string(),
+            remediation:
+                "Run `openrustclaw stop` to clear stale workspace state. If another process is still bound there, stop it or change `gateway.host`/`gateway.port`, then retry."
+                    .to_string(),
+        });
+    }
+
+    if let Some(beacon) = beacon
+        .as_ref()
+        .filter(|_| beacon_matches && beacon_alive && beacon_runtime)
+    {
+        return Ok(RuntimeListenerConflictDiagnosis {
+            listener_addr: listener_addr.to_string(),
+            owner_kind: RuntimeListenerOwnerKind::ActiveOpenRustClaw,
+            owner_pid: Some(beacon.process_id),
+            ownership_source: "the runtime beacon".to_string(),
+            detail: "Cached runtime heartbeats still point at a live OpenRustClaw process for this listener."
+                .to_string(),
+            remediation:
+                "Use `openrustclaw restart` to recycle it, or `openrustclaw stop` before starting a second runtime."
+                    .to_string(),
+        });
+    }
+
+    if let Some(beacon) = beacon.as_ref().filter(|_| beacon_matches && !beacon_alive) {
+        return Ok(RuntimeListenerConflictDiagnosis {
+            listener_addr: listener_addr.to_string(),
+            owner_kind: RuntimeListenerOwnerKind::StaleOpenRustClaw,
+            owner_pid: Some(beacon.process_id),
+            ownership_source: "the runtime beacon".to_string(),
+            detail: "The last cached OpenRustClaw runtime for this listener is no longer alive."
+                .to_string(),
+            remediation:
+                "Run `openrustclaw stop` to clear stale workspace state. If another process is still bound there, stop it or change `gateway.host`/`gateway.port`, then retry."
+                    .to_string(),
+        });
+    }
+
+    if let Some(beacon) = beacon
+        .as_ref()
+        .filter(|_| beacon_matches && beacon_alive && !beacon_runtime)
+    {
+        return Ok(RuntimeListenerConflictDiagnosis {
+            listener_addr: listener_addr.to_string(),
+            owner_kind: RuntimeListenerOwnerKind::ForeignProcess,
+            owner_pid: Some(beacon.process_id),
+            ownership_source: "the runtime beacon".to_string(),
+            detail: "Cached workspace metadata points here, but the live PID no longer looks like an OpenRustClaw process."
+                .to_string(),
+            remediation:
+                "Stop the process already listening there or change `gateway.host`/`gateway.port`, then retry."
+                    .to_string(),
+        });
+    }
+
+    let mut detail =
+        "This workspace does not have active OpenRustClaw ownership metadata for that listener."
+            .to_string();
+    if let Some(lock_addr) = lock_status
+        .gateway_addr
+        .as_deref()
+        .filter(|value| *value != listener_addr)
+    {
+        detail.push_str(&format!(
+            " The runtime lock currently points at {lock_addr}."
+        ));
+    }
+    if let Some(beacon) = beacon
+        .as_ref()
+        .filter(|value| !listener_addr_matches_runtime_beacon(value, listener_addr))
+    {
+        detail.push_str(&format!(
+            " The cached runtime beacon currently points at {}.",
+            beacon.listener_addr
+        ));
+    }
+
+    Ok(RuntimeListenerConflictDiagnosis {
+        listener_addr: listener_addr.to_string(),
+        owner_kind: RuntimeListenerOwnerKind::ForeignProcess,
+        owner_pid: None,
+        ownership_source: "listener probe".to_string(),
+        detail,
+        remediation:
+            "Stop the process already listening there or change `gateway.host`/`gateway.port`, then retry."
+                .to_string(),
+    })
+}
+
+pub fn listener_conflict_failure_message(workspace_root: &Path, listener_addr: &str) -> String {
+    diagnose_listener_conflict(workspace_root, listener_addr)
+        .map(|diagnosis| diagnosis.failure_message())
+        .unwrap_or_else(|_| {
+            format!(
+                "Failed to bind to {listener_addr}: address is already in use. Stop the process already listening there or change `gateway.host`/`gateway.port`, then retry."
+            )
+        })
+}
+
 pub async fn stop_runtime_process(
     config_path: &str,
     workspace_root: &Path,
 ) -> Result<RuntimeProcessCommandSummary> {
     let service_install_status = runtime_service_install_status(config_path, workspace_root)?;
     let lock_status = runtime_lock_status(workspace_root)?;
+    let listener_addr = load_effective_config(config_path, workspace_root)
+        .ok()
+        .map(|config| resolve_gateway_advertising(&config).listener_addr);
 
     if lock_status.active {
         let pid = lock_status.process_id;
@@ -998,6 +1200,7 @@ pub async fn stop_runtime_process(
             && invoke_service_manager_action(&service_install_status, ServiceManagerAction::Stop)?
         {
             if wait_for_runtime_stop(workspace_root, pid, Duration::from_secs(10)).await {
+                clear_runtime_beacon_cache(workspace_root)?;
                 return Ok(RuntimeProcessCommandSummary {
                     action: "stop".to_string(),
                     config_path: config_path.to_string(),
@@ -1022,6 +1225,7 @@ pub async fn stop_runtime_process(
         if let Some(pid) = pid {
             terminate_process(pid)?;
             if wait_for_runtime_stop(workspace_root, Some(pid), Duration::from_secs(10)).await {
+                clear_runtime_beacon_cache(workspace_root)?;
                 return Ok(RuntimeProcessCommandSummary {
                     action: "stop".to_string(),
                     config_path: config_path.to_string(),
@@ -1039,8 +1243,33 @@ pub async fn stop_runtime_process(
         }
     }
 
+    if let Some(listener_addr) = listener_addr.as_deref() {
+        if let Some(pid) = recoverable_runtime_beacon_pid(workspace_root, listener_addr)? {
+            terminate_process(pid)?;
+            if wait_for_runtime_stop(workspace_root, Some(pid), Duration::from_secs(10)).await {
+                clear_runtime_beacon_cache(workspace_root)?;
+                return Ok(RuntimeProcessCommandSummary {
+                    action: "stop".to_string(),
+                    config_path: config_path.to_string(),
+                    process_id: Some(pid),
+                    launched_process_id: None,
+                    used_service_manager: false,
+                    changed: true,
+                    message: format!(
+                        "Stopped OpenRustClaw runtime (pid {pid}) using beacon-backed listener ownership recovery."
+                    ),
+                });
+            }
+            anyhow::bail!(
+                "Timed out waiting for OpenRustClaw runtime pid {} to stop",
+                pid
+            );
+        }
+    }
+
     if lock_status.stale {
         clear_runtime_lock(workspace_root)?;
+        let cleared_beacon_pid = clear_stale_runtime_beacon(workspace_root)?;
         return Ok(RuntimeProcessCommandSummary {
             action: "stop".to_string(),
             config_path: config_path.to_string(),
@@ -1048,9 +1277,28 @@ pub async fn stop_runtime_process(
             launched_process_id: None,
             used_service_manager: false,
             changed: true,
-            message:
+            message: if let Some(pid) = cleared_beacon_pid {
+                format!(
+                    "Cleared a stale OpenRustClaw runtime lock and stale runtime beacon (last known pid {pid}); no active runtime process was running."
+                )
+            } else {
                 "Cleared a stale OpenRustClaw runtime lock; no active runtime process was running."
-                    .to_string(),
+                    .to_string()
+            },
+        });
+    }
+
+    if let Some(pid) = clear_stale_runtime_beacon(workspace_root)? {
+        return Ok(RuntimeProcessCommandSummary {
+            action: "stop".to_string(),
+            config_path: config_path.to_string(),
+            process_id: Some(pid),
+            launched_process_id: None,
+            used_service_manager: false,
+            changed: true,
+            message: format!(
+                "Cleared a stale OpenRustClaw runtime beacon (last known pid {pid}); no active runtime process was running."
+            ),
         });
     }
 
@@ -1106,6 +1354,7 @@ pub async fn restart_runtime_process(
         let _ = stop_runtime_process(config_path, workspace_root).await?;
     }
 
+    let _ = ensure_configured_listener_available(config_path, workspace_root)?;
     let launched = launch_runtime_start(config_path, workspace_root).await?;
     Ok(RuntimeProcessCommandSummary {
         action: "restart".to_string(),
@@ -1156,6 +1405,30 @@ pub fn acquire_runtime_lock(
         path,
         process_id: record.process_id,
     })
+}
+
+pub fn ensure_configured_listener_available(
+    config_path: &str,
+    workspace_root: &Path,
+) -> Result<String> {
+    let config = load_effective_config(config_path, workspace_root)?;
+    let listener_addr = resolve_gateway_advertising(&config).listener_addr;
+    match std::net::TcpListener::bind(&listener_addr) {
+        Ok(listener) => {
+            drop(listener);
+            Ok(listener_addr)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => {
+            anyhow::bail!(listener_conflict_failure_message(
+                workspace_root,
+                &listener_addr
+            ))
+        }
+        Err(error) => Err(anyhow::Error::new(error).context(format!(
+            "Failed to probe {} before launching OpenRustClaw runtime",
+            listener_addr
+        ))),
+    }
 }
 
 pub fn load_effective_config(config_path: &str, workspace_root: &Path) -> Result<AppConfig> {
@@ -1274,6 +1547,17 @@ pub fn load_cached_runtime_beacon(workspace_root: &Path) -> Result<Option<Runtim
         beacon.advertised_addrs.push(beacon.gateway_addr.clone());
     }
     Ok(Some(beacon))
+}
+
+pub fn clear_runtime_beacon_cache(workspace_root: &Path) -> Result<()> {
+    let path = runtime_beacon_path_for(workspace_root);
+    if !path.exists() {
+        return Ok(());
+    }
+
+    fs::remove_file(&path)
+        .with_context(|| format!("Failed to remove stale runtime beacon '{}'", path.display()))?;
+    Ok(())
 }
 
 fn load_runtime_lock(workspace_root: &Path) -> Result<Option<RuntimeLockRecord>> {
@@ -1660,10 +1944,78 @@ fn clear_runtime_lock(workspace_root: &Path) -> Result<()> {
     Ok(())
 }
 
+fn clear_stale_runtime_beacon(workspace_root: &Path) -> Result<Option<u32>> {
+    let Some(beacon) = load_cached_runtime_beacon(workspace_root)? else {
+        return Ok(None);
+    };
+    if process_is_alive(beacon.process_id) {
+        return Ok(None);
+    }
+    clear_runtime_beacon_cache(workspace_root)?;
+    Ok(Some(beacon.process_id))
+}
+
+fn recoverable_runtime_beacon_pid(
+    workspace_root: &Path,
+    listener_addr: &str,
+) -> Result<Option<u32>> {
+    let Some(beacon) = load_cached_runtime_beacon(workspace_root)? else {
+        return Ok(None);
+    };
+    if !listener_addr_matches_runtime_beacon(&beacon, listener_addr) {
+        return Ok(None);
+    }
+    if !process_is_alive(beacon.process_id) {
+        return Ok(None);
+    }
+    if !process_looks_like_openrustclaw(beacon.process_id) {
+        return Ok(None);
+    }
+    Ok(Some(beacon.process_id))
+}
+
+fn listener_addr_matches_runtime_beacon(beacon: &RuntimeBeacon, listener_addr: &str) -> bool {
+    beacon.listener_addr == listener_addr
+        || beacon.gateway_addr == listener_addr
+        || beacon
+            .advertised_addrs
+            .iter()
+            .any(|value| value == listener_addr)
+}
+
 fn process_is_alive(pid: u32) -> bool {
     #[cfg(target_os = "linux")]
     {
         Path::new("/proc").join(pid.to_string()).exists()
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        pid == std::process::id()
+    }
+}
+
+fn process_looks_like_openrustclaw(pid: u32) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        let proc_root = Path::new("/proc").join(pid.to_string());
+        let exe_match = fs::read_link(proc_root.join("exe"))
+            .ok()
+            .and_then(|path| {
+                path.file_name()
+                    .and_then(|value| value.to_str())
+                    .map(|value| value.to_ascii_lowercase().contains("openrustclaw"))
+            })
+            .unwrap_or(false);
+        if exe_match {
+            return true;
+        }
+
+        fs::read(proc_root.join("cmdline"))
+            .ok()
+            .and_then(|raw| String::from_utf8(raw).ok())
+            .map(|raw| raw.to_ascii_lowercase().contains("openrustclaw"))
+            .unwrap_or(false)
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -4548,6 +4900,47 @@ mod tests {
     }
 
     #[test]
+    fn diagnose_listener_conflict_reports_active_runtime_lock_owner() -> Result<()> {
+        let temp = tempdir()?;
+        let workspace_root = temp.path();
+        let _guard =
+            acquire_runtime_lock("config/default.toml", workspace_root, "127.0.0.1:18789")?;
+
+        let diagnosis = diagnose_listener_conflict(workspace_root, "127.0.0.1:18789")?;
+
+        assert_eq!(
+            diagnosis.owner_kind,
+            RuntimeListenerOwnerKind::ActiveOpenRustClaw
+        );
+        assert_eq!(diagnosis.ownership_source, "the runtime lock");
+        assert!(diagnosis.failure_message().contains("openrustclaw restart"));
+        Ok(())
+    }
+
+    #[test]
+    fn diagnose_listener_conflict_reports_stale_runtime_lock_owner() -> Result<()> {
+        let temp = tempdir()?;
+        let workspace_root = temp.path();
+        let stale_record = RuntimeLockRecord {
+            acquired_at: Utc::now().to_rfc3339(),
+            process_id: 999_999,
+            gateway_addr: "127.0.0.1:18789".to_string(),
+            config_path: "config/default.toml".to_string(),
+        };
+        save_runtime_lock(workspace_root, &stale_record)?;
+
+        let diagnosis = diagnose_listener_conflict(workspace_root, "127.0.0.1:18789")?;
+
+        assert_eq!(
+            diagnosis.owner_kind,
+            RuntimeListenerOwnerKind::StaleOpenRustClaw
+        );
+        assert_eq!(diagnosis.owner_pid, Some(999_999));
+        assert!(diagnosis.failure_message().contains("openrustclaw stop"));
+        Ok(())
+    }
+
+    #[test]
     fn stop_runtime_process_reports_no_running_runtime_when_lock_is_absent() -> Result<()> {
         let temp = tempdir()?;
         let workspace_root = temp.path();
@@ -4589,6 +4982,96 @@ mod tests {
                 .contains("Cleared a stale OpenRustClaw runtime lock")
         );
         assert!(!runtime_lock_path_for(workspace_root).exists());
+        Ok(())
+    }
+
+    #[test]
+    fn stop_runtime_process_clears_stale_runtime_beacon_without_lock() -> Result<()> {
+        let temp = tempdir()?;
+        let workspace_root = temp.path();
+        let beacon = RuntimeBeacon {
+            generated_at: Utc::now().to_rfc3339(),
+            process_id: 999_999,
+            gateway_addr: "127.0.0.1:18789".to_string(),
+            listener_addr: "127.0.0.1:18789".to_string(),
+            advertised_addrs: vec!["127.0.0.1:18789".to_string()],
+            started_at: None,
+            uptime_seconds: None,
+            sidecar_running: false,
+            default_provider: "openai".to_string(),
+            degraded_control_plane_mode: false,
+            recommended_control_plane_provider: None,
+        };
+        save_runtime_beacon(workspace_root, &beacon)?;
+        let runtime = tokio::runtime::Runtime::new()?;
+
+        let summary =
+            runtime.block_on(stop_runtime_process("config/default.toml", workspace_root))?;
+
+        assert!(summary.changed);
+        assert_eq!(summary.process_id, Some(999_999));
+        assert!(
+            summary
+                .message
+                .contains("Cleared a stale OpenRustClaw runtime beacon")
+        );
+        assert!(!runtime_beacon_path_for(workspace_root).exists());
+        Ok(())
+    }
+
+    #[test]
+    fn ensure_configured_listener_available_reports_foreign_process_conflict() -> Result<()> {
+        let temp = tempdir()?;
+        let workspace_root = temp.path();
+        fs::create_dir_all(workspace_root.join("config"))?;
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+        let port = listener.local_addr()?.port();
+        let mut config = AppConfig::default();
+        config.gateway.host = "127.0.0.1".to_string();
+        config.gateway.port = port;
+        fs::write(
+            workspace_root.join("config/default.toml"),
+            toml::to_string_pretty(&config)?,
+        )?;
+
+        let error = ensure_configured_listener_available("config/default.toml", workspace_root)
+            .unwrap_err();
+        let message = error.to_string();
+
+        assert!(message.contains("non-OpenRustClaw or unclassified process"));
+        assert!(message.contains("gateway.host"));
+        assert!(message.contains("gateway.port"));
+        Ok(())
+    }
+
+    #[test]
+    fn restart_runtime_process_reports_listener_conflict_before_launch() -> Result<()> {
+        let temp = tempdir()?;
+        let workspace_root = temp.path();
+        fs::create_dir_all(workspace_root.join("config"))?;
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+        let port = listener.local_addr()?.port();
+        let mut config = AppConfig::default();
+        config.gateway.host = "127.0.0.1".to_string();
+        config.gateway.port = port;
+        fs::write(
+            workspace_root.join("config/default.toml"),
+            toml::to_string_pretty(&config)?,
+        )?;
+
+        let runtime = tokio::runtime::Runtime::new()?;
+        let error = runtime
+            .block_on(restart_runtime_process(
+                "config/default.toml",
+                workspace_root,
+            ))
+            .unwrap_err();
+        let message = error.to_string();
+
+        assert!(message.contains("non-OpenRustClaw or unclassified process"));
+        assert!(!message.contains("restart launch exited early"));
         Ok(())
     }
 
