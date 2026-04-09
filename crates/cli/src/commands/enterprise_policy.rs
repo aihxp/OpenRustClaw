@@ -1,8 +1,10 @@
 use anyhow::{Context, Result, anyhow};
 use chrono::{Duration, Utc};
-use openrustclaw_app::agent_backend_catalog::AgentBackendCatalogService;
+use openrustclaw_app::agent_backend_catalog::{
+    AgentBackendCatalogEntry, AgentBackendCatalogService,
+};
 use openrustclaw_app::agent_backend_control::{
-    AgentBackendControlService, DelegatedAgentBackendContract,
+    AgentBackendControlService, DelegatedAgentBackendContract, DelegatedExecutionKind,
 };
 use openrustclaw_core::config::AppConfig;
 use openrustclaw_mobile::protocol::DeviceCommandKind;
@@ -310,8 +312,9 @@ pub fn summary(workspace_root: &Path, config_path: &str) -> Result<EnterprisePol
     let config = runtime::load_effective_config(config_path, workspace_root)
         .unwrap_or_else(|_| AppConfig::default());
     let browser = browser_summary_from_config(&config);
-    let delegated_agent_backends = AgentBackendControlService::new()
-        .contracts_from_catalog(&AgentBackendCatalogService::new().discover());
+    let discovered_backends = AgentBackendCatalogService::new().discover();
+    let delegated_agent_backends =
+        delegated_backend_summary_from_catalog(&config, &discovered_backends);
     let manifest = load_manifest(workspace_root)?.unwrap_or_default();
     let access_boundary_active = enterprise_access::access_is_configured(workspace_root)?;
     let access_registry_path = enterprise_access::enterprise_access_path(workspace_root)
@@ -691,6 +694,40 @@ fn browser_summary_from_config(config: &AppConfig) -> EnterpriseBrowserPolicySum
     }
 }
 
+fn delegated_backend_summary_from_catalog(
+    config: &AppConfig,
+    catalog: &[AgentBackendCatalogEntry],
+) -> Vec<DelegatedAgentBackendContract> {
+    let service = AgentBackendControlService::new();
+    let policy =
+        service.policy_from_config(config, config.external_backends.audit_log_path.clone());
+
+    service
+        .contracts_from_catalog(catalog)
+        .into_iter()
+        .map(|mut contract| {
+            if contract.execution_eligible
+                && contract.delegated_execution_kind == DelegatedExecutionKind::LocalCli
+            {
+                let decision = service.evaluate_execution(
+                    &policy,
+                    &contract,
+                    "delegate",
+                    None,
+                    Utc::now().to_rfc3339(),
+                );
+                if !decision.allowed {
+                    contract.execution_eligible = false;
+                    if let Some(detail) = decision.error_message {
+                        contract.readiness_reason = Some(detail);
+                    }
+                }
+            }
+            contract
+        })
+        .collect()
+}
+
 fn save_manifest(workspace_root: &Path, manifest: &EnterprisePolicyManifest) -> Result<()> {
     let path = enterprise_policy_path(workspace_root);
     if let Some(parent) = path.parent() {
@@ -777,10 +814,16 @@ mod tests {
     use super::{
         EnterpriseAuditExportPolicyUpdate, EnterpriseAuditExportRequest,
         EnterpriseBrowserPolicyUpdate, EnterpriseMobileApprovalPolicyUpdate,
-        EnterprisePolicyUpdateRequest, approval_required_for_command, export_audit_bundle,
-        review_summary, summary, update_policy,
+        EnterprisePolicyUpdateRequest, approval_required_for_command,
+        delegated_backend_summary_from_catalog, export_audit_bundle, review_summary, summary,
+        update_policy,
     };
     use anyhow::Result;
+    use openrustclaw_app::agent_backend_catalog::{
+        AgentBackendAuthStatus, AgentBackendCapability, AgentBackendCatalogEntry,
+        AgentBackendReadiness,
+    };
+    use openrustclaw_app::tool_host_service::AiHost;
     use openrustclaw_core::config::AppConfig;
     use openrustclaw_mobile::protocol::DeviceCommandKind;
     use std::fs;
@@ -924,6 +967,47 @@ mod tests {
             ]
         );
         Ok(())
+    }
+
+    #[test]
+    fn delegated_backend_summary_applies_wrapper_policy_to_execution_eligibility() {
+        let mut config = AppConfig::default();
+        config.external_backends.allow_local_cli_wrappers = false;
+        config.external_backends.allowed_backends = vec!["claude_code".to_string()];
+
+        let backends = delegated_backend_summary_from_catalog(
+            &config,
+            &[AgentBackendCatalogEntry {
+                host: AiHost::ClaudeCode,
+                binary_name: "claude".to_string(),
+                detected: true,
+                executable_path: Some("/usr/local/bin/claude".to_string()),
+                version_text: Some("1.0.0".to_string()),
+                summary: Some("Claude Code".to_string()),
+                auth_status: AgentBackendAuthStatus::LoggedIn,
+                auth_method: Some("claude.ai".to_string()),
+                model_discovery: AgentBackendCapability::Unsupported,
+                delegated_execution: AgentBackendCapability::Candidate,
+                policy_classification: "delegated_cli_candidate".to_string(),
+                readiness: AgentBackendReadiness::Ready,
+                readiness_reason: None,
+                detected_subcommands: vec!["auth".to_string()],
+                detected_flags: vec!["--model".to_string()],
+                discovered_models: Vec::new(),
+                inspected_at: "2026-04-09T00:00:00Z".to_string(),
+                notes: Vec::new(),
+            }],
+        );
+
+        assert_eq!(backends.len(), 1);
+        assert!(!backends[0].execution_eligible);
+        assert!(
+            backends[0]
+                .readiness_reason
+                .as_deref()
+                .unwrap_or_default()
+                .contains("disabled by policy")
+        );
     }
 
     #[test]
