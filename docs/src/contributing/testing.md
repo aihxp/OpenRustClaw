@@ -44,6 +44,9 @@ OpenRustClaw/
 Unit tests stay next to the code they exercise. Use them for fast validation of pure logic and
 crate-local behavior.
 
+If your machine uses a small `/tmp` tmpfs, prefer `scripts/cargo-local.sh ...` for heavier test
+runs so Cargo writes temp files and target artifacts under the repo instead of `/tmp`.
+
 ```bash
 # All library/unit tests
 cargo test --workspace --lib

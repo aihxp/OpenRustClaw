@@ -2,6 +2,8 @@
 
 set -euo pipefail
 
+source "$(dirname "$0")/use-local-tmp.sh"
+
 CRATE="${1:-openrustclaw-core}"
 
 echo "==> Cargo metadata"

@@ -109,6 +109,9 @@ OPENROUTER_API_KEY=sk-or-...
 ### Full Build
 
 ```bash
+# Prefer the local wrapper on hosts with small /tmp mounts
+scripts/cargo-local.sh build --workspace
+
 # Build entire workspace
 cargo build --workspace
 
@@ -149,6 +152,9 @@ cargo watch -x 'test --workspace'
 ### Full Test Suite
 
 ```bash
+# Prefer the local wrapper on hosts with small /tmp mounts
+scripts/cargo-local.sh test --workspace
+
 # Run all tests
 cargo test --workspace
 
@@ -185,6 +191,10 @@ cargo test --workspace -- --ignored
 # Run with output
 cargo test --workspace -- --nocapture
 ```
+
+If your host keeps `/tmp` on a small `tmpfs`, use `scripts/cargo-local.sh ...` or `source scripts/use-local-tmp.sh`
+before heavy builds and tests. That keeps Cargo temp files and build artifacts under the repo `target/`
+tree instead of filling `/tmp`.
 
 ### Test Coverage
 

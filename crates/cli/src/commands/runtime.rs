@@ -1,5 +1,6 @@
 //! Runtime configuration, vault, and provider/model switching helpers.
 
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::net::{IpAddr, SocketAddr};
@@ -14,7 +15,7 @@ use argon2::Argon2;
 use async_trait::async_trait;
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{Key, XChaCha20Poly1305, XNonce};
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use futures::Stream;
 use openrustclaw_app::agent_backend_catalog::AgentBackendCatalogService;
 use openrustclaw_app::agent_backend_control::{
@@ -61,12 +62,20 @@ pub const DEFAULT_VAULT_PATH: &str = ".claw/control/runtime-vault.json";
 pub const DEFAULT_RUNTIME_HEALTH_PATH: &str = ".claw/control/runtime-health.json";
 pub const DEFAULT_RUNTIME_RELOAD_STATE_PATH: &str = ".claw/control/runtime-reload-state.json";
 pub const DEFAULT_RUNTIME_BEACON_PATH: &str = ".claw/control/runtime-beacon.json";
+pub const DEFAULT_RUNTIME_UPDATE_CHECK_PATH: &str = ".claw/control/runtime-update-check.json";
 pub const DEFAULT_RUNTIME_BACKUP_ROOT: &str = ".claw/runtime-backups";
 pub const DEFAULT_RUNTIME_RELEASE_ROOT: &str = ".claw/runtime-releases";
 pub const DEFAULT_RUNTIME_LOCK_PATH: &str = ".claw/control/runtime-lock.json";
 pub const DEFAULT_SYSTEMD_SERVICE_NAME: &str = "openrustclaw.service";
 pub const DEFAULT_LAUNCHD_LABEL: &str = "dev.openrustclaw.openrustclaw";
 const DEFAULT_PASSPHRASE_ENV: &str = "OPENRUSTCLAW_VAULT_PASSPHRASE";
+const DEFAULT_RUNTIME_UPDATE_CHECK_TTL_SECS: i64 = 12 * 60 * 60;
+const DEFAULT_RUNTIME_UPDATE_CHECK_TIMEOUT_MS: u64 = 600;
+const DEFAULT_GITHUB_TAGS_PAGE_SIZE: usize = 20;
+const LEGACY_OPENCLAW_ROOT: &str = ".openclaw";
+const LEGACY_OPENCLAW_CONFIG: &str = "config/openclaw.toml";
+const LEGACY_OPENCLAW_DB: &str = "data/openclaw.db";
+const CANONICAL_RUNTIME_DB: &str = "data/openrustclaw.db";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct RuntimeVault {
@@ -111,6 +120,31 @@ pub struct RuntimeStatus {
     pub vault_path: String,
     pub vault_present: bool,
     pub vault_unlocked: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RuntimeUpdateCheck {
+    pub checked_at: String,
+    pub current_version: String,
+    pub latest_version: String,
+    pub update_available: bool,
+    pub repository: String,
+    pub tags_url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct OpenClawMigrationReport {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub applied_actions: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RuntimeStartupPreflightReport {
+    pub openclaw_migration: OpenClawMigrationReport,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub update_check: Option<RuntimeUpdateCheck>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -392,6 +426,12 @@ pub fn runtime_reload_state_path_for(workspace_root: impl AsRef<Path>) -> PathBu
 
 pub fn runtime_beacon_path_for(workspace_root: impl AsRef<Path>) -> PathBuf {
     workspace_root.as_ref().join(DEFAULT_RUNTIME_BEACON_PATH)
+}
+
+pub fn runtime_update_check_path_for(workspace_root: impl AsRef<Path>) -> PathBuf {
+    workspace_root
+        .as_ref()
+        .join(DEFAULT_RUNTIME_UPDATE_CHECK_PATH)
 }
 
 pub fn runtime_backup_root_for(workspace_root: impl AsRef<Path>) -> PathBuf {
@@ -727,6 +767,19 @@ pub fn migrate_config(
     })
 }
 
+pub async fn run_runtime_startup_preflight(
+    config_path: &str,
+    workspace_root: &Path,
+) -> Result<RuntimeStartupPreflightReport> {
+    let openclaw_migration = migrate_openclaw_workspace_state(config_path, workspace_root)?;
+    let update_check = runtime_update_check(workspace_root).await?;
+
+    Ok(RuntimeStartupPreflightReport {
+        openclaw_migration,
+        update_check,
+    })
+}
+
 pub async fn runtime_upgrade_plan(
     config_path: &str,
     workspace_root: &Path,
@@ -1037,6 +1090,21 @@ pub fn load_applied_runtime_snapshot(
     let snapshot: RuntimeAppliedSnapshot =
         serde_json::from_str(&raw).context("Failed to parse runtime reload state")?;
     Ok(Some(snapshot))
+}
+
+pub fn load_cached_runtime_update_check(
+    workspace_root: &Path,
+) -> Result<Option<RuntimeUpdateCheck>> {
+    let path = runtime_update_check_path_for(workspace_root);
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let raw = fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read '{}'", path.display()))?;
+    let report: RuntimeUpdateCheck =
+        serde_json::from_str(&raw).context("Failed to parse runtime update check")?;
+    Ok(Some(report))
 }
 
 pub fn load_cached_runtime_beacon(workspace_root: &Path) -> Result<Option<RuntimeBeacon>> {
@@ -1402,6 +1470,19 @@ fn save_runtime_beacon(workspace_root: &Path, beacon: &RuntimeBeacon) -> Result<
     }
     let rendered =
         serde_json::to_string_pretty(beacon).context("Failed to serialize runtime beacon")?;
+    fs::write(&path, rendered.as_bytes())
+        .with_context(|| format!("Failed to write '{}'", path.display()))?;
+    Ok(())
+}
+
+fn save_runtime_update_check(workspace_root: &Path, report: &RuntimeUpdateCheck) -> Result<()> {
+    let path = runtime_update_check_path_for(workspace_root);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create '{}'", parent.display()))?;
+    }
+    let rendered =
+        serde_json::to_string_pretty(report).context("Failed to serialize runtime update check")?;
     fs::write(&path, rendered.as_bytes())
         .with_context(|| format!("Failed to write '{}'", path.display()))?;
     Ok(())
@@ -3475,6 +3556,189 @@ fn copy_path_recursive(source: &Path, dest: &Path) -> Result<()> {
     Ok(())
 }
 
+fn move_path_with_fallback(source: &Path, dest: &Path) -> Result<()> {
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create '{}'", parent.display()))?;
+    }
+
+    match fs::rename(source, dest) {
+        Ok(()) => Ok(()),
+        Err(_) => {
+            copy_path_recursive(source, dest)?;
+            remove_path_if_exists(source)?;
+            Ok(())
+        }
+    }
+}
+
+fn migrate_openclaw_workspace_state(
+    config_path: &str,
+    workspace_root: &Path,
+) -> Result<OpenClawMigrationReport> {
+    let mut report = OpenClawMigrationReport::default();
+    let legacy_root = workspace_root.join(LEGACY_OPENCLAW_ROOT);
+    let canonical_root = workspace_root.join(".claw");
+
+    if legacy_root.exists() {
+        if canonical_root.exists() {
+            report.warnings.push(
+                "Legacy `.openclaw` state is still present because `.claw` already exists; review and merge any remaining legacy files manually.".to_string(),
+            );
+        } else {
+            move_path_with_fallback(&legacy_root, &canonical_root)?;
+            report
+                .applied_actions
+                .push("Moved legacy operator state from `.openclaw` to `.claw`.".to_string());
+        }
+    }
+
+    let resolved_config_path = resolve_runtime_config_path(workspace_root, config_path);
+    let legacy_config_path = workspace_root.join(LEGACY_OPENCLAW_CONFIG);
+    if legacy_config_path.exists() {
+        if resolved_config_path.exists() {
+            report.warnings.push(format!(
+                "Legacy config `{}` was detected, but `{}` already exists and was kept.",
+                legacy_config_path.display(),
+                resolved_config_path.display()
+            ));
+        } else {
+            move_path_with_fallback(&legacy_config_path, &resolved_config_path)?;
+            report.applied_actions.push(format!(
+                "Migrated legacy config `{}` to `{}`.",
+                legacy_config_path.display(),
+                resolved_config_path.display()
+            ));
+        }
+    }
+
+    let legacy_db_path = workspace_root.join(LEGACY_OPENCLAW_DB);
+    let canonical_db_path = workspace_root.join(CANONICAL_RUNTIME_DB);
+    if legacy_db_path.exists() {
+        if canonical_db_path.exists() {
+            report.warnings.push(format!(
+                "Legacy database `{}` was detected, but `{}` already exists and was kept.",
+                legacy_db_path.display(),
+                canonical_db_path.display()
+            ));
+        } else {
+            move_path_with_fallback(&legacy_db_path, &canonical_db_path)?;
+            report.applied_actions.push(format!(
+                "Migrated legacy database `{}` to `{}`.",
+                legacy_db_path.display(),
+                canonical_db_path.display()
+            ));
+        }
+    }
+
+    Ok(report)
+}
+
+async fn runtime_update_check(workspace_root: &Path) -> Result<Option<RuntimeUpdateCheck>> {
+    if let Some(cached) = load_cached_runtime_update_check(workspace_root)?
+        && !runtime_update_check_expired(&cached, DEFAULT_RUNTIME_UPDATE_CHECK_TTL_SECS)
+    {
+        return Ok(Some(cached));
+    }
+
+    match fetch_runtime_update_check().await {
+        Ok(report) => {
+            save_runtime_update_check(workspace_root, &report)?;
+            Ok(Some(report))
+        }
+        Err(_) => load_cached_runtime_update_check(workspace_root),
+    }
+}
+
+fn runtime_update_check_expired(report: &RuntimeUpdateCheck, ttl_secs: i64) -> bool {
+    let Ok(checked_at) = DateTime::parse_from_rfc3339(&report.checked_at) else {
+        return true;
+    };
+    (Utc::now() - checked_at.with_timezone(&Utc)).num_seconds() >= ttl_secs
+}
+
+async fn fetch_runtime_update_check() -> Result<RuntimeUpdateCheck> {
+    let tags_url = github_tags_api_url(DEFAULT_GITHUB_TAGS_PAGE_SIZE);
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_millis(
+            DEFAULT_RUNTIME_UPDATE_CHECK_TIMEOUT_MS,
+        ))
+        .user_agent(format!("openrustclaw-cli/{}", env!("CARGO_PKG_VERSION")))
+        .build()
+        .context("Failed to build runtime update check client")?;
+    let response = client
+        .get(&tags_url)
+        .header("Accept", "application/vnd.github+json")
+        .send()
+        .await
+        .context("Failed to query GitHub tags for runtime update check")?
+        .error_for_status()
+        .context("GitHub tags endpoint returned an error status")?;
+    let body = response
+        .text()
+        .await
+        .context("Failed to read GitHub tags response")?;
+    let latest_version = parse_latest_release_tag(&body).ok_or_else(|| {
+        anyhow::anyhow!("No semver release tags were found in the GitHub response")
+    })?;
+    Ok(RuntimeUpdateCheck {
+        checked_at: Utc::now().to_rfc3339(),
+        current_version: env!("CARGO_PKG_VERSION").to_string(),
+        update_available: compare_release_versions(&latest_version, env!("CARGO_PKG_VERSION"))
+            == Ordering::Greater,
+        latest_version,
+        repository: env!("CARGO_PKG_REPOSITORY").to_string(),
+        tags_url,
+    })
+}
+
+fn github_tags_api_url(page_size: usize) -> String {
+    let repository = env!("CARGO_PKG_REPOSITORY")
+        .trim_end_matches('/')
+        .trim_end_matches(".git");
+    if let Some(path) = repository.strip_prefix("https://github.com/") {
+        return format!("https://api.github.com/repos/{path}/tags?per_page={page_size}");
+    }
+    format!("https://api.github.com/repos/aihxp/OpenRustClaw/tags?per_page={page_size}")
+}
+
+fn parse_latest_release_tag(raw: &str) -> Option<String> {
+    let tags = serde_json::from_str::<Vec<serde_json::Value>>(raw).ok()?;
+    tags.into_iter()
+        .filter_map(|entry| {
+            entry
+                .get("name")
+                .and_then(|value| value.as_str())
+                .map(str::to_string)
+        })
+        .filter_map(|value| normalize_release_version(&value))
+        .max_by(|left, right| compare_release_versions(left, right))
+}
+
+fn normalize_release_version(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    let normalized = trimmed.strip_prefix('v').unwrap_or(trimmed).trim();
+    parse_release_version(normalized).map(|_| normalized.to_string())
+}
+
+fn compare_release_versions(left: &str, right: &str) -> Ordering {
+    match (parse_release_version(left), parse_release_version(right)) {
+        (Some(left), Some(right)) => left.cmp(&right),
+        _ => left.cmp(right),
+    }
+}
+
+fn parse_release_version(value: &str) -> Option<(u64, u64, u64)> {
+    let mut parts = value.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    let patch = parts.next()?.parse().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((major, minor, patch))
+}
+
 fn toml_section_mut<'a>(
     value: &'a mut toml::Value,
     section: &str,
@@ -3841,6 +4105,81 @@ mod tests {
         let loaded = AppConfig::load_from(&path.display().to_string())?;
         assert_eq!(loaded.gateway.port, 18789);
         assert_eq!(loaded.providers.default_provider, "anthropic");
+        Ok(())
+    }
+
+    #[test]
+    fn parse_latest_release_tag_prefers_highest_semver_release() {
+        let raw = r#"
+        [
+          {"name":"v1.4.7"},
+          {"name":"milestone-72"},
+          {"name":"v1.4.9"},
+          {"name":"1.4.8"}
+        ]
+        "#;
+
+        assert_eq!(parse_latest_release_tag(raw).as_deref(), Some("1.4.9"));
+    }
+
+    #[test]
+    fn migrate_openclaw_workspace_state_moves_legacy_state_into_runtime_paths() -> Result<()> {
+        let temp = tempdir()?;
+        let workspace_root = temp.path();
+
+        fs::create_dir_all(workspace_root.join(".openclaw/control"))?;
+        fs::write(
+            workspace_root.join(".openclaw/control/runtime.json"),
+            "{\"legacy\":true}\n",
+        )?;
+        fs::create_dir_all(workspace_root.join("config"))?;
+        fs::write(
+            workspace_root.join("config/openclaw.toml"),
+            toml::to_string_pretty(&AppConfig::default())?,
+        )?;
+        fs::create_dir_all(workspace_root.join("data"))?;
+        fs::write(workspace_root.join("data/openclaw.db"), "legacy db")?;
+
+        let report = migrate_openclaw_workspace_state("config/default.toml", workspace_root)?;
+
+        assert_eq!(report.warnings.len(), 0);
+        assert_eq!(report.applied_actions.len(), 3);
+        assert!(workspace_root.join(".claw/control/runtime.json").exists());
+        assert!(workspace_root.join("config/default.toml").exists());
+        assert!(workspace_root.join("data/openrustclaw.db").exists());
+        assert!(!workspace_root.join(".openclaw").exists());
+        assert!(!workspace_root.join("config/openclaw.toml").exists());
+        assert!(!workspace_root.join("data/openclaw.db").exists());
+        Ok(())
+    }
+
+    #[test]
+    fn migrate_openclaw_workspace_state_preserves_existing_canonical_paths() -> Result<()> {
+        let temp = tempdir()?;
+        let workspace_root = temp.path();
+
+        fs::create_dir_all(workspace_root.join(".openclaw"))?;
+        fs::create_dir_all(workspace_root.join(".claw"))?;
+        fs::create_dir_all(workspace_root.join("config"))?;
+        fs::write(
+            workspace_root.join("config/openclaw.toml"),
+            toml::to_string_pretty(&AppConfig::default())?,
+        )?;
+        fs::write(
+            workspace_root.join("config/default.toml"),
+            toml::to_string_pretty(&AppConfig::default())?,
+        )?;
+        fs::create_dir_all(workspace_root.join("data"))?;
+        fs::write(workspace_root.join("data/openclaw.db"), "legacy db")?;
+        fs::write(workspace_root.join("data/openrustclaw.db"), "current db")?;
+
+        let report = migrate_openclaw_workspace_state("config/default.toml", workspace_root)?;
+
+        assert!(report.applied_actions.is_empty());
+        assert_eq!(report.warnings.len(), 3);
+        assert!(workspace_root.join(".openclaw").exists());
+        assert!(workspace_root.join("config/openclaw.toml").exists());
+        assert!(workspace_root.join("data/openclaw.db").exists());
         Ok(())
     }
 

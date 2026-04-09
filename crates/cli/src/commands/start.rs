@@ -168,6 +168,9 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
 
     info!("Starting OpenRustClaw...");
     let started_at = Utc::now();
+    let startup_preflight =
+        runtime::run_runtime_startup_preflight(config_path, &workspace_root).await?;
+    log_runtime_startup_preflight(&startup_preflight);
 
     // Load configuration
     let mut config = runtime::load_effective_config(config_path, &workspace_root)?;
@@ -926,6 +929,27 @@ async fn log_assistant_handoff(session_store: &SqliteSessionStore, workspace_roo
         "{}",
         handoff["message"].as_str().unwrap_or("Assistant handoff available.")
     );
+}
+
+fn log_runtime_startup_preflight(report: &runtime::RuntimeStartupPreflightReport) {
+    for action in &report.openclaw_migration.applied_actions {
+        info!(action = %action, "Applied legacy OpenClaw workspace migration");
+    }
+
+    for warning_message in &report.openclaw_migration.warnings {
+        warn!(warning = %warning_message, "Legacy OpenClaw workspace state still needs review");
+    }
+
+    if let Some(update_check) = report.update_check.as_ref()
+        && update_check.update_available
+    {
+        warn!(
+            current_version = %update_check.current_version,
+            latest_version = %update_check.latest_version,
+            repository = %update_check.repository,
+            "A newer OpenRustClaw release tag is available; plan an operator update before the next maintenance window"
+        );
+    }
 }
 
 fn gate_nonshipping_channels(config: &mut openrustclaw_core::config::ChannelsConfig) {

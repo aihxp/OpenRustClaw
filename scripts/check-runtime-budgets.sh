@@ -3,6 +3,8 @@
 
 set -euo pipefail
 
+source "$(dirname "$0")/use-local-tmp.sh"
+
 if [[ ! -f "Cargo.toml" ]]; then
     echo "Error: run from the repository root" >&2
     exit 1
