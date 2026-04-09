@@ -28,6 +28,18 @@ enum Commands {
         #[arg(short = 'C', long, value_name = "CHANNELS")]
         channels: Option<String>,
     },
+    /// Stop the running OpenRustClaw gateway/runtime for this workspace
+    Stop {
+        /// Config file path
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Restart the running OpenRustClaw gateway/runtime for this workspace
+    Restart {
+        /// Config file path
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
     /// Compatible interactive chat alias for the persisted assistant session
     Chat {
         /// Provider override (anthropic, openai, openrouter, gemini, ollama, claude_code, codex, gemini_cli, cursor)
@@ -3184,7 +3196,11 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     if !matches!(
         &cli.command,
-        Commands::Start { .. } | Commands::Doctor { .. } | Commands::Onboard
+        Commands::Start { .. }
+            | Commands::Stop { .. }
+            | Commands::Restart { .. }
+            | Commands::Doctor { .. }
+            | Commands::Onboard
     ) {
         init_tracing(Env::detect());
     }
@@ -3192,6 +3208,19 @@ async fn main() -> Result<()> {
     match cli.command {
         Commands::Start { config, channels } => {
             commands::start::run(&config, channels.as_deref()).await
+        }
+        Commands::Stop { config } => {
+            let workspace_root = std::env::current_dir()?;
+            let summary = commands::runtime::stop_runtime_process(&config, &workspace_root).await?;
+            println!("{}", summary.message);
+            Ok(())
+        }
+        Commands::Restart { config } => {
+            let workspace_root = std::env::current_dir()?;
+            let summary =
+                commands::runtime::restart_runtime_process(&config, &workspace_root).await?;
+            println!("{}", summary.message);
+            Ok(())
         }
         Commands::Chat { provider, model } => {
             let target =
@@ -6520,6 +6549,40 @@ mod tests {
                 assert_eq!(channels.as_deref(), Some("telegram,discord"));
             }
             _ => panic!("Expected Start command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_stop_defaults() {
+        let cli = Cli::try_parse_from(["openrustclaw", "stop"]).unwrap();
+        match cli.command {
+            Commands::Stop { config } => {
+                assert_eq!(config, "config/default.toml");
+            }
+            _ => panic!("Expected Stop command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_restart_defaults() {
+        let cli = Cli::try_parse_from(["openrustclaw", "restart"]).unwrap();
+        match cli.command {
+            Commands::Restart { config } => {
+                assert_eq!(config, "config/default.toml");
+            }
+            _ => panic!("Expected Restart command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_restart_with_config() {
+        let cli =
+            Cli::try_parse_from(["openrustclaw", "restart", "--config", "my_config.toml"]).unwrap();
+        match cli.command {
+            Commands::Restart { config } => {
+                assert_eq!(config, "my_config.toml");
+            }
+            _ => panic!("Expected Restart command"),
         }
     }
 

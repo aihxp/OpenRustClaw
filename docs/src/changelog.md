@@ -9,6 +9,14 @@ This changelog tracks the public semver release line. Planning milestone tags su
 
 ---
 
+## [1.4.9] - 2026-04-09
+
+### Added
+
+- `openrustclaw stop` and `openrustclaw restart` now provide first-class runtime control for the current workspace, including stale runtime-lock cleanup and managed restart behavior.
+- `openrustclaw start` now performs a bounded startup preflight that can warn about newer tagged releases and migrate safe legacy `OpenClaw` workspace paths into the current `OpenRustClaw` layout.
+- Heavy release and verification scripts now default their temp and Cargo target directories into the repo `target/` tree, and `scripts/cargo-local.sh` provides the same safer local-target workflow for manual Cargo runs on hosts with small `/tmp`.
+
 ## [1.4.8] - 2026-04-09
 
 ### Fixed

@@ -55,6 +55,42 @@ openrustclaw start --config config/production.toml
 
 ---
 
+### `stop`
+
+Stop the running OpenRustClaw gateway/runtime for the current workspace.
+
+```bash
+openrustclaw stop [OPTIONS]
+
+Options:
+  -c, --config <CONFIG>  Config file path [default: config/default.toml]
+```
+
+**Example**:
+```bash
+openrustclaw stop
+```
+
+---
+
+### `restart`
+
+Restart the running OpenRustClaw gateway/runtime for the current workspace.
+
+```bash
+openrustclaw restart [OPTIONS]
+
+Options:
+  -c, --config <CONFIG>  Config file path [default: config/default.toml]
+```
+
+**Example**:
+```bash
+openrustclaw restart
+```
+
+---
+
 ### `chat`
 
 Interactive chat with the agent. This now reuses the same persisted assistant-session path as `openrustclaw assistant`.

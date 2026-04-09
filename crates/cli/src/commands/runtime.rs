@@ -54,6 +54,7 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::time::Duration;
 use tokio::process::Command;
+use tokio::time::sleep;
 use uuid::Uuid;
 
 use super::inspect;
@@ -390,6 +391,19 @@ pub struct RuntimeOperatorOpsSummary {
     pub beacon: RuntimeBeacon,
     pub reload_plan: RuntimeReloadPlan,
     pub recommended_actions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RuntimeProcessCommandSummary {
+    pub action: String,
+    pub config_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub process_id: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub launched_process_id: Option<u32>,
+    pub used_service_manager: bool,
+    pub changed: bool,
+    pub message: String,
 }
 
 pub struct RuntimeLockGuard {
@@ -971,6 +985,142 @@ pub fn runtime_lock_status(workspace_root: &Path) -> Result<RuntimeLockStatus> {
     })
 }
 
+pub async fn stop_runtime_process(
+    config_path: &str,
+    workspace_root: &Path,
+) -> Result<RuntimeProcessCommandSummary> {
+    let service_install_status = runtime_service_install_status(config_path, workspace_root)?;
+    let lock_status = runtime_lock_status(workspace_root)?;
+
+    if lock_status.active {
+        let pid = lock_status.process_id;
+        if service_install_status.installed
+            && invoke_service_manager_action(&service_install_status, ServiceManagerAction::Stop)?
+        {
+            if wait_for_runtime_stop(workspace_root, pid, Duration::from_secs(10)).await {
+                return Ok(RuntimeProcessCommandSummary {
+                    action: "stop".to_string(),
+                    config_path: config_path.to_string(),
+                    process_id: pid,
+                    launched_process_id: None,
+                    used_service_manager: true,
+                    changed: true,
+                    message: pid
+                        .map(|value| {
+                            format!(
+                                "Stopped OpenRustClaw through the host user service manager (runtime pid {value})."
+                            )
+                        })
+                        .unwrap_or_else(|| {
+                            "Stopped OpenRustClaw through the host user service manager."
+                                .to_string()
+                        }),
+                });
+            }
+        }
+
+        if let Some(pid) = pid {
+            terminate_process(pid)?;
+            if wait_for_runtime_stop(workspace_root, Some(pid), Duration::from_secs(10)).await {
+                return Ok(RuntimeProcessCommandSummary {
+                    action: "stop".to_string(),
+                    config_path: config_path.to_string(),
+                    process_id: Some(pid),
+                    launched_process_id: None,
+                    used_service_manager: false,
+                    changed: true,
+                    message: format!("Stopped OpenRustClaw runtime (pid {pid})."),
+                });
+            }
+            anyhow::bail!(
+                "Timed out waiting for OpenRustClaw runtime pid {} to stop",
+                pid
+            );
+        }
+    }
+
+    if lock_status.stale {
+        clear_runtime_lock(workspace_root)?;
+        return Ok(RuntimeProcessCommandSummary {
+            action: "stop".to_string(),
+            config_path: config_path.to_string(),
+            process_id: lock_status.process_id,
+            launched_process_id: None,
+            used_service_manager: false,
+            changed: true,
+            message:
+                "Cleared a stale OpenRustClaw runtime lock; no active runtime process was running."
+                    .to_string(),
+        });
+    }
+
+    Ok(RuntimeProcessCommandSummary {
+        action: "stop".to_string(),
+        config_path: config_path.to_string(),
+        process_id: None,
+        launched_process_id: None,
+        used_service_manager: false,
+        changed: false,
+        message: "No running OpenRustClaw runtime was detected.".to_string(),
+    })
+}
+
+pub async fn restart_runtime_process(
+    config_path: &str,
+    workspace_root: &Path,
+) -> Result<RuntimeProcessCommandSummary> {
+    let service_install_status = runtime_service_install_status(config_path, workspace_root)?;
+    let lock_status = runtime_lock_status(workspace_root)?;
+    let previous_pid = lock_status.process_id;
+
+    if lock_status.stale {
+        clear_runtime_lock(workspace_root)?;
+    }
+
+    if service_install_status.installed
+        && invoke_service_manager_action(&service_install_status, ServiceManagerAction::Restart)?
+    {
+        let restarted = wait_for_runtime_start(workspace_root, Duration::from_secs(15)).await?;
+        return Ok(RuntimeProcessCommandSummary {
+            action: "restart".to_string(),
+            config_path: config_path.to_string(),
+            process_id: previous_pid,
+            launched_process_id: restarted.process_id,
+            used_service_manager: true,
+            changed: true,
+            message: restarted
+                .process_id
+                .map(|pid| {
+                    format!(
+                        "Restarted OpenRustClaw through the host user service manager (active pid {}).",
+                        pid
+                    )
+                })
+                .unwrap_or_else(|| {
+                    "Restarted OpenRustClaw through the host user service manager.".to_string()
+                }),
+        });
+    }
+
+    if lock_status.active {
+        let _ = stop_runtime_process(config_path, workspace_root).await?;
+    }
+
+    let launched = launch_runtime_start(config_path, workspace_root).await?;
+    Ok(RuntimeProcessCommandSummary {
+        action: "restart".to_string(),
+        config_path: config_path.to_string(),
+        process_id: previous_pid,
+        launched_process_id: launched.process_id.or(launched.launched_process_id),
+        used_service_manager: false,
+        changed: true,
+        message: launched
+            .launched_process_id
+            .map(|pid| format!("Restarted OpenRustClaw runtime (new pid {}).", pid))
+            .unwrap_or_else(|| "Started OpenRustClaw runtime.".to_string()),
+    })
+}
+
 pub fn acquire_runtime_lock(
     config_path: &str,
     workspace_root: &Path,
@@ -1501,6 +1651,15 @@ fn save_runtime_lock(workspace_root: &Path, record: &RuntimeLockRecord) -> Resul
     Ok(())
 }
 
+fn clear_runtime_lock(workspace_root: &Path) -> Result<()> {
+    let path = runtime_lock_path_for(workspace_root);
+    if path.exists() {
+        fs::remove_file(&path)
+            .with_context(|| format!("Failed to remove stale runtime lock '{}'", path.display()))?;
+    }
+    Ok(())
+}
+
 fn process_is_alive(pid: u32) -> bool {
     #[cfg(target_os = "linux")]
     {
@@ -1511,6 +1670,165 @@ fn process_is_alive(pid: u32) -> bool {
     {
         pid == std::process::id()
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ServiceManagerAction {
+    Stop,
+    Restart,
+}
+
+fn invoke_service_manager_action(
+    status: &RuntimeServiceInstallStatus,
+    action: ServiceManagerAction,
+) -> Result<bool> {
+    if !(status.supported && status.installed) {
+        return Ok(false);
+    }
+
+    match status.service_manager.as_str() {
+        "systemd-user" => {
+            let subcommand = match action {
+                ServiceManagerAction::Stop => "stop",
+                ServiceManagerAction::Restart => "restart",
+            };
+            let command_status = StdCommand::new("systemctl")
+                .args(["--user", subcommand, DEFAULT_SYSTEMD_SERVICE_NAME])
+                .status()
+                .with_context(|| format!("Failed to invoke systemctl --user {}", subcommand))?;
+            if command_status.success() {
+                Ok(true)
+            } else {
+                Ok(false)
+            }
+        }
+        _ => Ok(false),
+    }
+}
+
+fn terminate_process(pid: u32) -> Result<()> {
+    #[cfg(unix)]
+    {
+        let status = StdCommand::new("kill")
+            .args(["-TERM", &pid.to_string()])
+            .status()
+            .with_context(|| format!("Failed to send SIGTERM to pid {}", pid))?;
+        if status.success() {
+            return Ok(());
+        }
+        anyhow::bail!("Failed to stop OpenRustClaw runtime pid {}", pid);
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        anyhow::bail!("Runtime stop/restart is not implemented on this host OS yet");
+    }
+}
+
+async fn wait_for_runtime_stop(workspace_root: &Path, pid: Option<u32>, timeout: Duration) -> bool {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        let lock_status = runtime_lock_status(workspace_root).ok();
+        let pid_gone = pid.map(|value| !process_is_alive(value)).unwrap_or(true);
+        let lock_clear = lock_status
+            .as_ref()
+            .map(|status| !status.active)
+            .unwrap_or(true);
+        if pid_gone && lock_clear {
+            return true;
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        sleep(Duration::from_millis(200)).await;
+    }
+}
+
+async fn wait_for_runtime_start(
+    workspace_root: &Path,
+    timeout: Duration,
+) -> Result<RuntimeProcessCommandSummary> {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        let lock_status = runtime_lock_status(workspace_root)?;
+        if lock_status.active {
+            return Ok(RuntimeProcessCommandSummary {
+                action: "start".to_string(),
+                config_path: lock_status
+                    .config_path
+                    .clone()
+                    .unwrap_or_else(|| "config/default.toml".to_string()),
+                process_id: lock_status.process_id,
+                launched_process_id: lock_status.process_id,
+                used_service_manager: false,
+                changed: true,
+                message: "OpenRustClaw runtime is running.".to_string(),
+            });
+        }
+        if std::time::Instant::now() >= deadline {
+            anyhow::bail!("Timed out waiting for OpenRustClaw runtime to start");
+        }
+        sleep(Duration::from_millis(250)).await;
+    }
+}
+
+async fn launch_runtime_start(
+    config_path: &str,
+    workspace_root: &Path,
+) -> Result<RuntimeProcessCommandSummary> {
+    let current_exe = std::env::current_exe().context("Failed to resolve current executable")?;
+    let resolved_config_path = resolve_runtime_config_path(workspace_root, config_path);
+    let mut child = StdCommand::new(&current_exe)
+        .arg("start")
+        .arg("--config")
+        .arg(&resolved_config_path)
+        .current_dir(workspace_root)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .with_context(|| {
+            format!(
+                "Failed to launch '{}' for runtime restart",
+                current_exe.display()
+            )
+        })?;
+
+    let launched_pid = child.id();
+    for _ in 0..40 {
+        if let Some(status) = child.try_wait()? {
+            anyhow::bail!(
+                "OpenRustClaw restart launch exited early with status {}",
+                status
+            );
+        }
+        if let Ok(lock_status) = runtime_lock_status(workspace_root)
+            && lock_status.active
+        {
+            return Ok(RuntimeProcessCommandSummary {
+                action: "start".to_string(),
+                config_path: resolved_config_path.display().to_string(),
+                process_id: lock_status.process_id,
+                launched_process_id: Some(launched_pid),
+                used_service_manager: false,
+                changed: true,
+                message: "OpenRustClaw runtime is running.".to_string(),
+            });
+        }
+        sleep(Duration::from_millis(250)).await;
+    }
+
+    Ok(RuntimeProcessCommandSummary {
+        action: "start".to_string(),
+        config_path: resolved_config_path.display().to_string(),
+        process_id: None,
+        launched_process_id: Some(launched_pid),
+        used_service_manager: false,
+        changed: true,
+        message:
+            "OpenRustClaw start was launched, but the runtime lock did not appear before the timeout."
+                .to_string(),
+    })
 }
 
 fn capture_runtime_snapshot(
@@ -4226,6 +4544,51 @@ mod tests {
             assert!(lock_path.exists());
         }
         assert!(!lock_path.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn stop_runtime_process_reports_no_running_runtime_when_lock_is_absent() -> Result<()> {
+        let temp = tempdir()?;
+        let workspace_root = temp.path();
+        let runtime = tokio::runtime::Runtime::new()?;
+
+        let summary =
+            runtime.block_on(stop_runtime_process("config/default.toml", workspace_root))?;
+
+        assert_eq!(summary.action, "stop");
+        assert!(!summary.changed);
+        assert_eq!(
+            summary.message,
+            "No running OpenRustClaw runtime was detected."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn stop_runtime_process_clears_stale_runtime_lock() -> Result<()> {
+        let temp = tempdir()?;
+        let workspace_root = temp.path();
+        let stale_record = RuntimeLockRecord {
+            acquired_at: Utc::now().to_rfc3339(),
+            process_id: 999_999,
+            gateway_addr: "127.0.0.1:18789".to_string(),
+            config_path: "config/default.toml".to_string(),
+        };
+        save_runtime_lock(workspace_root, &stale_record)?;
+        let runtime = tokio::runtime::Runtime::new()?;
+
+        let summary =
+            runtime.block_on(stop_runtime_process("config/default.toml", workspace_root))?;
+
+        assert!(summary.changed);
+        assert_eq!(summary.process_id, Some(999_999));
+        assert!(
+            summary
+                .message
+                .contains("Cleared a stale OpenRustClaw runtime lock")
+        );
+        assert!(!runtime_lock_path_for(workspace_root).exists());
         Ok(())
     }
 
