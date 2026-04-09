@@ -1,5 +1,19 @@
 # Project Milestones: OpenRustClaw
 
+## v1.47 Runtime Lifecycle Reliability (Shipped: 2026-04-09)
+
+**Phases completed:** 3 phases, 3 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.47-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Added listener ownership diagnosis to runtime lifecycle commands and routed `openrustclaw start` bind failures through active/stale/foreign conflict classification.
+- Hardened stop/restart recovery so stale beacons are cleared, beacon-backed OpenRustClaw ownership can be stopped, and restart reports listener conflicts before launching a doomed child runtime.
+- Added the regression coverage and operator-facing docs for runtime listener conflict recovery, including the bounded remediation path that replaces the vague restart early-exit failure.
+
+---
+
 ## v1.46 Ad Hoc Release Catch-Up and GSD Re-entry (Shipped: 2026-04-09)
 
 **Phases completed:** 4 phases, 4 plans, 0 tasks

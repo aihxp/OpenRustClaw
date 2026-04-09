@@ -12,22 +12,27 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ## Current State
 
-- **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, v1.9 GitHub Repository Presence and Actions Recovery, v1.10 Release Binaries Workflow Recovery, v1.11 Crates.io and Docs.rs Publication Foundation, v1.12 Secure Node Connectivity and SSH Tunnel Revisit, v1.13 Brownfield-to-Greenfield Transition, v1.14 Continued Greenfield Conversion, v1.15 Deeper Greenfield Conversion, v1.16 Greenfield Conversion: Skills and Runtime Hotspots, v1.17 Greenfield Conversion: Completion Metrics and Remaining Hotspots, v1.18 Greenfield Conversion: Final Ranked Seam and 100% Completion Path, v1.19 Full Greenfield Conversion: Control Plane Route Families I, v1.20 Full Greenfield Conversion: Control Plane Route Families II, v1.21 Full Greenfield Conversion: Mobile and Voice Runtime Services, v1.22 Full Greenfield Conversion: Orchestration and Browser Services, v1.23 Full Greenfield Conversion: Setup and Secondary Command Surfaces, v1.24 Full Greenfield Conversion: Adapter-Only Exit and Enforcement, v1.25 Native Delivery Layer: Port Contracts and Legacy Inventory, v1.26 Native Delivery Layer: Control, MCP, and Gateway Delivery, v1.27 Native Delivery Layer: CLI Core Dispatch and Operator Commands I, v1.28 Native Delivery Layer: CLI Operator Commands II and UI-Adjacent Flows, v1.29 Native Delivery Layer: Runtime Hosts and Background Workers, v1.30 Native Delivery Layer: Repositories and Integration Adapters, v1.31 Native Delivery Layer: Legacy Module Retirement and Compatibility Shutdown, v1.32 Native Delivery Layer: Native Product Exit Audit and Packaging, v1.33 Native Delivery Implementation: Gateway and MCP Successor Entry Points, v1.34 Native Delivery Implementation: Native CLI Dispatch and Core Operator Paths, v1.35 Native Delivery Implementation: Runtime Hosts and Background Workers, v1.36 Native Delivery Implementation: Repository and Integration Adapter Lift, v1.37 Native Delivery Implementation: Legacy Command Tree Retirement, v1.38 Native Delivery Implementation: Native Product Verification and Packaging Exit, v1.39 Native Product E2E Verification and Greenfield Repairs, v1.40 Public Product Cleanup, Documentation Convergence, CI Repair, and Release, v1.41 Markdown Surface Audit, Cleanup, and Consolidation, v1.42 Onboarding Primary LLM Selection, v1.43 Learning Loop, Memory Depth, and God Mode, v1.44 Agent Discovery, Journey Cohesion, and Provider Access, and v1.45 Agent Fabric, Routing Console, and Guided Delegation
-- **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.46-*`
-- **Planning state:** `v1.47 Runtime Lifecycle Reliability` is now active, focused on making `openrustclaw start` / `stop` / `restart` trustworthy under listener conflicts and partial runtime failure
+- **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, v1.9 GitHub Repository Presence and Actions Recovery, v1.10 Release Binaries Workflow Recovery, v1.11 Crates.io and Docs.rs Publication Foundation, v1.12 Secure Node Connectivity and SSH Tunnel Revisit, v1.13 Brownfield-to-Greenfield Transition, v1.14 Continued Greenfield Conversion, v1.15 Deeper Greenfield Conversion, v1.16 Greenfield Conversion: Skills and Runtime Hotspots, v1.17 Greenfield Conversion: Completion Metrics and Remaining Hotspots, v1.18 Greenfield Conversion: Final Ranked Seam and 100% Completion Path, v1.19 Full Greenfield Conversion: Control Plane Route Families I, v1.20 Full Greenfield Conversion: Control Plane Route Families II, v1.21 Full Greenfield Conversion: Mobile and Voice Runtime Services, v1.22 Full Greenfield Conversion: Orchestration and Browser Services, v1.23 Full Greenfield Conversion: Setup and Secondary Command Surfaces, v1.24 Full Greenfield Conversion: Adapter-Only Exit and Enforcement, v1.25 Native Delivery Layer: Port Contracts and Legacy Inventory, v1.26 Native Delivery Layer: Control, MCP, and Gateway Delivery, v1.27 Native Delivery Layer: CLI Core Dispatch and Operator Commands I, v1.28 Native Delivery Layer: CLI Operator Commands II and UI-Adjacent Flows, v1.29 Native Delivery Layer: Runtime Hosts and Background Workers, v1.30 Native Delivery Layer: Repositories and Integration Adapters, v1.31 Native Delivery Layer: Legacy Module Retirement and Compatibility Shutdown, v1.32 Native Delivery Layer: Native Product Exit Audit and Packaging, v1.33 Native Delivery Implementation: Gateway and MCP Successor Entry Points, v1.34 Native Delivery Implementation: Native CLI Dispatch and Core Operator Paths, v1.35 Native Delivery Implementation: Runtime Hosts and Background Workers, v1.36 Native Delivery Implementation: Repository and Integration Adapter Lift, v1.37 Native Delivery Implementation: Legacy Command Tree Retirement, v1.38 Native Delivery Implementation: Native Product Verification and Packaging Exit, v1.39 Native Product E2E Verification and Greenfield Repairs, v1.40 Public Product Cleanup, Documentation Convergence, CI Repair, and Release, v1.41 Markdown Surface Audit, Cleanup, and Consolidation, v1.42 Onboarding Primary LLM Selection, v1.43 Learning Loop, Memory Depth, and God Mode, v1.44 Agent Discovery, Journey Cohesion, and Provider Access, v1.45 Agent Fabric, Routing Console, and Guided Delegation, v1.46 Ad Hoc Release Catch-Up and GSD Re-entry, and v1.47 Runtime Lifecycle Reliability
+- **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.47-*`
+- **Planning state:** no active milestone is open; `v1.47 Runtime Lifecycle Reliability` shipped on 2026-04-09 and the next queued milestone is release traceability and milestone correlation
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closed that workflow gap going forward
 - **Program baselines:** the internal architecture and verification denominators remain closed, and the public-product convergence roadmap is now complete at `1/1`, or `100%`
 
-## Current Milestone: v1.47 Runtime Lifecycle Reliability
+## No Active Milestone
 
-**Goal:** make `openrustclaw start`, `stop`, and `restart` reliable when the configured listener is already bound, the prior runtime is stale, or the runtime exited only partially.
+**Most recent result:** `v1.47 Runtime Lifecycle Reliability` shipped on 2026-04-09.
 
-**Target features:**
-- deterministic listener-ownership detection before or during startup failure paths
-- restart and stop flows that reconcile runtime locks, listener state, and recoverable stale processes
-- clearer operator remediation plus regression coverage for listener-conflict and restart paths
+**Next command:** `$gsd-new-milestone`
 
-## Most Recent Milestone: v1.46 Ad Hoc Release Catch-Up and GSD Re-entry
+**Queued next:** release traceability and milestone correlation.
+
+## Most Recent Milestone: v1.47 Runtime Lifecycle Reliability
+
+**Result:** Shipped 2026-04-09. OpenRustClaw closed the runtime lifecycle reliability gap around listener conflicts, stale runtime state, and restart recovery by classifying busy listeners, hardening stop or restart reconciliation, and documenting the bounded remediation path.
+
+**Archive:** `.planning/milestones/v1.47-*`
+
+## Previous Milestone: v1.46 Ad Hoc Release Catch-Up and GSD Re-entry
 
 **Result:** Shipped 2026-04-09. OpenRustClaw captured the out-of-band `1.4.1` through `1.4.9` release line under one truthful milestone, aligned the planning deck with the shipped onboarding and runtime baseline, preserved the release and operational hardening story, and restored an explicit next GSD entrypoint.
 
@@ -43,7 +48,7 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 **Immediate focus after v1.47:** make future semver releases traceable back to named GSD phases or milestone closeout artifacts so the public package line and planning line stay correlated.
 
-## Previous Milestone: v1.45 Agent Fabric, Routing Console, and Guided Delegation
+## Older Milestone: v1.45 Agent Fabric, Routing Console, and Guided Delegation
 
 **Result:** Shipped 2026-04-08. OpenRustClaw closed the delegated-agent fabric roadmap at `5/5`, added truthful Cursor execution support, trusted remote-host inventory, durable route policy and receipts, a dedicated routing console, and a guided first-task launch path after onboarding or repair.
 
@@ -353,4 +358,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-09 after starting the v1.47 runtime lifecycle reliability milestone*
+*Last updated: 2026-04-09 after shipping the v1.47 runtime lifecycle reliability milestone*
