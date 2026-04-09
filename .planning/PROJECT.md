@@ -14,9 +14,18 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 - **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, v1.9 GitHub Repository Presence and Actions Recovery, v1.10 Release Binaries Workflow Recovery, v1.11 Crates.io and Docs.rs Publication Foundation, v1.12 Secure Node Connectivity and SSH Tunnel Revisit, v1.13 Brownfield-to-Greenfield Transition, v1.14 Continued Greenfield Conversion, v1.15 Deeper Greenfield Conversion, v1.16 Greenfield Conversion: Skills and Runtime Hotspots, v1.17 Greenfield Conversion: Completion Metrics and Remaining Hotspots, v1.18 Greenfield Conversion: Final Ranked Seam and 100% Completion Path, v1.19 Full Greenfield Conversion: Control Plane Route Families I, v1.20 Full Greenfield Conversion: Control Plane Route Families II, v1.21 Full Greenfield Conversion: Mobile and Voice Runtime Services, v1.22 Full Greenfield Conversion: Orchestration and Browser Services, v1.23 Full Greenfield Conversion: Setup and Secondary Command Surfaces, v1.24 Full Greenfield Conversion: Adapter-Only Exit and Enforcement, v1.25 Native Delivery Layer: Port Contracts and Legacy Inventory, v1.26 Native Delivery Layer: Control, MCP, and Gateway Delivery, v1.27 Native Delivery Layer: CLI Core Dispatch and Operator Commands I, v1.28 Native Delivery Layer: CLI Operator Commands II and UI-Adjacent Flows, v1.29 Native Delivery Layer: Runtime Hosts and Background Workers, v1.30 Native Delivery Layer: Repositories and Integration Adapters, v1.31 Native Delivery Layer: Legacy Module Retirement and Compatibility Shutdown, v1.32 Native Delivery Layer: Native Product Exit Audit and Packaging, v1.33 Native Delivery Implementation: Gateway and MCP Successor Entry Points, v1.34 Native Delivery Implementation: Native CLI Dispatch and Core Operator Paths, v1.35 Native Delivery Implementation: Runtime Hosts and Background Workers, v1.36 Native Delivery Implementation: Repository and Integration Adapter Lift, v1.37 Native Delivery Implementation: Legacy Command Tree Retirement, v1.38 Native Delivery Implementation: Native Product Verification and Packaging Exit, v1.39 Native Product E2E Verification and Greenfield Repairs, v1.40 Public Product Cleanup, Documentation Convergence, CI Repair, and Release, v1.41 Markdown Surface Audit, Cleanup, and Consolidation, v1.42 Onboarding Primary LLM Selection, v1.43 Learning Loop, Memory Depth, and God Mode, v1.44 Agent Discovery, Journey Cohesion, and Provider Access, and v1.45 Agent Fabric, Routing Console, and Guided Delegation
 - **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.46-*`
-- **Planning state:** `v1.46 Ad Hoc Release Catch-Up and GSD Re-entry` is shipped, and the next GSD entry is the release-traceability queue
+- **Planning state:** `v1.47 Runtime Lifecycle Reliability` is now active, focused on making `openrustclaw start` / `stop` / `restart` trustworthy under listener conflicts and partial runtime failure
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closed that workflow gap going forward
 - **Program baselines:** the internal architecture and verification denominators remain closed, and the public-product convergence roadmap is now complete at `1/1`, or `100%`
+
+## Current Milestone: v1.47 Runtime Lifecycle Reliability
+
+**Goal:** make `openrustclaw start`, `stop`, and `restart` reliable when the configured listener is already bound, the prior runtime is stale, or the runtime exited only partially.
+
+**Target features:**
+- deterministic listener-ownership detection before or during startup failure paths
+- restart and stop flows that reconcile runtime locks, listener state, and recoverable stale processes
+- clearer operator remediation plus regression coverage for listener-conflict and restart paths
 
 ## Most Recent Milestone: v1.46 Ad Hoc Release Catch-Up and GSD Re-entry
 
@@ -24,15 +33,15 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 **Archive:** `.planning/milestones/v1.46-*`
 
-## Next GSD Entry
+## Queued Next
 
-**Status:** No active milestone is open after `v1.46` shipped.
+**Status:** Release traceability stays queued behind the runtime-reliability milestone.
 
-**Next command:** `$gsd-new-milestone`
+**Next command after v1.47:** `$gsd-new-milestone`
 
 **Suggested first phase:** `Phase 200: Release Evidence Consolidation and Milestone Correlation`
 
-**Immediate focus:** make future semver releases traceable back to named GSD phases or milestone closeout artifacts so the public package line and planning line stay correlated.
+**Immediate focus after v1.47:** make future semver releases traceable back to named GSD phases or milestone closeout artifacts so the public package line and planning line stay correlated.
 
 ## Previous Milestone: v1.45 Agent Fabric, Routing Console, and Guided Delegation
 
@@ -193,8 +202,11 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ### Active
 
-- **GSD-02:** Future semver releases should be traceable back to named GSD phases or milestone closeout artifacts instead of relying on conversational reconstruction.
-- **REL-03:** Release evidence for shipped semver versions should be consolidated into one milestone archive surface so the public package line and planning line stay correlated.
+- **RUN-01:** `openrustclaw restart` should return the current workspace to a healthy listening state without requiring ad hoc manual cleanup when the prior runtime is recoverable.
+- **RUN-02:** `openrustclaw start` should classify a busy listener deterministically so operators know whether the port is held by a healthy OpenRustClaw runtime, stale OpenRustClaw state, or a foreign process.
+- **RUN-03:** `openrustclaw stop` should reconcile runtime locks and listener metadata so a later `start` does not fail on stale local state.
+- **DIAG-01:** Runtime lifecycle errors should surface actionable recovery steps for listener conflicts and partial restarts instead of generic bind failures.
+- **SAFE-01:** Runtime lifecycle conflict handling should be covered by automated regression tests and aligned operator docs.
 
 ### Out of Scope
 
@@ -270,6 +282,7 @@ The next follow-on queue returned to onboarding behavior rather than broad repo 
 | Archive milestone verification evidence explicitly during milestone completion | Later review should not depend on live phase directories or manual reconstruction | ✓ Good |
 | Repurpose `v1.46` as a catch-up milestone for the shipped `1.4.1` through `1.4.9` line | The repo had already shipped materially beyond the active GSD deck, so truthful planning state mattered more than preserving the old speculative scope | ✓ Good |
 | Make release traceability the next queue after `v1.46` | Future semver releases need named milestone evidence so the planning line and package line stay correlated | ✓ Good |
+| Prioritize runtime lifecycle reliability before release traceability | A concrete operator-facing `restart`/listener failure blocks day-to-day product use more urgently than the next planning-hygiene milestone | ✓ Good |
 | Define the first enterprise slice around explicit approval boundaries plus durable audit evidence | The repo needed a truthful foundation before larger governance work like RBAC or compliance packaging | ✓ Good |
 | Prioritize deeper OpenClaw parity through a focused top-five surface slice | Browser depth, supervision, mobile, Control UI, and voice/calls are the clearest next parity gains without scattering effort | ✓ Good |
 | Keep deeper parity work grounded in typed runtime summaries instead of frontend-only stitching | Browser, supervision, mobile, Control UI, and voice parity all landed more cleanly when the Rust-owned control plane aggregated the operator story first | ✓ Good |
@@ -319,7 +332,8 @@ The next follow-on queue returned to onboarding behavior rather than broad repo 
 - the internal native-product E2E roadmap is closed at `1/1`, or `100%`
 - the public-product convergence roadmap is now closed at `1/1`, or `100%`
 - the markdown-surface audit roadmap is now closed at `1/1`, or `100%`
-- there is no active milestone open; the next queue is release traceability and milestone correlation
+- there is an active milestone: `v1.47 Runtime Lifecycle Reliability`
+- the queued follow-on milestone remains release traceability and milestone correlation
 
 ## Evolution
 
@@ -339,4 +353,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-09 after completing the v1.46 catch-up milestone*
+*Last updated: 2026-04-09 after starting the v1.47 runtime lifecycle reliability milestone*
