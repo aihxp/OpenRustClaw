@@ -8,17 +8,19 @@ iteration: 1
 
 # Phase 200 Code Review Fix
 
-The Phase 200 review finding was evaluated for automatic remediation in the retroactive sweep branch.
+Attempted to apply automatic fixes for Phase 200 review findings.
 
-## Result
+## Outcome
 
-- `WR-01` was skipped.
+- `WR-01` was not auto-fixed.
 
-## Skip Reason
+## Skip Reasons
 
-The finding requires a deliberate cross-platform design choice rather than a safe single-phase autofix. A blind patch here would risk changing runtime-ownership semantics across macOS, Windows, and Linux without the broader validation that follow-on phases now depend on.
+### WR-01: Non-Linux ownership detection only recognizes the current CLI process
 
-## Recommended Follow-Up
+This finding requires either:
 
-- Implement platform-aware process inspection or explicitly gate non-Linux ownership classification in a dedicated code change.
-- Re-run Phase 200 review after that runtime change lands.
+- a real cross-platform process-introspection implementation for non-Linux hosts, or
+- an explicit product decision to degrade or disable listener-ownership classification on hosts where the runtime owner cannot be verified.
+
+That is a runtime-behavior design change, not a safe blind auto-fix for a retroactive sweep. It should be handled in a dedicated follow-up change with platform-specific tests.
