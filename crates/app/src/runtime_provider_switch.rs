@@ -103,19 +103,24 @@ fn apply_provider_switch(
                 validate_model_for_provider("claude_code", &model)?;
                 config.providers.anthropic.model = model;
             }
+            ensure_delegated_backend_allowed(config, "claude_code");
         }
         "codex" => {
             if let Some(model) = request.model {
                 validate_model_for_provider("codex", &model)?;
                 config.providers.openai.codex_model = model;
             }
+            ensure_delegated_backend_allowed(config, "codex");
         }
         "gemini_cli" => {
             if let Some(model) = request.model {
                 config.providers.gemini.model = model;
             }
+            ensure_delegated_backend_allowed(config, "gemini_cli");
         }
-        "cursor" => {}
+        "cursor" => {
+            ensure_delegated_backend_allowed(config, "cursor");
+        }
         _ => {
             return Err(Error::Internal(format!(
                 "Unknown provider '{}'",
@@ -130,6 +135,22 @@ fn apply_provider_switch(
     }
     ensure_control_plane_defaults(config);
     Ok(())
+}
+
+fn ensure_delegated_backend_allowed(config: &mut AppConfig, backend_id: &str) {
+    if !config
+        .external_backends
+        .allowed_backends
+        .iter()
+        .any(|entry| entry == backend_id)
+    {
+        config
+            .external_backends
+            .allowed_backends
+            .push(backend_id.to_string());
+        config.external_backends.allowed_backends.sort();
+        config.external_backends.allowed_backends.dedup();
+    }
 }
 
 fn provider_supports_control_plane(config: &AppConfig, provider: &str) -> bool {
@@ -311,10 +332,7 @@ mod tests {
             fallback_chain: None,
         })?;
         assert_eq!(claude.providers.default_provider, "claude_code");
-        assert_eq!(
-            claude.providers.anthropic.model,
-            "claude-sonnet-4-20250514"
-        );
+        assert_eq!(claude.providers.anthropic.model, "claude-sonnet-4-20250514");
 
         let codex = service.switch_provider(RuntimeProviderSwitchRequest {
             provider: "codex".to_string(),
@@ -324,6 +342,13 @@ mod tests {
         })?;
         assert_eq!(codex.providers.default_provider, "codex");
         assert_eq!(codex.providers.openai.codex_model, "gpt-5.3-codex");
+        assert!(
+            codex
+                .external_backends
+                .allowed_backends
+                .iter()
+                .any(|entry| entry == "codex")
+        );
 
         let gemini = service.switch_provider(RuntimeProviderSwitchRequest {
             provider: "gemini_cli".to_string(),
@@ -333,6 +358,13 @@ mod tests {
         })?;
         assert_eq!(gemini.providers.default_provider, "gemini_cli");
         assert_eq!(gemini.providers.gemini.model, "gemini-2.5-pro");
+        assert!(
+            gemini
+                .external_backends
+                .allowed_backends
+                .iter()
+                .any(|entry| entry == "gemini_cli")
+        );
         Ok(())
     }
 

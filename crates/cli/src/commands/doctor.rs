@@ -339,6 +339,10 @@ async fn check_control_registry(repair: bool) -> Result<()> {
 
 async fn check_channels_registry(repair: bool) -> Result<()> {
     let cwd = std::env::current_dir()?;
+    let config = load_app_config(None);
+    if !has_enabled_channels(&config) {
+        return Ok(());
+    }
     let channels_root = channels::channels_root_for(&cwd);
     if repair && !channels_root.exists() {
         channels::init(None)?;
@@ -353,6 +357,7 @@ async fn check_channels_registry(repair: bool) -> Result<()> {
 fn check_onboarding_state() -> Result<()> {
     let cwd = std::env::current_dir()?;
     let status = onboard::workspace_status(&cwd);
+    let config = load_app_config(None);
     if !status.env_present
         && !status.control_registry_present
         && !status.channels_registry_present
@@ -364,7 +369,9 @@ fn check_onboarding_state() -> Result<()> {
     }
     if let Some(setup_state) = onboard::load_setup_state(&cwd)? {
         let setup = setup_state.setup;
-        if !matches!(setup.status.as_str(), "ready" | "completed") {
+        if !matches!(setup.status.as_str(), "ready" | "completed")
+            && !setup_state_is_effectively_ready(&setup, &cwd, &config)
+        {
             let detail = setup
                 .next_action
                 .unwrap_or_else(|| "rerun `openrustclaw onboard` to continue setup.".to_string());
@@ -372,6 +379,70 @@ fn check_onboarding_state() -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn setup_state_is_effectively_ready(
+    setup: &onboard::SetupState,
+    workspace_root: &Path,
+    config: &openrustclaw_core::config::AppConfig,
+) -> bool {
+    let Some(access_mode) = setup.selected_access_mode.as_deref() else {
+        return false;
+    };
+    if setup.selected_provider.is_none() {
+        return false;
+    }
+
+    match access_mode {
+        "api_key" => {
+            if !workspace_has_any_api_key() {
+                return false;
+            }
+        }
+        "subscription_managed" => {
+            if setup.selected_backend_id.is_none() {
+                return false;
+            }
+        }
+        "local_runtime" => {}
+        _ => {}
+    }
+
+    let channels_enabled = has_enabled_channels(config);
+    let non_api_path = workspace_has_non_api_provider_path(workspace_root);
+
+    let has_meaningful_blocker = setup.blockers.iter().any(|blocker| {
+        let blocker = blocker.to_ascii_lowercase();
+        if !channels_enabled && (blocker.contains("channel ") || blocker.contains("whatsapp")) {
+            return false;
+        }
+        if non_api_path && blocker.contains("provider api keys") {
+            return false;
+        }
+        if blocker.contains("primary task model") {
+            return false;
+        }
+        if blocker.contains("run `openrustclaw doctor --deep`") {
+            return false;
+        }
+        true
+    });
+    if has_meaningful_blocker {
+        return false;
+    }
+
+    !setup.bootstrap_outcomes.iter().any(|outcome| {
+        if outcome.status == "ready" {
+            return false;
+        }
+        if !channels_enabled && outcome.category == "channel" {
+            return false;
+        }
+        if non_api_path && outcome.category == "provider" {
+            return false;
+        }
+        true
+    })
 }
 
 fn check_product_mode() -> Result<()> {
@@ -451,8 +522,41 @@ async fn check_migrations(config_path: Option<&str>) -> Result<()> {
 fn check_api_keys() -> Result<()> {
     if let Ok(workspace_root) = std::env::current_dir() {
         let _ = runtime::apply_runtime_secret_sources(&workspace_root);
+        if workspace_has_non_api_provider_path(&workspace_root) {
+            return Ok(());
+        }
     }
     check_api_keys_with(|env_var| std::env::var(env_var).ok())
+}
+
+fn workspace_has_any_api_key() -> bool {
+    [
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "OPENROUTER_API_KEY",
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+    ]
+    .into_iter()
+    .any(|env_var| std::env::var(env_var).ok().is_some())
+}
+
+fn workspace_has_non_api_provider_path(workspace_root: &Path) -> bool {
+    if let Ok(Some(setup_state)) = onboard::load_setup_state(workspace_root)
+        && matches!(
+            setup_state.setup.selected_access_mode.as_deref(),
+            Some("subscription_managed" | "local_runtime")
+        )
+    {
+        return true;
+    }
+
+    let config =
+        runtime::load_effective_config("config/default.toml", workspace_root).unwrap_or_default();
+    matches!(
+        config.providers.default_provider.as_str(),
+        "ollama" | "claude_code" | "codex" | "gemini_cli" | "cursor"
+    )
 }
 
 fn check_api_keys_with<F>(mut get_env: F) -> Result<()>
@@ -489,6 +593,10 @@ where
 /// Check sidecar availability.
 async fn check_sidecar(config_path: Option<&str>) -> Result<()> {
     let config = load_app_config(config_path);
+
+    if !sidecar_is_required(&config) {
+        return Ok(());
+    }
 
     // Check if Python is available
     let output = tokio::process::Command::new(&config.sidecar.python_path)
@@ -538,6 +646,29 @@ async fn check_sidecar(config_path: Option<&str>) -> Result<()> {
             )
         }
     }
+}
+
+fn sidecar_is_required(config: &openrustclaw_core::config::AppConfig) -> bool {
+    config.sidecar.auto_start
+        && !matches!(
+            config.sidecar.role,
+            openrustclaw_core::config::SidecarRole::Disabled
+        )
+}
+
+fn has_enabled_channels(config: &openrustclaw_core::config::AppConfig) -> bool {
+    config.channels.telegram.enabled
+        || config.channels.discord.enabled
+        || config.channels.slack.enabled
+        || config.channels.mattermost.enabled
+        || config.channels.matrix.enabled
+        || config.channels.whatsapp.enabled
+        || config.channels.teams.enabled
+        || config.channels.google_chat.enabled
+        || config.channels.google_meet.enabled
+        || config.channels.gmail_pubsub.enabled
+        || config.channels.signal.enabled
+        || config.channels.imessage.enabled
 }
 
 fn sidecar_source_dir() -> PathBuf {
@@ -631,6 +762,8 @@ async fn check_ollama() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::onboard::{SetupState, SetupStateManifest, save_setup_state};
+    use tempfile::tempdir;
 
     fn sample_report(checks: Vec<DiagnosticCheck>) -> DiagnosticReport {
         let passed = checks
@@ -682,6 +815,59 @@ mod tests {
             _ => None,
         });
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_sidecar_is_not_required_when_autostart_is_disabled() {
+        let mut config = openrustclaw_core::config::AppConfig::default();
+        config.sidecar.auto_start = false;
+        config.sidecar.role = openrustclaw_core::config::SidecarRole::Compatibility;
+        assert!(!sidecar_is_required(&config));
+    }
+
+    #[test]
+    fn test_has_enabled_channels_false_for_default_config() {
+        assert!(!has_enabled_channels(
+            &openrustclaw_core::config::AppConfig::default()
+        ));
+    }
+
+    #[test]
+    fn test_workspace_has_non_api_provider_path_for_subscription_managed_setup() {
+        let dir = tempdir().unwrap();
+        let manifest = SetupStateManifest {
+            version: 1,
+            setup: SetupState {
+                started_at: Utc::now().to_rfc3339(),
+                updated_at: Utc::now().to_rfc3339(),
+                completed_at: None,
+                status: "in_progress".to_string(),
+                workspace_action: "repair_existing".to_string(),
+                deployment_mode: None,
+                deployment_path: None,
+                remote_connectivity_profile: None,
+                setup_path: Some("Standard".to_string()),
+                selected_provider: Some("openai".to_string()),
+                selected_lane_id: Some("codex".to_string()),
+                selected_lane_label: Some("OpenAI (GPT)".to_string()),
+                selected_lane_kind: Some("delegated_agent".to_string()),
+                selected_backend_id: Some("codex".to_string()),
+                selected_lane_detail: Some("Use your existing Codex login.".to_string()),
+                selected_lane_compatibility_note: None,
+                selected_access_mode: Some("subscription_managed".to_string()),
+                selected_primary_model: None,
+                selected_primary_model_source: None,
+                selected_steps: vec!["model".to_string()],
+                completed_steps: Vec::new(),
+                blockers: Vec::new(),
+                next_action: Some("Complete AI Model Setup".to_string()),
+                current_step: Some("model".to_string()),
+                bootstrap_outcomes: Vec::new(),
+            },
+        };
+        save_setup_state(dir.path(), &manifest).unwrap();
+
+        assert!(workspace_has_non_api_provider_path(dir.path()));
     }
 
     #[test]
@@ -759,5 +945,76 @@ mod tests {
 
         assert!(readiness.ready);
         assert!(readiness.blocking_items.is_empty());
+    }
+
+    #[test]
+    fn test_setup_state_is_effectively_ready_for_subscription_managed_without_channels() {
+        let dir = tempdir().unwrap();
+        let setup = SetupState {
+            started_at: Utc::now().to_rfc3339(),
+            updated_at: Utc::now().to_rfc3339(),
+            completed_at: None,
+            status: "blocked".to_string(),
+            workspace_action: "repair_existing".to_string(),
+            deployment_mode: None,
+            deployment_path: None,
+            remote_connectivity_profile: None,
+            setup_path: Some("Standard".to_string()),
+            selected_provider: Some("openai".to_string()),
+            selected_lane_id: Some("codex".to_string()),
+            selected_lane_label: Some("OpenAI (GPT)".to_string()),
+            selected_lane_kind: Some("delegated_agent".to_string()),
+            selected_backend_id: Some("codex".to_string()),
+            selected_lane_detail: Some("Use your existing Codex login.".to_string()),
+            selected_lane_compatibility_note: None,
+            selected_access_mode: Some("subscription_managed".to_string()),
+            selected_primary_model: None,
+            selected_primary_model_source: None,
+            selected_steps: vec!["model".to_string()],
+            completed_steps: Vec::new(),
+            blockers: vec![
+                "provider API keys: No LLM provider API keys configured".to_string(),
+                "channel whatsapp needs review: stale warning".to_string(),
+            ],
+            next_action: Some(
+                "Run `openrustclaw doctor --deep`, fix blockers, then rerun onboarding."
+                    .to_string(),
+            ),
+            current_step: None,
+            bootstrap_outcomes: vec![
+                onboard::SetupBootstrapOutcome {
+                    category: "provider".to_string(),
+                    target: "openai".to_string(),
+                    status: "blocked".to_string(),
+                    detail: "stale provider block".to_string(),
+                    issue_kind: None,
+                    verification_stage: None,
+                    suggested_action: None,
+                    updated_at: Utc::now().to_rfc3339(),
+                },
+                onboard::SetupBootstrapOutcome {
+                    category: "channel".to_string(),
+                    target: "whatsapp".to_string(),
+                    status: "warning".to_string(),
+                    detail: "stale channel warning".to_string(),
+                    issue_kind: None,
+                    verification_stage: None,
+                    suggested_action: None,
+                    updated_at: Utc::now().to_rfc3339(),
+                },
+            ],
+        };
+
+        let manifest = SetupStateManifest {
+            version: 1,
+            setup: setup.clone(),
+        };
+        save_setup_state(dir.path(), &manifest).unwrap();
+
+        assert!(setup_state_is_effectively_ready(
+            &setup,
+            dir.path(),
+            &openrustclaw_core::config::AppConfig::default(),
+        ));
     }
 }

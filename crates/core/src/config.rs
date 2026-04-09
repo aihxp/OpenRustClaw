@@ -196,7 +196,12 @@ pub struct ExternalBackendsConfig {
 }
 
 fn default_allowed_external_backends() -> Vec<String> {
-    vec!["agent_browser_cli".to_string()]
+    vec![
+        "agent_browser_cli".to_string(),
+        "claude_code".to_string(),
+        "codex".to_string(),
+        "gemini_cli".to_string(),
+    ]
 }
 
 fn default_external_backend_audit_log_path() -> String {

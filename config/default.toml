@@ -41,7 +41,7 @@ api_key_env = "GEMINI_API_KEY"
 # base_url = "https://generativelanguage.googleapis.com/v1beta"
 
 [external_backends]
-allowed_backends = ["agent_browser_cli"]
+allowed_backends = ["agent_browser_cli", "claude_code", "codex", "gemini_cli"]
 allow_local_cli_wrappers = true
 allow_cloud_agent_execution = false
 audit_log_path = ".claw/control/external-backends-audit.jsonl"

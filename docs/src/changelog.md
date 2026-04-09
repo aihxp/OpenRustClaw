@@ -9,6 +9,20 @@ This changelog tracks the public semver release line. Planning milestone tags su
 
 ---
 
+## [1.4.6] - 2026-04-09
+
+### Changed
+
+- Delegated local-agent runtime switching now automatically allows `claude_code`, `codex`, and `gemini_cli` in the external-backend policy instead of requiring a manual allowlist edit first.
+- `openrustclaw doctor` now treats optional sidecar and channel-registry surfaces as non-issues when they are not part of the current solo/local-agent setup.
+
+### Fixed
+
+- Onboarding repair no longer keeps stale provider/channel bootstrap warnings around when those steps are intentionally skipped or rerun.
+- Doctor no longer reports missing API keys for subscription-managed or local-runtime lanes such as Codex, Claude Code, and Ollama.
+- Doctor now recognizes an effectively usable local-agent setup even if the persisted setup state was left `blocked` by stale onboarding metadata.
+- `openrustclaw doctor` no longer initializes the generic tracing path, so the command output is not preceded by raw SQL/tracing debug logs.
+
 ## [1.4.5] - 2026-04-08
 
 ### Added

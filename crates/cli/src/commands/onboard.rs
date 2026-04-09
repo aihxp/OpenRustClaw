@@ -949,6 +949,23 @@ Let's get started!
         self.state.selected_primary_model_source =
             setup_state.setup.selected_primary_model_source.clone();
         self.state.workspace_action = Some(setup_state.setup.workspace_action.clone());
+        self.state.gateway_configured = setup_state
+            .setup
+            .completed_steps
+            .iter()
+            .any(|step| step == "gateway");
+        self.state.model_configured = setup_state
+            .setup
+            .completed_steps
+            .iter()
+            .any(|step| step == "model");
+        self.state.channels_configured = setup_state
+            .setup
+            .bootstrap_outcomes
+            .iter()
+            .filter(|outcome| outcome.category == "channel" && outcome.status == "ready")
+            .map(|outcome| outcome.target.clone())
+            .collect();
         Ok(())
     }
 
@@ -1622,7 +1639,12 @@ async fn run_channel_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
         1 => Some(setup_discord(wizard).await?),
         2 => Some(setup_slack(wizard).await?),
         3 => Some(setup_whatsapp(wizard).await?),
-        _ => return Ok(true),
+        _ => {
+            let workspace_root = std::env::current_dir()?;
+            clear_bootstrap_outcomes_for_categories(&workspace_root, &["channel"])?;
+            wizard.state.channels_configured.clear();
+            return Ok(true);
+        }
     };
 
     if let Some(platform) = platform {
@@ -3221,6 +3243,7 @@ fn derive_setup_repair_plan(
 
 fn prepare_setup_state_for_repair(workspace_root: &Path, steps: &[OnboardingStep]) -> Result<()> {
     let selected_step_ids = step_ids(steps);
+    let cleared_categories = bootstrap_categories_for_steps(steps);
     let product_mode = self_hosted::load_manifest(workspace_root)?;
     with_setup_state_mut(workspace_root, move |setup| {
         setup.workspace_action = "repair_existing".to_string();
@@ -3241,8 +3264,45 @@ fn prepare_setup_state_for_repair(workspace_root: &Path, steps: &[OnboardingStep
                 .as_ref()
                 .map(|manifest| manifest.profile.onboarding_path.clone());
         }
+        setup.bootstrap_outcomes.retain(|outcome| {
+            !cleared_categories
+                .iter()
+                .any(|category| outcome.category == *category)
+        });
         setup.current_step = steps.first().map(|step| step.id().to_string());
         setup.next_action = steps.first().map(|step| step_next_action(setup, step));
+    })
+}
+
+fn bootstrap_categories_for_steps(steps: &[OnboardingStep]) -> Vec<&'static str> {
+    let mut categories = Vec::new();
+    for step in steps {
+        let mapped = match step {
+            OnboardingStep::Gateway => vec!["gateway", "remote_connectivity"],
+            OnboardingStep::Channel => vec!["channel"],
+            OnboardingStep::Model => vec!["provider", "runtime"],
+            OnboardingStep::ControlPlane => vec!["runtime"],
+            OnboardingStep::Skill | OnboardingStep::Daemon => Vec::new(),
+        };
+        for category in mapped {
+            if !categories.contains(&category) {
+                categories.push(category);
+            }
+        }
+    }
+    categories
+}
+
+fn clear_bootstrap_outcomes_for_categories(
+    workspace_root: &Path,
+    categories: &[&str],
+) -> Result<()> {
+    with_setup_state_mut(workspace_root, |setup| {
+        setup.bootstrap_outcomes.retain(|outcome| {
+            !categories
+                .iter()
+                .any(|category| outcome.category.as_str() == *category)
+        });
     })
 }
 
@@ -4389,7 +4449,38 @@ mod tests {
                 blockers: vec!["old blocker".to_string()],
                 next_action: Some("done".to_string()),
                 current_step: None,
-                bootstrap_outcomes: Vec::new(),
+                bootstrap_outcomes: vec![
+                    SetupBootstrapOutcome {
+                        category: "provider".to_string(),
+                        target: "anthropic".to_string(),
+                        status: "blocked".to_string(),
+                        detail: "old provider issue".to_string(),
+                        issue_kind: None,
+                        verification_stage: None,
+                        suggested_action: None,
+                        updated_at: Utc::now().to_rfc3339(),
+                    },
+                    SetupBootstrapOutcome {
+                        category: "channel".to_string(),
+                        target: "whatsapp".to_string(),
+                        status: "warning".to_string(),
+                        detail: "old channel issue".to_string(),
+                        issue_kind: None,
+                        verification_stage: None,
+                        suggested_action: None,
+                        updated_at: Utc::now().to_rfc3339(),
+                    },
+                    SetupBootstrapOutcome {
+                        category: "gateway".to_string(),
+                        target: "127.0.0.1:18789".to_string(),
+                        status: "ready".to_string(),
+                        detail: "gateway ready".to_string(),
+                        issue_kind: None,
+                        verification_stage: None,
+                        suggested_action: None,
+                        updated_at: Utc::now().to_rfc3339(),
+                    },
+                ],
             },
         };
         save_setup_state(dir.path(), &manifest).unwrap();
@@ -4412,6 +4503,61 @@ mod tests {
         assert_eq!(
             loaded.setup.next_action.as_deref(),
             Some("Complete AI Model Setup")
+        );
+        assert_eq!(loaded.setup.bootstrap_outcomes.len(), 1);
+        assert_eq!(loaded.setup.bootstrap_outcomes[0].category, "gateway");
+    }
+
+    #[test]
+    fn test_load_from_setup_state_restores_completion_flags() {
+        let mut wizard = OnboardingWizard::new();
+        let setup_state = SetupStateManifest {
+            version: SETUP_STATE_VERSION,
+            setup: SetupState {
+                started_at: Utc::now().to_rfc3339(),
+                updated_at: Utc::now().to_rfc3339(),
+                completed_at: None,
+                status: "in_progress".to_string(),
+                workspace_action: "repair_existing".to_string(),
+                deployment_mode: Some(self_hosted::MODE_SOLO.to_string()),
+                deployment_path: Some("solo_starter".to_string()),
+                remote_connectivity_profile: None,
+                setup_path: Some("Standard".to_string()),
+                selected_provider: Some("openai".to_string()),
+                selected_lane_id: Some("codex".to_string()),
+                selected_lane_label: Some("OpenAI (GPT)".to_string()),
+                selected_lane_kind: Some("delegated_agent".to_string()),
+                selected_backend_id: Some("codex".to_string()),
+                selected_lane_detail: Some("Use your existing Codex login.".to_string()),
+                selected_lane_compatibility_note: None,
+                selected_access_mode: Some("subscription_managed".to_string()),
+                selected_primary_model: Some("gpt-5.3-codex".to_string()),
+                selected_primary_model_source: Some("recommended_fallback".to_string()),
+                selected_steps: vec!["gateway".to_string(), "model".to_string()],
+                completed_steps: vec!["gateway".to_string(), "model".to_string()],
+                blockers: Vec::new(),
+                next_action: Some("Start the gateway".to_string()),
+                current_step: None,
+                bootstrap_outcomes: vec![SetupBootstrapOutcome {
+                    category: "channel".to_string(),
+                    target: "telegram".to_string(),
+                    status: "ready".to_string(),
+                    detail: "Telegram configured".to_string(),
+                    issue_kind: None,
+                    verification_stage: None,
+                    suggested_action: None,
+                    updated_at: Utc::now().to_rfc3339(),
+                }],
+            },
+        };
+
+        wizard.load_from_setup_state(&setup_state).unwrap();
+
+        assert!(wizard.state.gateway_configured);
+        assert!(wizard.state.model_configured);
+        assert_eq!(
+            wizard.state.channels_configured,
+            vec!["telegram".to_string()]
         );
     }
 

@@ -3182,7 +3182,10 @@ enum WebhooksAction {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    if !matches!(&cli.command, Commands::Start { .. }) {
+    if !matches!(
+        &cli.command,
+        Commands::Start { .. } | Commands::Doctor { .. } | Commands::Onboard
+    ) {
         init_tracing(Env::detect());
     }
 
