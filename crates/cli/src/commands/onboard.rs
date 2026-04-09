@@ -349,7 +349,7 @@ fn build_provider_choices(lanes: &[OnboardingLaneDescriptor]) -> Vec<ProviderCho
     struct ProviderChoiceBuilder {
         label: Option<String>,
         direct: Option<OnboardingLaneDescriptor>,
-        delegated: Option<OnboardingLaneDescriptor>,
+        delegated: Vec<OnboardingLaneDescriptor>,
     }
 
     let mut order = Vec::new();
@@ -366,7 +366,7 @@ fn build_provider_choices(lanes: &[OnboardingLaneDescriptor]) -> Vec<ProviderCho
             builder.label = Some(provider_family_label(lane).to_string());
         }
         if lane.backend_id.is_some() {
-            builder.delegated = Some(lane.clone());
+            builder.delegated.push(lane.clone());
         } else {
             builder.direct = Some(lane.clone());
         }
@@ -381,7 +381,7 @@ fn build_provider_choices(lanes: &[OnboardingLaneDescriptor]) -> Vec<ProviderCho
                 .unwrap_or_else(|| provider_id.replace('_', " "));
             let mut access_paths = Vec::new();
 
-            if let Some(delegated) = builder.delegated.clone() {
+            for delegated in builder.delegated {
                 access_paths.push(ProviderAccessPath {
                     mode: OnboardingProviderAccessMode::SubscriptionManaged,
                     label: delegated_local_agent_label(&delegated),
@@ -3937,6 +3937,74 @@ mod tests {
         assert_eq!(
             choices[0].access_paths[1].mode,
             OnboardingProviderAccessMode::ApiKey
+        );
+    }
+
+    #[test]
+    fn test_build_provider_choices_keeps_multiple_delegated_paths_for_same_provider() {
+        let choices = build_provider_choices(&[
+            OnboardingLaneDescriptor {
+                lane_id: "codex".to_string(),
+                provider_id: "openai".to_string(),
+                backend_id: Some("codex".to_string()),
+                label: "Codex CLI (Delegated local agent)".to_string(),
+                kind: OnboardingLaneKind::DelegatedAgent,
+                supported_access_modes: vec!["subscription_managed".to_string()],
+                api_key_prompt: Some("OpenAI API key".to_string()),
+                recommended: false,
+                status_label: "ready locally".to_string(),
+                detail: "Use your existing Codex login.".to_string(),
+                compatibility_note: None,
+                model_catalog_label: None,
+            },
+            OnboardingLaneDescriptor {
+                lane_id: "cursor".to_string(),
+                provider_id: "openai".to_string(),
+                backend_id: Some("cursor".to_string()),
+                label: "Cursor Agent (Delegated local agent)".to_string(),
+                kind: OnboardingLaneKind::DelegatedAgent,
+                supported_access_modes: vec!["subscription_managed".to_string()],
+                api_key_prompt: Some("OpenAI API key".to_string()),
+                recommended: false,
+                status_label: "available locally".to_string(),
+                detail: "Use your existing Cursor login.".to_string(),
+                compatibility_note: None,
+                model_catalog_label: None,
+            },
+            OnboardingLaneDescriptor {
+                lane_id: "openai".to_string(),
+                provider_id: "openai".to_string(),
+                backend_id: None,
+                label: "OpenAI (GPT)".to_string(),
+                kind: OnboardingLaneKind::DirectApi,
+                supported_access_modes: vec!["api_key".to_string()],
+                api_key_prompt: Some("OpenAI API key".to_string()),
+                recommended: false,
+                status_label: "configured".to_string(),
+                detail: "Use a provider API key stored in `.env`.".to_string(),
+                compatibility_note: None,
+                model_catalog_label: None,
+            },
+        ]);
+
+        assert_eq!(choices.len(), 1);
+        assert_eq!(choices[0].provider_id, "openai");
+        assert_eq!(choices[0].access_paths.len(), 3);
+        let delegated_backends = choices[0]
+            .access_paths
+            .iter()
+            .filter(|path| path.mode == OnboardingProviderAccessMode::SubscriptionManaged)
+            .map(|path| {
+                path.descriptor
+                    .backend_id
+                    .as_deref()
+                    .unwrap_or_default()
+                    .to_string()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            delegated_backends,
+            vec!["codex".to_string(), "cursor".to_string()]
         );
     }
 
