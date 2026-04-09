@@ -4,7 +4,9 @@ reviewers: [gemini, claude]
 reviewed_at: 2026-04-09T15:43:17.967Z
 plans_reviewed: [01-01-PLAN.md, 01-02-PLAN.md, 01-03-PLAN.md]
 ---
-# Cross-AI Plan Review — Phase 1## Gemini Review
+# Cross-AI Plan Review — Phase 1
+
+## Gemini Review
 
 Here is a structured review of the Phase 1 implementation plans for OpenRustClaw.
 
