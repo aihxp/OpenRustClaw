@@ -15,7 +15,9 @@ Choose a posture that matches the product mode you selected during onboarding:
 
 OpenRustClaw is self-hosted. There is no hosted control plane that substitutes for your runtime, storage, or operator discipline.
 
-For advanced remote deployments, use the current connectivity order from [Remote Connectivity](./remote-connectivity.md): node-first, then SSH tunnel fallback, then reverse proxy fallback as a bounded last resort.
+For advanced remote deployments, use the current connectivity order from
+[Remote Connectivity](./remote-connectivity.md): node-first, then Tailscale tailnet fallback, then
+SSH tunnel fallback, then reverse proxy fallback as a bounded last resort.
 
 ## Baseline Production Loop
 

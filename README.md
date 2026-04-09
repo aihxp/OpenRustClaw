@@ -25,7 +25,8 @@ The setup flow supports `Standard`, `Advanced`, and `Custom` depth, can resume p
 For advanced remote deployments, the current product direction is:
 
 - prefer a node-first topology when you need a remote execution or control boundary
-- use an SSH tunnel as the first fallback when the preferred node path is unavailable
+- use a Tailscale tailnet as the first fallback when the preferred node path is unavailable
+- use an SSH tunnel as the second fallback when the private tailnet path is unavailable
 - use a reverse proxy only as a bounded last resort when you fully control that path end to end
 
 ## What Ships Today
