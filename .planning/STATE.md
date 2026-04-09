@@ -1,14 +1,14 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.46
-milestone_name: Milestone Audit, Deck Convergence, and Release Alignment
+milestone_name: Ad Hoc Release Catch-Up and GSD Re-entry
 current_phase: none
 current_phase_name: none
 current_plan: none
 status: milestone started
-stopped_at: v1.46 is active; the immediate focus is milestone audit, document-deck convergence, and public release alignment.
-last_updated: "2026-04-08T20:00:00Z"
-last_activity: 2026-04-08
+stopped_at: v1.46 is active; the immediate focus is capturing the shipped 1.4.1 through 1.4.9 work under one truthful milestone and re-entering GSD from that baseline.
+last_updated: "2026-04-09T13:30:00Z"
+last_activity: 2026-04-09
 progress:
   total_phases: 4
   completed_phases: 0
@@ -21,10 +21,10 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-08)
+See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** `v1.46` is active. Audit shipped milestones, converge the canonical docs deck, and repair public release alignment.
+**Current focus:** `v1.46` is active. Capture the shipped `1.4.1` through `1.4.9` work under one milestone and restore a truthful GSD baseline.
 
 ## Current Position
 
@@ -34,7 +34,7 @@ Total Phases: 4
 Current Plan: none
 Total Plans in Phase: 0
 Status: milestone started
-Last activity: 2026-04-08
+Last activity: 2026-04-09
 
 Phase: 0 of 4
 Plan: 0 of 0
@@ -55,36 +55,22 @@ Progress: [----------] 0%
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- v1.42 made provider access mode and explicit primary-model selection truthful during onboarding, but it still left the product catalog split across onboarding, static model lists, and runtime policy surfaces.
-- v1.43 strengthened memory, learning, and God Mode, but it did not yet close the broader agent UX gap around local vendor agent discovery, delegated execution, or end-to-end journey cohesion.
-- Official vendor guidance now constrains this milestone: Claude Code explicitly supports subscription browser login for Claude Code itself but tells third-party products to use Anthropic APIs or cloud-provider integrations instead of rehosting `claude.ai` login, Gemini CLI documents Google sign-in versus API-key versus Vertex paths, and Codex CLI exposes direct login or API-key paths rather than a token-export contract.
-- The milestone will therefore treat installed local agent tools as delegated execution backends or documented provider lanes, not as token sources to be scraped into OpenRustClaw.
-- Existing repo seams already support this direction: onboarding has a `subscription_managed` concept, config has `external_backends`, browser policy already governs local CLI wrappers, and control or inspect surfaces already expose rich operator evidence patterns.
-- Phase 186 is now complete: the shared app-layer local-agent discovery catalog is reused in `openrustclaw models`, onboarding, and setup handoff or inspect, and Gemini now has runtime parity through those flows.
-- Phase 187 plan 01 now formalizes delegated local vendor-agent backends as typed contracts with vendor-managed model labels and policy-ready execution evaluation.
-- Phase 187 is now complete after surfacing delegated backend contracts through setup handoff and enterprise policy while keeping the allowlist boundary unified.
-- Phase 188 is complete: onboarding and `openrustclaw models` share one provider-or-agent lane catalog, and durable setup state remembers selected lane identity through inspect and repair flows.
-- Phase 189 is complete: delegated local-agent backends now resolve through the runtime provider factory as bounded audited runtime lanes, and control init can seed vendor-managed model-profile templates for eligible backends.
-- `v1.44` closed the basic delegated-agent journey, but Cursor remains detection-only, multi-host delegation does not exist yet, the Control UI is still a broad dashboard instead of a focused routing console, and first-task orchestration can still feel generic after onboarding.
-- `v1.45` will treat those as one connected execution-fabric problem rather than four unrelated cleanup items.
-- Phase 191 proved the stale Cursor assumption wrong on this machine: `cursor agent` exposes documented auth, model listing, and headless print surfaces, so Cursor now lives inside the delegated backend contract instead of the old detection-only bucket.
-- Subscription-managed delegated backends now validate signed-in local readiness separately from enterprise allowlist policy, which keeps onboarding truthful without weakening the later execution boundary.
-- Phase 192 is complete: local delegated inventory can now be exported, trusted remote hosts can be enrolled or refreshed from explicit snapshots, and one route-signal view can compare local and remote delegated capacity.
-- Phase 193 is complete: route resolution now records bounded local or remote decisions, preserves blocked-candidate evidence, and can emit portable remote execution envelopes with operator attribution and runtime allowlist context.
-- Phase 194 is complete: delegated backend inventory, route policy, and route receipts now converge into one routing console across Control UI, CLI, and inspect surfaces, and policy updates no longer require raw file editing.
-- Phase 195 is complete: onboarding and repair now hand off a prefilled first-task launch plan with route preview, orchestration request, and explicit fallback choices.
-- `v1.45` is fully shipped at `5/5` phases and `10/10` plans complete.
+- `v1.45` shipped cleanly, but the repo then advanced directly through semver releases `1.4.1` through `1.4.9` outside the GSD milestone deck.
+- The active milestone is therefore being repurposed as a catch-up lane instead of a speculative audit milestone, because the biggest truth gap is now planning drift rather than missing implementation.
+- The shipped out-of-band work materially changed the operator baseline across onboarding, delegated local-agent access, doctor or repair behavior, WhatsApp setup, Tailscale guidance, runtime stop or restart control, startup update checking, OpenClaw migration, and local Cargo temp-dir handling.
+- Future work should continue from this shipped baseline through GSD rather than continuing the direct-to-main release pattern.
 
 ### Pending Todos
 
-- None.
+- Reconstruct the shipped `1.4.1` through `1.4.9` scope under `v1.46`.
+- Plan Phase 196 so future work resumes inside GSD.
 
 ### Blockers/Concerns
 
-- Public semver publication is currently blocked by crates.io credentials: `cargo publish -p openrustclaw-core` returned `403 Forbidden` because the configured token lacks publish permission.
+- Planning drift is currently the main concern: the repo state and public semver line are ahead of the active milestone deck.
 
 ## Session Continuity
 
-Last session: 2026-04-08
-Stopped at: v1.46 is active; the immediate focus is milestone audit, document-deck convergence, and public release alignment.
+Last session: 2026-04-09
+Stopped at: v1.46 is active; the immediate focus is capturing the shipped 1.4.1 through 1.4.9 work under one truthful milestone and re-entering GSD from that baseline.
 Resume file: None

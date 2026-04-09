@@ -3,11 +3,11 @@
 ## Milestones
 
 - ✅ **v1.0 through v1.45** - shipped. Full milestone history and archives: `.planning/MILESTONES.md`
-- 🚧 **v1.46 Milestone Audit, Deck Convergence, and Release Alignment** - active
+- 🚧 **v1.46 Ad Hoc Release Catch-Up and GSD Re-entry** - active
 
 ## Overview
 
-`v1.46` is a truthfulness and release-integrity milestone. It does not reopen the shipped delegated-agent fabric work from `v1.45`; it audits that shipped stack, closes document-deck drift, and repairs the public release lane so milestone tags, GitHub Releases, and the public crates.io package surface no longer contradict one another.
+`v1.46` is a catch-up milestone for the work that was shipped directly on `main` after `v1.45` without passing through the GSD deck first. The goal is to make the planning state truthful again before new work continues inside GSD. This milestone treats the public `1.4.1` through `1.4.9` line as already shipped baseline, captures the major onboarding, runtime, release, and operator-hardening changes under one milestone story, and ends with a clean GSD re-entry point for future phases.
 
 ## Phases
 
@@ -15,61 +15,61 @@
 - Integer phases continue the live sequence from the prior milestone.
 - This milestone starts at Phase 196 because `v1.45` ended at Phase 195.
 
-- [ ] **Phase 196: Shipped Milestone Audit and Residual Blocker Inventory** - Review shipped milestone archives, preserve real residual gaps, and distinguish resolved work from archival markers.
-- [ ] **Phase 197: Canonical Deck Convergence and Product Truthfulness** - Update the live planning and docs deck so delegated-agent fabric, Cursor support, routing-console UX, and release semantics read consistently everywhere.
-- [ ] **Phase 198: Public Release Lane Repair and GitHub Release Alignment** - Repair the public semver release lane, the missing `v1.45` GitHub milestone release entry, and the latest-release metadata.
-- [ ] **Phase 199: Release Evidence Sync and Closeout** - Preserve release evidence, verification commands, and the final milestone outcome in the planning archive.
+- [ ] **Phase 196: Ad Hoc Release Audit and Catch-Up Ledger** - Inventory the shipped `1.4.1` through `1.4.9` changes and record them as one truthful milestone baseline.
+- [ ] **Phase 197: Onboarding, Runtime, and Operator Journey Convergence** - Align the active planning story with the shipped onboarding, repair, delegated-agent, Tailscale, and runtime-control behavior.
+- [ ] **Phase 198: Release and Operational Hardening Capture** - Preserve the shipped release-lane, update-check, OpenClaw migration, temp-dir mitigation, and runtime lifecycle hardening as canonical operational baseline.
+- [ ] **Phase 199: GSD Re-entry Closeout and Next Queue Definition** - Finish the catch-up milestone with an explicit next phase so future work proceeds through GSD instead of ad hoc release flow.
 
 ## Phase Details
 
-### Phase 196: Shipped Milestone Audit and Residual Blocker Inventory
-**Goal**: Preserve one truthful blocker and gap inventory after auditing the shipped milestone stack.
+### Phase 196: Ad Hoc Release Audit and Catch-Up Ledger
+**Goal**: Record the shipped `1.4.1` through `1.4.9` work as one truthful milestone baseline.
 **Depends on**: Nothing (first phase)
-**Requirements**: AUD-01, AUD-02
+**Requirements**: CAT-01, CAT-02
 **Success Criteria** (what must be TRUE):
-  1. The shipped milestone stack is reviewed against its archives instead of assumed from memory.
-  2. Any residual blocker or gap is recorded once in canonical planning docs instead of reappearing as drift.
-  3. Archived requirements and roadmap snapshots exist for `v1.45` before the live deck is overwritten.
+  1. The out-of-band semver releases are summarized once in canonical planning docs instead of only existing in commits and chat transcripts.
+  2. The planning deck names the major shipped surfaces that changed across onboarding, doctor, runtime lifecycle, Tailscale, release handling, and migration.
+  3. Future milestone work no longer depends on remembering which direct-to-main fixes already shipped.
 
-### Phase 197: Canonical Deck Convergence and Product Truthfulness
-**Goal**: The canonical docs deck and live planning files describe the current shipped product and release semantics consistently.
+### Phase 197: Onboarding, Runtime, and Operator Journey Convergence
+**Goal**: The active planning story matches the shipped operator journey and runtime control baseline.
 **Depends on**: Phase 196
-**Requirements**: DOC-01, DOC-02, DOC-03
+**Requirements**: OPS-01, OPS-02
 **Success Criteria** (what must be TRUE):
-  1. Delegated-agent fabric, Cursor support, routing-console UX, and guided first-task orchestration are represented truthfully across canonical docs.
-  2. Public semver releases and milestone/archive tags are described as different surfaces with different jobs.
-  3. The docs deck no longer contains stale “gated” or “not shipped” claims for shipped `v1.45` behavior.
+  1. Delegated local-agent onboarding, repair flow, Codex or Claude Code style access modes, and runtime control are represented truthfully in the live planning deck.
+  2. Tailscale-aware gateway guidance and operator lifecycle controls are treated as shipped baseline, not pending ideas.
+  3. The active milestone no longer describes a stale pre-hardening operator journey.
 
-### Phase 198: Public Release Lane Repair and GitHub Release Alignment
-**Goal**: GitHub Releases, milestone tags, and the public crate lane reflect one truthful public release contract.
+### Phase 198: Release and Operational Hardening Capture
+**Goal**: Preserve the shipped release-lane and operational hardening work as canonical baseline.
 **Depends on**: Phase 197
-**Requirements**: REL-01, REL-02, REL-03
+**Requirements**: OPS-03, REL-01, REL-02
 **Success Criteria** (what must be TRUE):
-  1. The missing `v1.45` milestone tag/release is created as an archive marker with truthful notes.
-  2. The public semver lane for `openrustclaw-core` is either published or preserved at a truthful blocker checkpoint with evidence.
-  3. GitHub’s `Latest` release metadata points at the public semver line instead of the planning-milestone line.
+  1. The planning deck reflects the shipped public semver line through `1.4.9`.
+  2. Startup update checking, safe OpenClaw migration, repo-local temp-dir defaults, and runtime stop or restart are preserved as shipped operational improvements.
+  3. Future work no longer needs to rediscover these operational fixes as undocumented repo lore.
 
-### Phase 199: Release Evidence Sync and Closeout
-**Goal**: Preserve the release evidence and milestone closeout in one place.
+### Phase 199: GSD Re-entry Closeout and Next Queue Definition
+**Goal**: Finish the catch-up milestone with an explicit next queue inside GSD.
 **Depends on**: Phase 198
-**Requirements**: REL-04
+**Requirements**: GSD-01
 **Success Criteria** (what must be TRUE):
-  1. Verification commands, release URLs, and publication evidence are recorded in the planning archive.
-  2. The live milestone deck reflects the repaired release contract and its evidence.
-  3. The repo is ready for the next planning cycle without rediscovering this release story.
+  1. The active planning deck gives one explicit next command and next phase for future work.
+  2. The catch-up milestone closes with enough truthfulness that new work can stay inside GSD.
+  3. The repo is ready for the next planning cycle without another round of ad hoc milestone reconstruction.
 
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 196. Shipped Milestone Audit and Residual Blocker Inventory | 0/0 | Not started | - |
-| 197. Canonical Deck Convergence and Product Truthfulness | 0/0 | Not started | - |
-| 198. Public Release Lane Repair and GitHub Release Alignment | 0/0 | Not started | - |
-| 199. Release Evidence Sync and Closeout | 0/0 | Not started | - |
+| 196. Ad Hoc Release Audit and Catch-Up Ledger | 0/0 | Not started | - |
+| 197. Onboarding, Runtime, and Operator Journey Convergence | 0/0 | Not started | - |
+| 198. Release and Operational Hardening Capture | 0/0 | Not started | - |
+| 199. GSD Re-entry Closeout and Next Queue Definition | 0/0 | Not started | - |
 
 ## Current Status
 
-- Active milestone: `v1.46 Milestone Audit, Deck Convergence, and Release Alignment`
+- Active milestone: `v1.46 Ad Hoc Release Catch-Up and GSD Re-entry`
 - Roadmap progress: 0/4 phases complete
-- Current work: audit the shipped milestone stack, converge the canonical docs deck, and repair public release metadata
+- Current work: capture the shipped `1.4.1` through `1.4.9` work under one milestone and restore a truthful GSD starting point
 - Next step: `$gsd-plan-phase 196`

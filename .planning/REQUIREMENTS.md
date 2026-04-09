@@ -1,66 +1,60 @@
-# Requirements: OpenRustClaw v1.46 Milestone Audit, Deck Convergence, and Release Alignment
+# Requirements: OpenRustClaw v1.46 Ad Hoc Release Catch-Up and GSD Re-entry
 
-**Defined:** 2026-04-08
+**Defined:** 2026-04-09
 **Core Value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
 
 ## v1 Requirements
 
-### Milestone and Archive Audit
+### Shipped Work Catch-Up
 
-- [ ] **AUD-01**: The shipped milestone stack is reviewed against its preserved audit and verification artifacts instead of milestone memory.
-- [ ] **AUD-02**: Any real residual blocker, release mismatch, or documentation drift is preserved once in canonical planning docs instead of remaining implicit.
+- [ ] **CAT-01**: The out-of-band shipped work from the public `1.4.1` through `1.4.9` semver line is captured under one truthful active milestone instead of remaining scattered across commit history and chat memory.
+- [ ] **CAT-02**: The active planning deck explicitly records the major shipped surfaces added or hardened outside GSD, including delegated local-agent onboarding, runtime and doctor repair, WhatsApp bootstrap changes, Tailscale guidance, runtime stop or restart control, startup update checking, OpenClaw migration, and local temp-dir safety.
 
-### Canonical Deck Convergence
+### Operator Journey Convergence
 
-- [ ] **DOC-01**: The live planning deck reflects `v1.45` as shipped and `v1.46` as the active audit/release milestone with archived `v1.45` roadmap and requirements snapshots preserved.
-- [ ] **DOC-02**: The canonical docs deck describes the shipped delegated-agent fabric, Cursor delegated-backend support, routing console, trusted remote backends, and guided first-task journey truthfully.
-- [ ] **DOC-03**: The release docs explain the difference between planning milestone tags and the public semver release line so README, docs, and GitHub metadata do not contradict one another.
+- [ ] **OPS-01**: The active milestone describes the current shipped onboarding, repair, runtime, and operator journey truthfully enough that future GSD phases start from the real product baseline rather than the stale pre-`1.4.1` state.
+- [ ] **OPS-02**: Runtime lifecycle control is now part of the canonical operator contract, including `openrustclaw start`, `openrustclaw stop`, `openrustclaw restart`, listener conflict handling, and Tailscale-first advertised access where available.
+- [ ] **OPS-03**: The current planning state no longer claims API-key-only or docs-only recovery paths where the shipped product now supports delegated local agents, repair flows, and runtime service control.
 
-### Public Release Alignment
+### Release and Workflow Continuity
 
-- [ ] **REL-01**: GitHub contains a truthful `v1.45` milestone release/tag as an archive marker for the shipped delegated-agent fabric milestone.
-- [ ] **REL-02**: The public semver lane for `openrustclaw-core 1.4.1` is verified and either published successfully or stopped at a truthful credential or platform blocker with evidence.
-- [ ] **REL-03**: GitHub `Latest` release metadata points at the public semver release line rather than the planning milestone line.
-- [ ] **REL-04**: Release evidence records the verification commands used, the final GitHub release URLs, and the crates.io/docs.rs state.
+- [ ] **REL-01**: The active planning docs preserve the fact that the public semver lane advanced through `openrustclaw-core 1.4.9` and that those releases are part of the shipped baseline, not pending work.
+- [ ] **REL-02**: The planning deck records the repo-local Cargo temp-dir mitigation and startup update-check or OpenClaw-migration work as shipped operational hardening instead of rediscovering them later as ad hoc fixes.
+- [ ] **GSD-01**: The next GSD entrypoint is explicit, with a truthful milestone scope and a named first phase so future work can resume inside the pipeline instead of continuing as undocumented direct-to-main changes.
 
 ## v2 Requirements
 
-### Release Automation Hardening
+### Workflow Hardening
 
-- **REL-05**: The repo can generate milestone-archive release notes and semver release notes from separate templates so the two public surfaces stop drifting.
-- **REL-06**: Release evidence is emitted automatically into a single planning archive file after a successful publish.
-
-### Docs Deck Automation
-
-- **DOC-04**: Canonical docs freshness can be linted so stale shipped-surface claims fail CI before release.
+- **GSD-02**: Future semver releases should be traceable back to named GSD phases or milestone closeout artifacts instead of relying on conversational reconstruction.
+- **REL-03**: Release evidence for shipped semver versions should eventually be consolidated into one milestone archive surface so the public package line and planning line stay correlated.
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Broad net-new product features unrelated to audit, documentation convergence, or release alignment | This milestone is for truthfulness and release integrity, not breadth expansion |
+| Re-implementing already shipped `1.4.1` through `1.4.9` behavior | This milestone is about truthful capture and orderly re-entry into GSD, not replaying completed work |
 | Expanding crates.io publication beyond `openrustclaw-core` | The public crate lane remains intentionally narrow until a new publish contract exists |
-| Rewriting every historical milestone summary or audit file | The goal is to preserve truthful archives and repair current canonical surfaces, not flatten history |
+| A full historical rewrite of every past milestone archive | The catch-up goal is to restore truthful current-state planning, not flatten the entire archive |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AUD-01 | Phase 196 | Planned |
-| AUD-02 | Phase 196 | Planned |
-| DOC-01 | Phase 197 | Planned |
-| DOC-02 | Phase 197 | Planned |
-| DOC-03 | Phase 197 | Planned |
+| CAT-01 | Phase 196 | Planned |
+| CAT-02 | Phase 196 | Planned |
+| OPS-01 | Phase 197 | Planned |
+| OPS-02 | Phase 197 | Planned |
+| OPS-03 | Phase 198 | Planned |
 | REL-01 | Phase 198 | Planned |
 | REL-02 | Phase 198 | Planned |
-| REL-03 | Phase 198 | Planned |
-| REL-04 | Phase 199 | Planned |
+| GSD-01 | Phase 199 | Planned |
 
 **Coverage:**
-- v1 requirements: 9 total
-- Mapped to phases: 9
+- v1 requirements: 8 total
+- Mapped to phases: 8
 - Unmapped: 0
 
 ---
-*Requirements defined: 2026-04-08*
-*Last updated: 2026-04-08 after milestone initialization*
+*Requirements defined: 2026-04-09*
+*Last updated: 2026-04-09 after milestone catch-up reset*
