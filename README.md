@@ -49,7 +49,7 @@ cargo build --workspace
 cp .env.example .env
 ```
 
-Add a provider API key to `.env` if you plan to use a direct API lane. If you plan to start with a supported delegated local agent such as Claude Code, Codex, Cursor, or Gemini CLI, sign in to that local tool first instead.
+Add a provider API key to `.env` if you plan to use a direct API lane. If you plan to start with a supported delegated local agent such as Claude Code, Codex, or Gemini CLI, sign in to that local tool first instead. Cursor can still appear in discovery surfaces, but it is not treated as a delegated execution lane here.
 
 ### 2. Run guided onboarding
 

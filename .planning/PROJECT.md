@@ -50,7 +50,7 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ## Older Milestone: v1.45 Agent Fabric, Routing Console, and Guided Delegation
 
-**Result:** Shipped 2026-04-08. OpenRustClaw closed the delegated-agent fabric roadmap at `5/5`, added truthful Cursor execution support, trusted remote-host inventory, durable route policy and receipts, a dedicated routing console, and a guided first-task launch path after onboarding or repair.
+**Result:** Shipped 2026-04-08. OpenRustClaw closed the delegated-agent fabric roadmap at `5/5`, added truthful Cursor discovery surfaces, trusted remote-host inventory, durable route policy and receipts, a dedicated routing console, and a guided first-task launch path after onboarding or repair.
 
 **Archive:** `.planning/milestones/v1.45-MILESTONE-AUDIT.md`, `.planning/milestones/v1.45-phases`
 
