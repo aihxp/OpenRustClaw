@@ -1043,13 +1043,45 @@ pub fn runtime_lock_status(workspace_root: &Path) -> Result<RuntimeLockStatus> {
     })
 }
 
+fn unavailable_runtime_lock_status(workspace_root: &Path) -> RuntimeLockStatus {
+    let path = runtime_lock_path_for(workspace_root);
+    RuntimeLockStatus {
+        path: path.display().to_string(),
+        present: false,
+        active: false,
+        stale: false,
+        process_id: None,
+        owner_alive: None,
+        acquired_at: None,
+        gateway_addr: None,
+        config_path: None,
+    }
+}
+
 pub fn diagnose_listener_conflict(
     workspace_root: &Path,
     listener_addr: &str,
 ) -> Result<RuntimeListenerConflictDiagnosis> {
-    let lock_status = runtime_lock_status(workspace_root)?;
+    let mut metadata_warnings = Vec::new();
+    let lock_status = match runtime_lock_status(workspace_root) {
+        Ok(status) => status,
+        Err(error) => {
+            metadata_warnings.push(format!(
+                "The runtime lock metadata could not be read: {error}."
+            ));
+            unavailable_runtime_lock_status(workspace_root)
+        }
+    };
     let lock_matches = lock_status.gateway_addr.as_deref() == Some(listener_addr);
-    let beacon = load_cached_runtime_beacon(workspace_root)?;
+    let beacon = match load_cached_runtime_beacon(workspace_root) {
+        Ok(beacon) => beacon,
+        Err(error) => {
+            metadata_warnings.push(format!(
+                "The runtime beacon metadata could not be read: {error}."
+            ));
+            None
+        }
+    };
     let beacon_matches = beacon
         .as_ref()
         .map(|value| listener_addr_matches_runtime_beacon(value, listener_addr))
@@ -1160,6 +1192,10 @@ pub fn diagnose_listener_conflict(
             " The cached runtime beacon currently points at {}.",
             beacon.listener_addr
         ));
+    }
+    for warning in metadata_warnings {
+        detail.push(' ');
+        detail.push_str(&warning);
     }
 
     Ok(RuntimeListenerConflictDiagnosis {
@@ -2149,6 +2185,12 @@ async fn launch_runtime_start(
     let launched_pid = child.id();
     for _ in 0..40 {
         if let Some(status) = child.try_wait()? {
+            if let Some(bind_error) = detect_configured_listener_conflict(
+                &resolved_config_path.display().to_string(),
+                workspace_root,
+            )? {
+                return Err(bind_error);
+            }
             anyhow::bail!(
                 "OpenRustClaw restart launch exited early with status {}",
                 status
@@ -2181,6 +2223,24 @@ async fn launch_runtime_start(
             "OpenRustClaw start was launched, but the runtime lock did not appear before the timeout."
                 .to_string(),
     })
+}
+
+fn detect_configured_listener_conflict(
+    config_path: &str,
+    workspace_root: &Path,
+) -> Result<Option<anyhow::Error>> {
+    let config = load_effective_config(config_path, workspace_root)?;
+    let listener_addr = resolve_gateway_advertising(&config).listener_addr;
+    match std::net::TcpListener::bind(&listener_addr) {
+        Ok(listener) => {
+            drop(listener);
+            Ok(None)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => Ok(Some(anyhow::anyhow!(
+            listener_conflict_failure_message(workspace_root, &listener_addr)
+        ))),
+        Err(_) => Ok(None),
+    }
 }
 
 fn capture_runtime_snapshot(
@@ -3423,7 +3483,6 @@ impl DelegatedCliProvider {
             }
             "codex" => {
                 command.arg("exec");
-                command.arg(prompt);
                 command.args([
                     "-C",
                     self.workspace_root.to_string_lossy().as_ref(),
@@ -3438,6 +3497,8 @@ impl DelegatedCliProvider {
                 if let Some(path) = output_path.as_ref() {
                     command.args(["--output-last-message", path.to_string_lossy().as_ref()]);
                 }
+                command.arg("--");
+                command.arg(prompt);
             }
             "gemini_cli" => {
                 command.args([
@@ -4574,6 +4635,11 @@ impl Drop for RuntimeLockGuard {
 mod tests {
     use super::*;
     use crate::commands::logs;
+    use openrustclaw_app::agent_backend_catalog::AgentBackendReadiness;
+    use openrustclaw_app::agent_backend_control::{
+        AgentBackendPolicy, DelegatedAgentBackendContract, DelegatedExecutionKind,
+        DelegatedModelCatalogMode,
+    };
     use serial_test::serial;
     use tempfile::tempdir;
 
@@ -4598,6 +4664,62 @@ mod tests {
                 unsafe { std::env::remove_var(self.key) };
             }
         }
+    }
+
+    fn test_delegated_provider(backend_id: &str, workspace_root: &Path) -> DelegatedCliProvider {
+        DelegatedCliProvider {
+            backend_id: backend_id.to_string(),
+            model: "vendor-managed".to_string(),
+            workspace_root: workspace_root.to_path_buf(),
+            policy: AgentBackendPolicy {
+                allowed_backends: vec![backend_id.to_string()],
+                allow_local_cli_wrappers: true,
+                allow_cloud_agent_execution: false,
+                audit_log_path: ".claw/control/external-backend-audit.jsonl".to_string(),
+                command_env_allowlist: Vec::new(),
+            },
+            contract: DelegatedAgentBackendContract {
+                backend_id: backend_id.to_string(),
+                display_name: backend_id.to_string(),
+                provider_id: Some("openai".to_string()),
+                transport: "local_cli".to_string(),
+                readiness: AgentBackendReadiness::Ready,
+                readiness_reason: None,
+                model_catalog_mode: DelegatedModelCatalogMode::VendorManaged,
+                delegated_execution_kind: DelegatedExecutionKind::LocalCli,
+                execution_eligible: true,
+                policy_classification: "delegated_cli_candidate".to_string(),
+                auth_method: Some("chatgpt".to_string()),
+                notes: Vec::new(),
+            },
+        }
+    }
+
+    #[test]
+    fn codex_delegated_command_places_flags_before_prompt_and_uses_separator() -> Result<()> {
+        let temp = tempdir()?;
+        let provider = test_delegated_provider("codex", temp.path());
+
+        let (command, output_path) = provider.build_command("-a")?;
+        let args = command
+            .as_std()
+            .get_args()
+            .map(|value| value.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+
+        assert_eq!(args.first().map(String::as_str), Some("exec"));
+        let separator_index = args.iter().rposition(|value| value == "--");
+        assert!(separator_index.is_some());
+        assert_eq!(args.last().map(String::as_str), Some("-a"));
+        assert_eq!(
+            separator_index.map(|index| args.get(index + 1).map(String::as_str)),
+            Some(Some("-a"))
+        );
+        assert!(args.iter().any(|value| value == "-C"));
+        assert!(args.iter().any(|value| value == "--sandbox"));
+        assert!(args.iter().any(|value| value == "--output-last-message"));
+        assert!(output_path.is_some());
+        Ok(())
     }
 
     #[test]
@@ -5042,6 +5164,64 @@ mod tests {
         assert!(message.contains("non-OpenRustClaw or unclassified process"));
         assert!(message.contains("gateway.host"));
         assert!(message.contains("gateway.port"));
+        Ok(())
+    }
+
+    #[test]
+    fn ensure_configured_listener_available_tolerates_corrupt_runtime_beacon() -> Result<()> {
+        let temp = tempdir()?;
+        let workspace_root = temp.path();
+        fs::create_dir_all(workspace_root.join("config"))?;
+        if let Some(parent) = runtime_beacon_path_for(workspace_root).parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+        let port = listener.local_addr()?.port();
+        let mut config = AppConfig::default();
+        config.gateway.host = "127.0.0.1".to_string();
+        config.gateway.port = port;
+        fs::write(
+            workspace_root.join("config/default.toml"),
+            toml::to_string_pretty(&config)?,
+        )?;
+        fs::write(runtime_beacon_path_for(workspace_root), "{not-json")?;
+
+        let error = ensure_configured_listener_available("config/default.toml", workspace_root)
+            .unwrap_err();
+        let message = error.to_string();
+
+        assert!(message.contains("non-OpenRustClaw or unclassified process"));
+        assert!(message.contains("runtime beacon metadata could not be read"));
+        Ok(())
+    }
+
+    #[test]
+    fn ensure_configured_listener_available_tolerates_corrupt_runtime_lock() -> Result<()> {
+        let temp = tempdir()?;
+        let workspace_root = temp.path();
+        fs::create_dir_all(workspace_root.join("config"))?;
+        if let Some(parent) = runtime_lock_path_for(workspace_root).parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+        let port = listener.local_addr()?.port();
+        let mut config = AppConfig::default();
+        config.gateway.host = "127.0.0.1".to_string();
+        config.gateway.port = port;
+        fs::write(
+            workspace_root.join("config/default.toml"),
+            toml::to_string_pretty(&config)?,
+        )?;
+        fs::write(runtime_lock_path_for(workspace_root), "{not-json")?;
+
+        let error = ensure_configured_listener_available("config/default.toml", workspace_root)
+            .unwrap_err();
+        let message = error.to_string();
+
+        assert!(message.contains("non-OpenRustClaw or unclassified process"));
+        assert!(message.contains("runtime lock metadata could not be read"));
         Ok(())
     }
 
