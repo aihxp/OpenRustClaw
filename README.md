@@ -112,7 +112,7 @@ The mdBook navigation under [`docs/src/`](docs/src/) is for guided reading. The 
 Public release surfaces are intentionally split:
 
 - `openrustclaw-core` on crates.io and docs.rs is the semver package lane
-- GitHub semver tags such as `v1.4.9` represent that public package line
+- GitHub semver tags such as `v1.4.10` represent that public package line
 - Milestone tags such as `v1.47` are archive releases for shipped planning slices and should not be treated as a crates.io publish event
 
 ## Product Boundaries

@@ -16,7 +16,7 @@ OpenRustClaw now ships:
 - guided first-task launch that stays aligned with the selected lane and route policy
 - Tailscale-first private gateway guidance with truthful bound-versus-advertised runtime addresses
 - runtime lifecycle control through `openrustclaw start`, `openrustclaw stop`, and `openrustclaw restart`, plus startup preflight checks for release updates and safe OpenClaw migration
-- a public semver release lane for `openrustclaw-core` through `1.4.9`, kept separate from milestone archive tags
+- a public semver release lane for `openrustclaw-core` through `1.4.10`, kept separate from milestone archive tags
 - shared CLI, HTTP, MCP, and Control UI surfaces
 - enterprise access, policy, governance, audit, and operator-gated autonomy controls
 

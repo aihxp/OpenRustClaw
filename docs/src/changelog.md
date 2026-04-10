@@ -9,13 +9,14 @@ This changelog tracks the public semver release line. Planning milestone tags su
 
 ---
 
-## [Unreleased]
+## [1.4.10] - 2026-04-09
 
 ### Fixed
 
 - Runtime listener conflicts now classify active OpenRustClaw ownership, stale OpenRustClaw state, and foreign-process port collisions before `openrustclaw start` exits.
-- `openrustclaw restart` now probes the configured listener before it relaunches the runtime, so foreign process conflicts fail with the classified listener-owner message instead of bubbling up as an early child-start exit.
+- `openrustclaw restart` now probes and rechecks the configured listener so foreign process conflicts fail with the classified listener-owner message instead of surfacing only as an early child-start exit.
 - `openrustclaw stop` now clears stale runtime beacons alongside stale runtime locks and can recover a lockless-but-beaconed workspace runtime before the next `start`.
+- Delegated Codex CLI execution now places flags before the prompt and inserts `--` before prompt text so prompts that begin with `-...` are not misparsed as Codex CLI options.
 
 ## [1.4.9] - 2026-04-09
 
