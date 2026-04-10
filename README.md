@@ -104,9 +104,16 @@ Use these as the main entry points:
 | Observability and runtime signals | [docs/src/operations/observability.md](docs/src/operations/observability.md) |
 | GitHub repo metadata and admin sync | [docs/github-repo-admin.md](docs/github-repo-admin.md) |
 | Canonical docs ownership rules | [docs/documentation-contract.md](docs/documentation-contract.md) |
+| Public crate and docs.rs release lane | [docs/src/deployment/crates-io-release.md](docs/src/deployment/crates-io-release.md) |
 | Shipped-surface planning references | [docs/roadmap.md](docs/roadmap.md), [docs/feature-matrix.md](docs/feature-matrix.md), [docs/surface-matrix.md](docs/surface-matrix.md), [docs/product-positioning.md](docs/product-positioning.md) |
 
 The mdBook navigation under [`docs/src/`](docs/src/) is for guided reading. The root planning docs under [`docs/`](docs/) remain the canonical source for the shipped-surface matrices and positioning pages.
+
+Public release surfaces are intentionally split:
+
+- `openrustclaw-core` on crates.io and docs.rs is the semver package lane
+- GitHub semver tags such as `v1.4.9` represent that public package line
+- Milestone tags such as `v1.47` are archive releases for shipped planning slices and should not be treated as a crates.io publish event
 
 ## Product Boundaries
 

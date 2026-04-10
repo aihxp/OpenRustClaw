@@ -33,9 +33,12 @@ Use this checklist before promoting an OpenRustClaw MVP release candidate.
 - Build the release artifact with `scripts/build-release-artifacts.sh --target <triple>`.
 - Dry-run the GitHub release matrix on the candidate branch with `gh workflow run release-binaries.yml --ref <branch>` when workflow changes or target support changed.
 - Confirm whether the GitHub release you are updating is a public semver release or a planning milestone archive tag, and do not let one masquerade as the other.
+- If this is a public semver release, confirm the workspace version is newer than the current crates.io `openrustclaw-core` version before tagging or publishing.
+- If this is only a milestone archive release, do not run `cargo publish` unless the `openrustclaw-core` semver lane is also being advanced intentionally.
 - Run `scripts/check-runtime-budgets.sh`.
 - Confirm the produced tarball and `.sha256` checksum exist for the target runtime.
 - Confirm the candidate binary path used by `openrustclaw runtime self-update-plan --artifact <path>` matches the artifact being promoted.
+- If the target crate version is already live on crates.io, treat the remaining work as docs or GitHub-release maintenance instead of a duplicate publish attempt.
 
 ## 5. Verification Bundle
 
@@ -60,3 +63,4 @@ Release promotion is allowed only when:
 - observability endpoints and operator surfaces are functioning
 - release budgets pass
 - the verification bundle passes on the candidate build
+- the GitHub release type, crate version, crates.io page, and docs.rs page all agree about what was actually shipped
